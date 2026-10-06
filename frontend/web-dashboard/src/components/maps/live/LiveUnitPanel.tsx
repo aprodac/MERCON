@@ -125,7 +125,7 @@ export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare
           <div className="mt-2.5 flex items-center gap-2 rounded-xl bg-charcoal-strong/[0.03] px-2.5 py-2 text-xs dark:bg-white/5">
             <Navigation className="size-3.5 shrink-0 text-blue-600 dark:text-blue-400" />
             <span className="min-w-0 flex-1 truncate font-medium text-foreground">{stopLabel(stop)}</span>
-            {eta?.arrival && <span className="shrink-0 font-semibold tabular-nums text-foreground">{formatTime(eta.arrival)}</span>}
+            {eta?.arrival && <span className="shrink-0 font-semibold tabular-nums text-foreground">{eta.approx ? '≈ ' : ''}{formatTime(eta.arrival)}</span>}
             {p && <span className={cn('shrink-0 font-medium', p.tone === 'good' ? 'text-emerald-600' : 'text-rose-600')}>{p.label}</span>}
           </div>
         )}
@@ -230,9 +230,11 @@ export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare
           </p>
         )}
 
-        {eta && eta.arrival == null && stop && (
-          <p className="text-[11px] text-muted-foreground">Road routing is unavailable, so there's no drive-time ETA. Distance shown is a straight line.</p>
-        )}
+        {eta?.stopLooksWrong && stop ? (
+          <p className="text-[11px] font-medium text-rose-600 dark:text-rose-400">This stop's map location looks wrong (thousands of km away) — fix it on the trip.</p>
+        ) : eta?.approx && stop ? (
+          <p className="text-[11px] text-muted-foreground">Estimate — the road route couldn't be loaded, so the ETA is worked out from the straight-line distance.</p>
+        ) : null}
       </div>
 
       <div className="border-t border-black/[0.06] p-3 dark:border-white/10">{actions}</div>
@@ -303,9 +305,9 @@ export function NextStopCard({ unit, eta }: { unit: LiveUnit; eta: EtaInfo | nul
         <Navigation className="size-7 shrink-0 fill-white/10 text-sky-300" />
         <div>
           <p className="text-[26px] leading-none font-semibold tracking-tight tabular-nums">
-            {eta?.distanceKm != null ? formatKm(eta.distanceKm) : '—'}
+            {eta?.distanceKm != null ? `${eta.approx ? '≈ ' : ''}${formatKm(eta.distanceKm)}` : '—'}
           </p>
-          <p className="mt-0.5 text-[11px] text-white/60">{eta?.distanceIsRoad ? 'by road' : 'straight line'} to next stop</p>
+          <p className="mt-0.5 text-[11px] text-white/60">{eta?.stopLooksWrong ? 'stop location looks wrong' : 'by road to next stop'}</p>
         </div>
       </div>
       <p className="truncate px-4 pt-2 pb-3 text-[15px] font-semibold">{stopLabel(stop)}</p>
@@ -324,13 +326,13 @@ export function EtaStrip({ eta, formatTime }: { eta: EtaInfo; formatTime: (d: Da
   const p = punctuality(eta.lateByMin);
   return (
     <div className={cn('pointer-events-auto flex items-end gap-5 rounded-2xl px-4 py-2.5', GLASS)}>
-      <Metric value={eta.arrival ? formatTime(eta.arrival) : '—'} label="arrival" />
+      <Metric value={eta.arrival ? `${eta.approx ? '≈ ' : ''}${formatTime(eta.arrival)}` : '—'} label={eta.approx ? 'arrival (estimate)' : 'arrival'} />
       <Metric
         value={eta.durationSeconds != null ? formatDuration(eta.durationSeconds) : '—'}
-        label={p?.label ?? 'drive time'}
+        label={p?.label ?? (eta.stopLooksWrong ? 'stop location looks wrong' : 'drive time')}
         tone={p?.tone}
       />
-      {eta.distanceKm != null && <Metric value={formatKm(eta.distanceKm)} label={eta.distanceIsRoad ? 'by road' : 'direct'} />}
+      {eta.distanceKm != null && <Metric value={`${eta.approx ? '≈ ' : ''}${formatKm(eta.distanceKm)}`} label="by road" />}
     </div>
   );
 }

@@ -44,6 +44,20 @@ describe('route ahead', () => {
     assert.equal(b.onRoute, true);
   });
 
+  it('holds the shown arrival steady unless it moves by 3 min or more', async () => {
+    stub(() => osrm(NORTH, 11000, 3600));
+    const t0 = 1_000_000;
+    const a = await getRouteAhead('trip', fix(24.0), STOP, t0);
+    const arrivalA = t0 + a.durationSeconds * 1000;
+    // A minute later it hasn't moved (a light, a queue): the raw arrival slips ~1 min.
+    const b = await getRouteAhead('trip', fix(24.0), STOP, t0 + 61_000);
+    assert.ok(Math.abs(t0 + 61_000 + b.rawDurationSeconds * 1000 - arrivalA) > 30_000, 'the raw ETA did move');
+    assert.equal(t0 + 61_000 + b.durationSeconds * 1000, arrivalA, 'the shown arrival did not');
+    // Stuck for 10 minutes: now it really moved — shown at once.
+    const c = await getRouteAhead('trip', fix(24.0), STOP, t0 + 661_000);
+    assert.ok(t0 + 661_000 + c.durationSeconds * 1000 - arrivalA >= 180_000);
+  });
+
   it('does not use the heading of a truck standing still', async () => {
     const calls = stub(() => osrm(NORTH));
     await getRouteAhead('trip', fix(24.0, 46.0, { speed_kph: 0 }), STOP, 1);

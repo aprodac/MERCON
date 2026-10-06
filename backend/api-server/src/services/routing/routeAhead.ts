@@ -22,8 +22,12 @@
  *
  * Distance and time left scale with the share of the route still ahead
  * (OSRM's time is already at truck speed — routeProvider TRUCK_MAX_KPH).
+ * The arrival is held steady (shared-types `steadyArrival`): it only moves
+ * when it changes by ETA_STEADY_MIN or more, so screens don't tick ±1 min on
+ * every fix; `rawDurationSeconds` is the unsmoothed time (accuracy records).
  * Kept in memory: an API restart just asks OSRM once more per trip.
  */
+import { steadyArrival } from '@mercon/shared-types';
 import { getDrivingRouteThrough, RoutingUnavailableError, type GeoPoint } from './routeProvider';
 
 type LngLat = [number, number];
@@ -57,7 +61,10 @@ export interface RouteAhead {
   /** [lng, lat] from the truck's spot on the route to the stop. */
   geometry: LngLat[];
   distanceMeters: number;
+  /** Time to the stop as shown — arrival held steady (see above). */
   durationSeconds: number;
+  /** The same before steadying. */
+  rawDurationSeconds: number;
   /** When this was worked out — arrival = computedAt + durationSeconds, the same on every screen. */
   computedAt: string;
   /** The stop this route goes to. */
@@ -89,6 +96,8 @@ interface Plan {
 }
 
 const plans = new Map<string, Plan>();
+/** The arrival last shown per trip, kept across re-routes to the same stop. */
+const shown = new Map<string, { stopId: string; at: number }>();
 const inflight = new Map<string, Promise<RouteAhead>>();
 
 // ── Geometry (local flat-earth around each segment: plenty for metres-scale snapping) ──
@@ -144,14 +153,19 @@ export function locateOnRoute(coords: LngLat[], cum: number[], p: LngLat, fromAl
   return { seg: pick.seg, along: pick.along, offM: pick.d, at: pick.at };
 }
 
-function aheadOf(plan: Plan, seg: number, at: LngLat, along: number, onRoute: boolean, now: number): RouteAhead {
+function aheadOf(tripId: string, plan: Plan, seg: number, at: LngLat, along: number, onRoute: boolean, now: number): RouteAhead {
   const geometry: LngLat[] = [at, ...plan.coords.slice(seg + 1)];
   const total = plan.cum[plan.cum.length - 1] || 1;
   const share = Math.max(0, Math.min(1, (total - along) / total));
+  const raw = Math.round(plan.routeSeconds * share);
+  const prev = shown.get(tripId);
+  const arrival = steadyArrival(prev?.stopId === plan.stopId ? prev.at : null, now + raw * 1000);
+  shown.set(tripId, { stopId: plan.stopId, at: arrival });
   return {
     geometry: geometry.length >= 2 ? geometry : [at, plan.coords[plan.coords.length - 1]],
     distanceMeters: Math.round(plan.routeMeters * share),
-    durationSeconds: Math.round(plan.routeSeconds * share),
+    durationSeconds: Math.max(0, Math.round((arrival - now) / 1000)),
+    rawDurationSeconds: raw,
     computedAt: new Date(now).toISOString(),
     stopId: plan.stopId,
     onRoute,
@@ -189,7 +203,7 @@ async function routeFresh(tripId: string, fix: TruckFix, stop: GeoPoint & { id: 
   plans.set(tripId, plan);
   const here = locateOnRoute(coords, plan.cum, [fix.lng, fix.lat], 0);
   Object.assign(plan, { seg: here.seg, along: here.along, at: here.at });
-  return aheadOf(plan, here.seg, here.at, here.along, true, now);
+  return aheadOf(tripId, plan, here.seg, here.at, here.along, true, now);
 }
 
 /**
@@ -198,7 +212,7 @@ async function routeFresh(tripId: string, fix: TruckFix, stop: GeoPoint & { id: 
  * straight line and an estimate).
  */
 export async function getRouteAhead(tripId: string, fix: TruckFix, stop: GeoPoint & { id: string }, now = Date.now()): Promise<RouteAhead> {
-  for (const [id, p] of plans) if (now - p.usedAt > PLAN_IDLE_MS) plans.delete(id);
+  for (const [id, p] of plans) if (now - p.usedAt > PLAN_IDLE_MS) { plans.delete(id); shown.delete(id); }
 
   const plan = plans.get(tripId);
   if (plan && plan.stopId === stop.id && now - plan.routedAt < ROUTE_MAX_AGE_MS) {
@@ -207,13 +221,13 @@ export async function getRouteAhead(tripId: string, fix: TruckFix, stop: GeoPoin
     const allowed = OFF_ROUTE_M + Math.min(fix.accuracy_m ?? 0, 250);
     if (here.offM <= allowed) {
       Object.assign(plan, { seg: here.seg, along: here.along, at: here.at, offFixes: 0 });
-      return aheadOf(plan, here.seg, here.at, here.along, true, now);
+      return aheadOf(tripId, plan, here.seg, here.at, here.along, true, now);
     }
     plan.offFixes++;
     const leftIt = here.offM > FAR_OFF_ROUTE_M || plan.offFixes >= OFF_ROUTE_FIXES;
     if (!leftIt || now - plan.routedAt < REROUTE_MIN_MS) {
       // A stray fix (or re-routed moments ago): keep the route from the last good spot.
-      return aheadOf(plan, plan.seg, plan.at, plan.along, false, now);
+      return aheadOf(tripId, plan, plan.seg, plan.at, plan.along, false, now);
     }
   }
 
@@ -229,4 +243,5 @@ export async function getRouteAhead(tripId: string, fix: TruckFix, stop: GeoPoin
 export function __resetRouteAhead() {
   plans.clear();
   inflight.clear();
+  shown.clear();
 }

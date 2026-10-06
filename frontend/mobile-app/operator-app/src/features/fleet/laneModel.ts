@@ -7,7 +7,7 @@
  * road routes.
  */
 import type { LiveUnit } from '../../lib/operator';
-import { haversineKm, located, onTrip, placeFromQuery, rankTrucksForTrip, type Place, type TruckCandidate } from './fleetModel';
+import { haversineKm, located, onTrip, placeFromQuery, rankTrucksForTrip, truckDriveSeconds, type Place, type TruckCandidate } from './fleetModel';
 import { SAUDI_CITY_COORDS } from '../trips/services/travelTimeService';
 
 /** Catchment around each end of a lane (city centres), and the wider one offered when nothing is found. */
@@ -145,5 +145,5 @@ export function freeTrucksAt(units: LiveUnit[], from: LatLng, km: number, now = 
 
 /** Hours of road at truck speed: the router times a car, and a loaded truck averages at most ~80 km/h. */
 export function truckSeconds(route: { distanceMeters: number; durationSeconds: number }): number {
-  return Math.max(route.durationSeconds, route.distanceMeters / (80 / 3.6));
+  return truckDriveSeconds(route.distanceMeters, route.durationSeconds);
 }

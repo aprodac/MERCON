@@ -25,6 +25,7 @@
  * TRUCK_MAX_KPH (env ROUTE_TRUCK_MAX_KPH, default 80) — the ETAs on the map,
  * the driver app and the create-trip schedule all come from here.
  */
+import { TRUCK_MAX_KPH as SHARED_TRUCK_MAX_KPH } from '@mercon/shared-types';
 import { logger } from '../../utils/logger';
 
 export interface GeoPoint {
@@ -69,7 +70,7 @@ const OSRM_BASE_URL = (process.env.OSRM_BASE_URL || PUBLIC_OSRM).replace(/\/+$/,
 const OSRM_FALLBACK_URL = (process.env.OSRM_FALLBACK_URL ?? PUBLIC_OSRM).replace(/\/+$/, '');
 
 /** A loaded truck's top average; OSRM's car timing is stretched to at least this. */
-const TRUCK_MAX_KPH = Number(process.env.ROUTE_TRUCK_MAX_KPH) > 0 ? Number(process.env.ROUTE_TRUCK_MAX_KPH) : 80;
+const TRUCK_MAX_KPH = Number(process.env.ROUTE_TRUCK_MAX_KPH) > 0 ? Number(process.env.ROUTE_TRUCK_MAX_KPH) : SHARED_TRUCK_MAX_KPH;
 
 /** Car time → truck time: never faster than TRUCK_MAX_KPH over the distance. */
 export function truckSeconds(distanceMeters: number, carSeconds: number): number {

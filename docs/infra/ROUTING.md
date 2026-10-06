@@ -30,7 +30,38 @@ and arrival (`computedAt + durationSeconds`). `services/routing/routeAhead.ts`:
   at most once per 30 s per trip. One stray GPS fix keeps the old route.
 - Kept in the API's memory; screens asking together share one OSRM request.
 
+- The arrival shown is held steady: it only moves when it changes by 3 min
+  or more (`ETA_STEADY_MIN`), so screens don't tick ±1 min on every fix.
+
 Tests: `npm run test:routing` (`routeAhead.test.ts`).
+
+## One rule set: `@mercon/shared-types` fleetRules
+
+On trip / delayed / free, silent GPS, late, stopped long, the ETA (and its
+straight-line estimate when there's no road route), truck speed (80 km/h),
+what counts as late (5 min grace) and when to alert (15 min) are written once
+in `packages/shared-types/src/fleetRules.ts`. The web live map
+(`lib/fleetLive.ts`), the operator app (`features/fleet/fleetModel.ts`), the
+API's late alerts and the customer tracking page all use it. Change a rule
+there, not in an app. Tests: `npm run test:fleet-rules`.
+
+## ETA watcher, accuracy and "going to be late"
+
+`services/tracking/etaWatcher.ts`, every 5 min, for every running trip's truck:
+- records the ETA to the next stop (`EtaPrediction`, at most every 10 min per
+  stop, kept 120 days);
+- when the road ETA is 15 min+ past the stop's planned arrival and the trip
+  isn't already Delayed, sends every Admin and Operator a **"TRP-… is going to
+  be late"** notification (push too), once per stop; tapping it opens that stop.
+
+**System health → ETA accuracy** (`GET /settings/eta-accuracy`, Admin and
+Operator): for stops reached in the last 7/30/90 days, predicted vs actual
+arrival — typical miss, share within 15 min, 9-in-10 bound, and whether trucks
+come earlier or later than said — split by how far ahead it was predicted.
+Straight-line estimates are counted apart.
+
+The customer tracking page's ETA to the next stop is the same shared route, so
+customers see the operators' arrival time.
 
 ## How it runs
 

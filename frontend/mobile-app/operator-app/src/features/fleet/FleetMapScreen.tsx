@@ -80,7 +80,7 @@ import { niceName } from '../trips/create/components/ui';
 import type { QuickKind } from '../trips/details/tripDetailsModel';
 import { BulkStatusSheet, ShareKindSheet, TripShareFromMap } from './FleetShare';
 import {
-  agoText, computeEta, haversineKm, isDelayed, isFree, isSilent, located, matchesFilter, matchesQuery, nextStop, onTrip, placeFromQuery, unitPriority, type FleetFilter,
+  agoText, computeEta, haversineKm, isDelayed, isFree, isSilent, located, matchesFilter, matchesQuery, nextStop, onTrip, placeFromQuery, truckDriveSeconds, unitPriority, type FleetFilter,
 } from './fleetModel';
 
 const INK = '#3E3C3D';
@@ -454,7 +454,7 @@ export default function FleetMapScreen() {
   // Delivery time at the last stop: the next-stop ETA plus road time through the rest of the trip
   // (at truck speed — the router times a car, and a loaded truck averages at most ~80 km/h).
   const lastStop = unit?.trip?.stops[unit.trip.stops.length - 1] ?? null;
-  const restSec = restQ.data ? Math.max(restQ.data.durationSeconds, restQ.data.distanceMeters / (80 / 3.6)) : null;
+  const restSec = restQ.data ? truckDriveSeconds(restQ.data.distanceMeters, restQ.data.durationSeconds) : null;
   const eta = unit && onTrip(unit) && (routeQ.isFetched || !target) ? computeEta(unit, routeQ.data, routeQ.data ? Date.parse(routeQ.data.computedAt) : live.dataUpdatedAt || now) : null;
 
   const quietUnits = useMemo(() => shown.filter((u) => isSilent(u, now)), [shown, now]);

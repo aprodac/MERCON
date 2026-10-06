@@ -20,6 +20,7 @@
     "test:tracking": "node -r ts-node/register --test src/services/tracking/locationUpdate.test.ts",
     "test:inline-images": "node -r ts-node/register --test src/services/inlineImages.test.ts",
     "test:routing": "node -r ts-node/register --test src/services/routing/routeProvider.test.ts src/services/routing/routeAhead.test.ts",
+    "test:fleet-rules": "node -r ts-node/register --test src/tests/fleetRules.test.ts",
     "test:server-snapshot": "node -r ts-node/register --test src/services/hostinger/vpsSnapshot.test.ts",
     "test:trip-financials": "node -r ts-node/register --test src/services/tripFinancials.test.ts",
     "test:vehicle-pnl": "node -r ts-node/register --test src/services/vehicleFinancials/engine.test.ts",
