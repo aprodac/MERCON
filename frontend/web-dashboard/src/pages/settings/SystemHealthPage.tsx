@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { RefreshCw } from 'lucide-react';
+import { Camera, RefreshCw } from 'lucide-react';
 
 import { SettingsPage, SettingsRow, SettingsSection, StatStrip, StatusDot } from '@/components/settings/SettingsKit';
 import Btn from '@/components/ui/Btn';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import ConfirmModal from '@/components/ui/ConfirmModal';
 import { settingsService } from '@/services/settingsService';
 
 function formatUptime(seconds?: number) {
@@ -109,6 +110,8 @@ export default function SystemHealthPage() {
         </SettingsRow>
       </SettingsSection>
 
+      <ServerSnapshotSection />
+
       <SettingsSection
         title="Recent activity"
         flush
@@ -137,5 +140,95 @@ export default function SystemHealthPage() {
         )}
       </SettingsSection>
     </SettingsPage>
+  );
+}
+
+/**
+ * This server's Hostinger snapshot: when the current one was taken, and a
+ * button to replace it (Hostinger keeps one per server). Restoring stays in
+ * hPanel — rolling the whole server back is not a one-click job.
+ */
+function ServerSnapshotSection() {
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['server-snapshot'],
+    queryFn: settingsService.getServerSnapshot,
+    // While one is being taken, check every 20 s; otherwise once a minute is plenty.
+    refetchInterval: (q) => (q.state.data?.running && q.state.data.running.state !== 'failed' ? 20_000 : 60_000),
+    retry: false,
+  });
+  const take = useMutation({
+    mutationFn: settingsService.takeServerSnapshot,
+    onSuccess: () => {
+      setConfirming(false);
+      toast.success('Snapshot started. It takes a few minutes; the site stays up.');
+      queryClient.invalidateQueries({ queryKey: ['server-snapshot'] });
+      queryClient.invalidateQueries({ queryKey: ['system-audit-logs'] });
+    },
+    onError: (err: any) => {
+      setConfirming(false);
+      toast.error(err.response?.data?.error?.message || 'Couldn’t start the snapshot');
+    },
+  });
+
+  const when = (iso?: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
+  const running = data?.running && data.running.state !== 'failed';
+  const failed = data?.running?.state === 'failed';
+  const loadError = (error as any)?.response?.data?.error?.message;
+
+  return (
+    <SettingsSection
+      title="Server snapshot"
+      description="A copy of the whole server you can go back to — take one before a big release or a server upgrade. Hostinger keeps one per server, so a new snapshot replaces the last one. Restore it from hPanel (VPS → Snapshot & backups)."
+      action={
+        data?.configured ? (
+          <Btn
+            label={running ? 'Taking snapshot…' : 'Take snapshot now'}
+            size="sm"
+            icon={<Camera size={13} />}
+            disabled={running || take.isPending}
+            isLoading={take.isPending}
+            onClick={() => setConfirming(true)}
+          />
+        ) : undefined
+      }
+    >
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : isError ? (
+        <p className="text-sm text-red-600">{loadError || 'Couldn’t reach Hostinger.'}</p>
+      ) : !data?.configured ? (
+        <p className="text-sm text-muted-foreground">
+          Not set up on this server yet — needs {data?.missing.join(' and ')} (docs/infra/BACKUP_RESTORE.md).
+        </p>
+      ) : (
+        <>
+          <SettingsRow label="Current snapshot" description={data.hostname ?? undefined}>
+            <span className="text-sm font-semibold text-foreground">{data.snapshot ? `Taken ${when(data.snapshot.createdAt)}` : 'None yet'}</span>
+          </SettingsRow>
+          {data.snapshot?.expiresAt ? (
+            <SettingsRow label="Kept until" description="Hostinger deletes it after this.">
+              <span className="text-sm text-foreground">{when(data.snapshot.expiresAt)}</span>
+            </SettingsRow>
+          ) : null}
+          {running ? (
+            <p className="flex items-center gap-2 text-sm text-foreground"><StatusDot tone="amber" /> Taking a new snapshot (started {when(data.running!.startedAt)}). The site stays up meanwhile.</p>
+          ) : failed ? (
+            <p className="flex items-center gap-2 text-sm text-red-600"><StatusDot tone="red" /> The last snapshot didn’t finish. Try again, or check hPanel.</p>
+          ) : null}
+        </>
+      )}
+
+      <ConfirmModal
+        isOpen={confirming}
+        onClose={() => setConfirming(false)}
+        onConfirm={() => take.mutate()}
+        title="Take a new server snapshot?"
+        message={data?.snapshot ? `This replaces the current snapshot from ${when(data.snapshot.createdAt)}. The site stays up while it’s taken.` : 'The site stays up while it’s taken.'}
+        confirmLabel="Take snapshot"
+        isLoading={take.isPending}
+      />
+    </SettingsSection>
   );
 }

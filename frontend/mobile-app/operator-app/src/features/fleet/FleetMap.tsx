@@ -8,15 +8,20 @@
  *   quiet). A small dark badge says which GPS is live: truck, phone or both.
  *   Trucks close together on screen merge into a numbered group whose bar
  *   shows the mix (on trip · scheduled · free); delayed trucks and the picked
- *   one always stand alone. Tapping a group lists its trucks without moving
- *   the map (like the web); the list can zoom to them. Between refreshes a
+ *   one always stand alone. Tapping a group zooms in until it splits and
+ *   lists its trucks in the sheet. Between refreshes a
  *   moving truck glides to its new spot instead of jumping. The basemap uses
  *   the web's Apple Maps-style palette (mapStyle.ts).
  *   Pins are native Markers with their own onPress — a touchable inside a map
  *   annotation never gets the tap — and draw PNG icons, which annotations
- *   show reliably where SVG icons came out blank.
+ *   show reliably where SVG icons came out blank. On iOS a marker re-drawn
+ *   after a tap fires the map's own onPress at the same spot, which used to
+ *   undo the pick at once; so a map tap is hit-tested against the pins
+ *   (handleMapPress) and both paths go through one dedup'd pressTarget.
  *   Trucks carry their plate at every zoom — most urgent first, skipping any
- *   label that would overlap another. Picking a truck flies in to street level. The selected truck gets its road route
+ *   label that would overlap another. Picking a truck frames it with its next
+ *   stop, flat (street level only when 3D is on), and on the Fleet map page
+ *   (isolate) hides every other truck and group until it's closed. The selected truck gets its road route
  *   to the next stop (real roads when routing is up, dashed straight line
  *   otherwise), a faint line through the rest of the trip (only when it
  *   follows real roads), a grey breadcrumb trail of where it has driven on
@@ -124,6 +129,14 @@ const GROUP_MAX_ZOOM = 14;
 const PICK_ZOOM = 14;
 /** Picking a truck tilts the map this much (the web's 55°). */
 export const PICK_PITCH = 55;
+/** A map tap this close (screen px) to a pin or group counts as tapping it. */
+const HIT_PX = 30;
+/** The same pin pressed again this soon is the echo of one tap (marker + map both report it). */
+const ECHO_MS = 800;
+/** The time of a tap (read in press handlers, never while rendering). */
+const tapTime = () => Date.now();
+
+type Target = { kind: 'unit'; key: string } | { kind: 'group'; id: number; lng: number; lat: number };
 
 type GroupProps = { key: string } & Mix;
 
@@ -255,12 +268,14 @@ interface Props {
   initialCamera?: { center: LngLat; zoom: number } | null;
   /** A long press on the map — "trucks near here". */
   onLongPress?: (at: { lat: number; lng: number }) => void;
+  /** With a truck picked, draw only that truck (its trip and stops), not the rest of the fleet. */
+  isolate?: boolean;
 }
 
 export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   units, selected, onSelect, interactive = false, theme = 'light', tilted = false, focusMode = 'none',
   routeLine, focus, padding = { top: 40, bottom: 40 }, onViewChange, onGroupPress, restLine, trail, follow = true, onUserMove,
-  initialCamera, onLongPress, lane, ringed,
+  initialCamera, onLongPress, lane, ringed, isolate = false,
 }, ref) {
   const { height } = useWindowDimensions();
   const points = useMemo(() => units.filter(located), [units]);
@@ -279,7 +294,10 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   const [view, setView] = useState<MapView>({ zoom: 5, pitch: 0, bearing: 0 });
   // What's on screen when the camera settles — drives grouping.
   const [area, setArea] = useState<{ bbox: Bounds; zoom: number } | null>(null);
-  const pad = { top: padding.top, bottom: padding.bottom, left: 50, right: 50 };
+  // The right side keeps clear of the page's control column.
+  const pad = { top: padding.top, bottom: padding.bottom, left: 40, right: interactive ? 76 : 50 };
+  // The camera as last reported — a tilted map has to be laid flat before a fit (fitFlat).
+  const tiltRef = useRef({ pitch: 0, bearing: 0 });
   // The clock for "no GPS for 30 min" and the age tags; ticks so they don't go stale on an open map.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -333,7 +351,7 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
 
   const { groups, singles } = useMemo(() => {
     const out = { groups: [] as { id: number; lng: number; lat: number; count: number; mix: Mix }[], singles: [] as LiveUnit[] };
-    if (focusMode !== 'none' && sel) { out.singles = [sel]; return out; }
+    if ((focusMode !== 'none' || isolate) && sel) { out.singles = [sel]; return out; }
     const byKey = new globalThis.Map(points.map((u) => [u.key, u]));
     const bbox = area?.bbox ?? bounds;
     if (!bbox) return out;
@@ -350,7 +368,7 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
     for (const u of points) if (isDelayed(u) && u.key !== selected) out.singles.push(u);
     if (sel) out.singles.push(sel);
     return out;
-  }, [groupIndex, points, area, bounds, focusMode, sel, selected, view.zoom]);
+  }, [groupIndex, points, area, bounds, focusMode, isolate, sel, selected, view.zoom]);
 
   // Plates on the trucks standing alone, once zoomed in far enough to read them.
   const labelled = useMemo(() => {
@@ -368,11 +386,69 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   }, [singles, groups, area, view.bearing, selected, now]);
 
   const pressGroup = (g: { id: number; lng: number; lat: number }) => {
-    const keys = groupIndex.getLeaves(g.id, Infinity).map((f) => (f.properties as GroupProps).key);
-    const zoom = groupIndex.getClusterExpansionZoom(g.id);
-    // Like the web: list the group's trucks and leave the map where it is.
-    if (onGroupPress) { onGroupPress(keys); return; }
-    camera.current?.easeTo?.({ center: [g.lng, g.lat], zoom: Math.min(zoom + 0.5, 16), padding: pad, duration: 600 });
+    let keys: string[] = [];
+    let zoom = GROUP_MAX_ZOOM;
+    try {
+      keys = groupIndex.getLeaves(g.id, Infinity).map((f) => (f.properties as GroupProps).key);
+      zoom = groupIndex.getClusterExpansionZoom(g.id);
+    } catch {
+      return; // the group was regrouped since it was drawn
+    }
+    // Zoom in until the group splits (trucks on one spot: as far as the street), and list them.
+    const set = new Set(keys);
+    const b = boundsOf(points.filter((u) => set.has(u.key)).map((u) => u.position!), 0.002, 0.004);
+    const target = Math.min(Math.max(zoom + 0.5, zoomRef.current + 1), 16);
+    if (b && zoom > GROUP_MAX_ZOOM) fitFlat(b, 700);
+    else camera.current?.easeTo?.({ center: [g.lng, g.lat], zoom: target, padding: pad, duration: 700 });
+    onGroupPress?.(keys);
+  };
+
+  // One tap can arrive twice (the marker's onPress and the map's); act on it once.
+  const lastPress = useRef<{ id: string; at: number }>({ id: '', at: 0 });
+  const pressTarget = (t: Target) => {
+    const id = t.kind === 'unit' ? `u:${t.key}` : `g:${t.id}`;
+    const at = tapTime();
+    if (lastPress.current.id === id && at - lastPress.current.at < ECHO_MS) return;
+    lastPress.current = { id, at };
+    if (t.kind === 'unit') onSelect?.(t.key);
+    else pressGroup(t);
+  };
+
+  // A tap on the map: the pin or group under the finger if there is one, else clear the pick.
+  const handleMapPress = async (point: [number, number]) => {
+    const cands: { t: Target; lng: number; lat: number }[] = [
+      ...groups.map((g) => ({ t: { kind: 'group' as const, id: g.id, lng: g.lng, lat: g.lat }, lng: g.lng, lat: g.lat })),
+      ...singles.map((u) => ({ t: { kind: 'unit' as const, key: u.key }, lng: u.position!.lng, lat: u.position!.lat })),
+    ];
+    let best: { t: Target; d: number } | null = null;
+    try {
+      const pts: [number, number][] = await Promise.all(cands.map((c) => mapRef.current.project([c.lng, c.lat])));
+      pts.forEach((p, i) => {
+        const d = Math.hypot(p[0] - point[0], p[1] - point[1]);
+        if (d <= HIT_PX && (!best || d < best.d)) best = { t: cands[i].t, d };
+      });
+    } catch {
+      // projection unavailable — treat as an empty-map tap
+    }
+    if (best) { pressTarget((best as { t: Target }).t); return; }
+    // The echo of a pin tap that missed (the camera already moved off it) must not undo the pick.
+    if (tapTime() - lastPress.current.at < ECHO_MS) return;
+    onSelect?.(null);
+  };
+
+  /**
+   * Frame these bounds flat and north-up. On iOS a fit is worked out for the
+   * camera's current tilt and only then flattened, so from driver view (70°)
+   * or 3D it landed zoomed into the wrong street; lay the map flat first.
+   */
+  const fitFlat = (b: Bounds, duration: number) => {
+    const cam = camera.current;
+    if (!cam) return;
+    if (tiltRef.current.pitch > 1 || Math.abs(tiltRef.current.bearing) > 1) {
+      try { cam.setStop?.({ pitch: 0, bearing: 0, padding: pad, duration: 0 })?.catch?.(() => {}); } catch { /* map not ready */ }
+      tiltRef.current = { pitch: 0, bearing: 0 };
+    }
+    cam.fitBounds(b, { padding: pad, pitch: 0, bearing: 0, duration, easing: 'ease' });
   };
 
   const headingOf = (u: LiveUnit): number => {
@@ -393,6 +469,23 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
     });
   };
 
+  /**
+   * A picked truck: flat, framing it and its next stop so it's plain where it's
+   * heading. 3D on → close up and tilted as before. No usable next stop → the
+   * truck at town level.
+   */
+  const frameSelected = (u: LiveUnit, tilt: boolean) => {
+    if (tilt) { flyToSelected(u, PICK_PITCH); return; }
+    const nx = u.trip && u.trip.next_stop_index != null ? u.trip.stops[u.trip.next_stop_index] : null;
+    const to = nx && nx.lat != null && nx.lng != null && !(nx.lat === 0 && nx.lng === 0) ? { lat: nx.lat, lng: nx.lng } : null;
+    // A stop thousands of km away is a wrong pin (the card says so) — don't fly the map there.
+    if (to && Math.abs(to.lat - u.position!.lat) + Math.abs(to.lng - u.position!.lng) < 20) {
+      const b = boundsOf([u.position!, to], 0.05, 0.05);
+      if (b) { fitFlat(b, 1000); return; }
+    }
+    camera.current?.easeTo?.({ center: [u.position!.lng, u.position!.lat], zoom: Math.max(Math.min(zoomRef.current, 13), 11), pitch: 0, bearing: 0, padding: pad, duration: 1000 });
+  };
+
   const driverView = () => {
     if (!sel?.position) return;
     camera.current?.easeTo?.({
@@ -409,17 +502,17 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   const tripOverview = () => {
     if (!sel?.position) return;
     const b = boundsOf([sel.position, ...stops.map((s) => ({ lat: s.lat!, lng: s.lng! }))], 0.02, 0.05);
-    if (b) camera.current?.fitBounds(b, { padding: pad, pitch: 0, bearing: 0, duration: 1000 });
+    if (b) fitFlat(b, 1000);
   };
 
   useImperativeHandle(ref, () => ({
     fitAll() {
-      if (bounds) camera.current?.fitBounds(bounds, { padding: pad, pitch: 0, bearing: 0, duration: 800 });
+      if (bounds) fitFlat(bounds, 800);
     },
     fitKeys(keys: string[]) {
       const set = new Set(keys);
       const b = boundsOf(points.filter((u) => set.has(u.key)).map((u) => u.position!), 0.005, 0.01);
-      if (b) camera.current?.fitBounds(b, { padding: pad, pitch: 0, bearing: 0, duration: 900 });
+      if (b) fitFlat(b, 900);
     },
     zoomBy(delta: number) {
       camera.current?.zoomTo(Math.max(3, Math.min(19, zoomRef.current + delta)), { duration: 250 });
@@ -428,7 +521,7 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
       mapRef.current?.getCenter().then((center: LngLat) => camera.current?.easeTo({ center, bearing: 0, pitch: 0, duration: 600 })).catch(() => {});
     },
     set3D(on: boolean) {
-      if (sel?.position) { flyToSelected(sel, on ? 55 : 0); return; }
+      if (sel?.position) { frameSelected(sel, on); return; }
       mapRef.current?.getCenter()
         .then((center: LngLat) => camera.current?.easeTo({ center, pitch: on ? 55 : 0, zoom: on ? Math.max(zoomRef.current, 6) : zoomRef.current, duration: 700 }))
         .catch(() => {});
@@ -438,7 +531,7 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
       if (!sel?.position) return;
       if (focusMode === 'driver') driverView();
       else if (focusMode === 'overview') tripOverview();
-      else flyToSelected(sel, tilted ? 55 : 0);
+      else frameSelected(sel, tilted);
     },
     tripOverview,
   }));
@@ -446,13 +539,13 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   // Picking a truck flies to it (tilted when 3D is on); a lane frames both ends and its trucks; a city search frames the city.
   useEffect(() => {
     if (!interactive || !camera.current) return;
-    if (sel?.position) flyToSelected(sel, tilted ? 55 : 0);
+    if (sel?.position) frameSelected(sel, tilted);
     else if (lane) {
       const b = boundsOf([lane.from, lane.to, ...points.map((u) => u.position!)], 0.2, 0.3);
-      if (b) camera.current.fitBounds(b, { padding: pad, pitch: 0, bearing: 0, duration: 800 });
+      if (b) fitFlat(b, 800);
     } else if (focus) {
       const d = focus.km / 111;
-      camera.current.fitBounds([focus.lng - d, focus.lat - d, focus.lng + d, focus.lat + d], { padding: pad, pitch: 0, bearing: 0, duration: 700 });
+      fitFlat([focus.lng - d, focus.lat - d, focus.lng + d, focus.lat + d], 700);
     }
     // Only a new selection or search moves the camera, not padding/tilt changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -502,11 +595,12 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
       doubleTapZoom={interactive}
       touchRotate={interactive}
       touchPitch={interactive}
-      onPress={interactive && onSelect ? () => onSelect(null) : undefined}
+      onPress={interactive && onSelect ? (e) => { handleMapPress(e.nativeEvent.point).catch(() => {}); } : undefined}
       onLongPress={interactive && onLongPress ? (e) => onLongPress({ lng: e.nativeEvent.lngLat[0], lat: e.nativeEvent.lngLat[1] }) : undefined}
       onRegionDidChange={(e) => {
         const v = { zoom: e.nativeEvent.zoom, pitch: e.nativeEvent.pitch, bearing: e.nativeEvent.bearing, center: e.nativeEvent.center };
         zoomRef.current = v.zoom;
+        tiltRef.current = { pitch: v.pitch, bearing: v.bearing };
         setView(v);
         setArea({ bbox: e.nativeEvent.bounds, zoom: v.zoom });
         onViewChange?.(v);
@@ -612,7 +706,7 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
       })}
 
       {groups.map((g) => (
-        <Marker key={`group-${g.id}`} id={`group-${g.id}`} lngLat={[g.lng, g.lat]} anchor="center" onPress={interactive ? () => pressGroup(g) : undefined}>
+        <Marker key={`group-${g.id}`} id={`group-${g.id}`} lngLat={[g.lng, g.lat]} anchor="center" onPress={interactive ? () => pressTarget({ kind: 'group', id: g.id, lng: g.lng, lat: g.lat }) : undefined}>
           <View style={[st.group, g.count >= 10 && st.groupBig]}>
             <Text style={st.groupText}>{g.count}</Text>
             {/* How the group splits — the web's coloured ring, as a bar */}
@@ -636,7 +730,7 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
           plate={labelled.has(u.key) ? u.vehicle?.plate_number ?? null : null}
           now={now}
           mapBearing={mapBearing}
-          onPress={interactive && onSelect ? () => onSelect(u.key) : undefined}
+          onPress={interactive && onSelect ? () => pressTarget({ kind: 'unit', key: u.key }) : undefined}
         />
       ))}
     </Map>

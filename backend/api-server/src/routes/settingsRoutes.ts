@@ -6,6 +6,7 @@ import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles, requireSuperAdmin } from '../middlewares/rbac';
 import { updateDriverAppMinVersion } from '../controllers/driverPhoneController';
 import { getDataCleanupPreview, runDataCleanup } from '../controllers/dataCleanupController';
+import { getServerSnapshot, createServerSnapshot } from '../controllers/serverSnapshotController';
 
 const router = Router();
 
@@ -21,6 +22,9 @@ router.get('/audit-logs', requireSuperAdmin, getAuditLogs);
 // Clear test / demo data from a dev deployment (refused on non-dev databases)
 router.get('/data-cleanup', requireSuperAdmin, getDataCleanupPreview);
 router.post('/data-cleanup', requireSuperAdmin, runDataCleanup);
+// This server's Hostinger snapshot (one per VPS; a new one replaces it). Restore stays in hPanel.
+router.get('/server-snapshot', requireSuperAdmin, getServerSnapshot);
+router.post('/server-snapshot', requireSuperAdmin, createServerSnapshot);
 
 // Timezone is operational config the client's own Admin owns
 router.put('/timezone', authorizeRoles('Admin'), updateTimezone);
