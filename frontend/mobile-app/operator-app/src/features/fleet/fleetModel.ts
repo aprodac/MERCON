@@ -82,6 +82,15 @@ export function agoText(iso: string | null | undefined, now = Date.now()): strin
   return h < 48 ? `${h} h ago` : `${Math.floor(h / 24)} days ago`;
 }
 
+/** "12m" / "3h" / "2d" — the age tag under a truck that isn't live (web `shortAgo`). */
+export function shortAgo(iso: string | null | undefined, now = Date.now()): string {
+  if (!iso) return '';
+  const min = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 60000));
+  if (min < 60) return `${min}m`;
+  const h = Math.floor(min / 60);
+  return h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`;
+}
+
 // ── ETA ─────────────────────────────────────────────────────────────────────
 
 export interface EtaInfo {

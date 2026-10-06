@@ -6,7 +6,7 @@ import { ExpiryProgressBar } from './ExpiryProgressBar';
 import type { DocumentExpiryEntry } from '../types';
 
 function formatExpiryDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(iso).toLocaleDateString('en-GB', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function daysRemainingLabel(daysLeft: number): string {

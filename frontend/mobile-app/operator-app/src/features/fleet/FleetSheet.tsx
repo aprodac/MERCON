@@ -20,13 +20,13 @@ import {
   ActivityIndicator, Animated, Image, LayoutAnimation, Linking, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions,
 } from 'react-native';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
-import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, MessageCircle, Phone, Play, Smartphone, Truck, X } from 'lucide-react-native';
+import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, MessageCircle, Phone, Play, Smartphone, Truck, X, ZoomIn } from 'lucide-react-native';
 import type { LiveTripMedia, LiveUnit, TripMediaItem } from '../../lib/operator';
 import type { ViewerItem } from '../trips/details/components/MediaViewer';
 import { niceName } from '../trips/create/components/ui';
 import type { makeTime } from '../trips/list/tripListModel';
-import { STATE_STYLE, unitState } from './FleetMap';
-import { agoText, formatDuration, formatKm, isFree, nextStop, punctuality, type EtaInfo } from './fleetModel';
+import { SILENT_COLOR, STATE_STYLE, TONE, unitState, unitTone, type UnitTone } from './FleetMap';
+import { agoText, formatDuration, formatKm, isFree, isSilent, located, nextStop, punctuality, type EtaInfo } from './fleetModel';
 
 const INK = '#3E3C3D';
 const MUTED = '#6B6B76';
@@ -61,11 +61,11 @@ const humanize = (v: string) => v.replace(/[_-]+/g, ' ').replace(/([a-z])([A-Z])
 
 export function StateChip({ unit, now }: { unit: LiveUnit; now: number }) {
   const st = unitState(unit, now);
-  const bg = st === 'delayed' ? BRAND_LIGHT : '#F1F1F3';
-  const fg = st === 'delayed' ? BRAND : INK;
+  const bg = st === 'delayed' ? '#FFE4E8' : '#F1F1F3';
+  const fg = st === 'delayed' ? STATE_STYLE.delayed.color : INK;
   return (
     <View style={[s.state, { backgroundColor: bg }]}>
-      <View style={[s.dot, { backgroundColor: STATE_STYLE[st].color }, st === 'free' && { borderWidth: 1.5, borderColor: INK }]} />
+      <View style={[s.dot, { backgroundColor: STATE_STYLE[st].color }]} />
       <Text style={[s.stateText, { color: fg }]}>{STATE_STYLE[st].label}</Text>
     </View>
   );
@@ -465,13 +465,43 @@ function Thumbs({ items, title, f, onOpenMedia }: { items: TripMediaItem[]; titl
   );
 }
 
-export function GroupSheet({ units, now, onPick, onClose, onHeight }: {
-  units: LiveUnit[]; now: number; onPick: (key: string) => void; onClose: () => void; onHeight: (h: number) => void;
+const MIX_TONES: UnitTone[] = ['delayed', 'active', 'upcoming', 'free'];
+
+/**
+ * The trucks of a tapped map group, most urgent first (the web's cluster list):
+ * how they split by status, "Zoom to these", and a row per truck to pick it.
+ */
+export function GroupSheet({ units, now, onPick, onZoom, onClose, onHeight }: {
+  units: LiveUnit[]; now: number; onPick: (key: string) => void; onZoom?: () => void; onClose: () => void; onHeight: (h: number) => void;
 }) {
+  const mix = MIX_TONES.map((t) => ({ t, n: units.filter((u) => unitTone(u) === t).length })).filter((m) => m.n > 0);
+  const quiet = units.filter((u) => isSilent(u, now)).length;
   return (
     <SheetFrame onHeight={onHeight}>
       <View style={s.cardTop}>
-        <Text style={[s.plate, { flex: 1, fontSize: 17 }]}>{units.length} trucks here</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={[s.plate, { fontSize: 17 }]}>{units.length} trucks here</Text>
+          <View style={s.mixRow}>
+            {mix.map(({ t, n }) => (
+              <View key={t} style={s.mixItem}>
+                <View style={[s.dot, { backgroundColor: TONE[t].color }]} />
+                <Text style={s.mixText}>{n} {TONE[t].label.toLowerCase()}</Text>
+              </View>
+            ))}
+            {quiet ? (
+              <View style={s.mixItem}>
+                <View style={[s.dot, { backgroundColor: SILENT_COLOR }]} />
+                <Text style={s.mixText}>{quiet} not live</Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+        {onZoom ? (
+          <TouchableOpacity onPress={onZoom} hitSlop={6} style={s.zoomBtn} accessibilityLabel="Zoom to these trucks">
+            <ZoomIn size={14} color={INK} />
+            <Text style={s.zoomText}>Zoom</Text>
+          </TouchableOpacity>
+        ) : null}
         <TouchableOpacity onPress={onClose} hitSlop={8} style={s.close} accessibilityLabel="Close"><X size={16} color={MUTED} /></TouchableOpacity>
       </View>
       <ScrollView style={{ maxHeight: 320 }}>
@@ -479,6 +509,43 @@ export function GroupSheet({ units, now, onPick, onClose, onHeight }: {
           <View key={u.key}>
             {i > 0 ? <View style={{ height: 1, backgroundColor: '#F1F1F3' }} /> : null}
             <UnitRow unit={u} now={now} km={null} onPress={() => onPick(u.key)} />
+          </View>
+        ))}
+      </ScrollView>
+    </SheetFrame>
+  );
+}
+
+/**
+ * Trucks that aren't live (the web's "N not live" list): those with only an
+ * old position — tap to see it on the map — and those that never reported.
+ */
+export function NotLiveSheet({ units, now, onPick, onClose, onHeight }: {
+  units: LiveUnit[]; now: number; onPick: (key: string) => void; onClose: () => void; onHeight: (h: number) => void;
+}) {
+  const stale = units.filter(located).sort((a, b) => (b.position?.recorded_at ?? '').localeCompare(a.position?.recorded_at ?? ''));
+  const never = units.filter((u) => !located(u));
+  return (
+    <SheetFrame onHeight={onHeight}>
+      <View style={s.cardTop}>
+        <Text style={[s.plate, { flex: 1, fontSize: 17 }]}>{units.length} not live</Text>
+        <TouchableOpacity onPress={onClose} hitSlop={8} style={s.close} accessibilityLabel="Close"><X size={16} color={MUTED} /></TouchableOpacity>
+      </View>
+      <ScrollView style={{ maxHeight: 340 }}>
+        {stale.length ? <Text style={s.listHead}>Last known position</Text> : null}
+        {stale.map((u) => (
+          <TouchableOpacity key={u.key} style={s.quietRow} onPress={() => onPick(u.key)} activeOpacity={0.7}>
+            <View style={[s.dot, { backgroundColor: '#F59E0B' }]} />
+            <Text style={s.quietPlate} numberOfLines={1}>{u.vehicle?.plate_number ?? u.driver?.name ?? 'Unknown'}</Text>
+            <Text style={s.quietMeta}>{agoText(u.position?.recorded_at, now)}</Text>
+          </TouchableOpacity>
+        ))}
+        {never.length ? <Text style={s.listHead}>Never reported</Text> : null}
+        {never.map((u) => (
+          <View key={u.key} style={s.quietRow}>
+            <View style={[s.dot, { backgroundColor: '#D4D4D8' }]} />
+            <Text style={s.quietPlate} numberOfLines={1}>{u.vehicle?.plate_number ?? u.driver?.name ?? 'Unknown'}</Text>
+            <Text style={s.quietMeta}>{u.vehicle && !u.vehicle.has_tracker ? 'No tracker' : 'No fix'}</Text>
           </View>
         ))}
       </ScrollView>
@@ -517,6 +584,15 @@ const s = StyleSheet.create({
   sheet: { position: 'absolute', left: 12, right: 12, bottom: 20, backgroundColor: '#FFFFFF', borderRadius: 20, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12, gap: 10, ...shadow },
   handle: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: '#DCDCE0' },
   cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  mixRow: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 10, rowGap: 2, marginTop: 4 },
+  mixItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  mixText: { fontSize: 12, color: MUTED },
+  zoomBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 28, paddingHorizontal: 10, borderRadius: 14, backgroundColor: '#F1F1F3' },
+  zoomText: { fontSize: 12, fontWeight: '600', color: INK },
+  listHead: { fontSize: 11, fontWeight: '700', color: MUTED, textTransform: 'uppercase', letterSpacing: 0.5, paddingTop: 10, paddingBottom: 4 },
+  quietRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
+  quietPlate: { flex: 1, fontSize: 14, fontWeight: '600', color: INK, fontFamily: 'monospace' },
+  quietMeta: { fontSize: 12, color: MUTED },
   plate: { fontSize: 19, fontWeight: '800', color: INK, letterSpacing: 0.3 },
   driver: { fontSize: 14, fontWeight: '500', color: '#3F3F46' },
   motion: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 1 },
