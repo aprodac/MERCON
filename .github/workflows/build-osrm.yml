@@ -106,6 +106,8 @@ jobs:
         working-directory: /mnt/osrm
         run: |
           set -euo pipefail
+          # OSRM ran as root in Docker and wrote some files root-only (map.osrm.fileIndex).
+          sudo chown -R "$(id -u):$(id -g)" .
           # gzip, not zstd: the VPS is sure to have gzip.
           tar -I pigz -cf /mnt/osrm/osrm-data.tar.gz map.osrm*
           ls -lh /mnt/osrm/osrm-data.tar.gz
