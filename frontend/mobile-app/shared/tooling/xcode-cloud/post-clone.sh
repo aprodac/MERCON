@@ -10,6 +10,10 @@
 #   4. regenerates ios/ with `expo prebuild --clean` + `pod install` — the
 #      committed ios/ only exists so Xcode Cloud can find the project; a stale
 #      one ships a build that crashes on launch (driver build 101)
+#   5. regenerates the workspace's Package.resolved when the project uses Swift
+#      packages (operator app: MapLibre). Xcode Cloud builds with automatic
+#      package resolution off, so without that file the build fails at
+#      "Resolve Package Graph"
 #
 # Usage: post-clone.sh <app folder name>   e.g. post-clone.sh driver-app
 set -euo pipefail
@@ -64,15 +68,32 @@ cd "$APP_DIR"
 KEEP="$(mktemp -d)"
 cp -R ios/ci_scripts "$KEEP/"
 [[ -d ios/TestFlight ]] && cp -R ios/TestFlight "$KEEP/"
+RESOLVED=(ios/*.xcworkspace/xcshareddata/swiftpm/Package.resolved(N))
+(( ${#RESOLVED} )) && cp "${RESOLVED[1]}" "$KEEP/Package.resolved"
 npx expo prebuild --platform ios --clean --no-install
 cp -R "$KEEP/ci_scripts" ios/
 [[ -d "$KEEP/TestFlight" ]] && cp -R "$KEEP/TestFlight" ios/
-rm -rf "$KEEP"
 
 echo "== pod install"
 cd ios
 # The "Bundle React Native code" build phase finds Node through this file.
 echo "export NODE_BINARY=$(command -v node)" > .xcode.env.local
 LANG=en_US.UTF-8 pod install
+
+# Swift packages (added to the project by prebuild, e.g. MapLibre) need
+# Package.resolved next to the workspace — Xcode Cloud won't resolve without it.
+# Start from the committed pins, then let Xcode update them to match the
+# freshly generated project (a package version bump in npm changes them).
+WORKSPACE=(*.xcworkspace(N))
+if grep -q XCRemoteSwiftPackageReference ./*.xcodeproj/project.pbxproj; then
+  echo "== Swift packages: resolve"
+  SWIFTPM_DIR="${WORKSPACE[1]}/xcshareddata/swiftpm"
+  mkdir -p "$SWIFTPM_DIR"
+  [[ -f "$KEEP/Package.resolved" ]] && cp "$KEEP/Package.resolved" "$SWIFTPM_DIR/"
+  xcodebuild -resolvePackageDependencies -workspace "${WORKSPACE[1]}" -scheme "${WORKSPACE[1]:r}"
+  [[ -f "$SWIFTPM_DIR/Package.resolved" ]] || { echo "Package.resolved was not created"; exit 1; }
+  cat "$SWIFTPM_DIR/Package.resolved"
+fi
+rm -rf "$KEEP"
 
 echo "== Ready: $(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' ./*/Info.plist) ($(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' ./*/Info.plist))"
