@@ -6,13 +6,18 @@
  * every company. Tap a company for its quotations: as a list grouped by
  * starting city, or "By route" — one card per route with a price per truck
  * size. Status pills, a Filters sheet (operation, line type, truck, rate
- * basis, sort) and removable filter chips work on both levels. + adds one.
+ * basis, needs attention, created by, sort) and removable filter chips work
+ * on both levels. A "Needs attention" strip on the companies page jumps to
+ * expiring, unpriced-driver and unused rates. Pinned and recently opened
+ * companies come first (long-press a company, or the pin in its header).
+ * A company's shown rates go out as a PDF rate sheet. + adds one; the scale
+ * icon opens the rate finder.
  */
 import React, { useMemo, useState } from 'react';
-import { FlatList, RefreshControl, SectionList, Text, TouchableOpacity, View, StyleSheet } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, RefreshControl, SectionList, Text, TouchableOpacity, View, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, ChevronRight, CircleAlert, Clock, LayoutList, Rows3, SlidersHorizontal, Tag, X } from 'lucide-react-native';
+import { ArrowLeft, ChevronRight, CircleAlert, Clock, FileText, LayoutList, Moon, Pin, Rows3, SlidersHorizontal, Tag, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { formatQuotationRef, lineTypeLabel } from '@mercon/shared-types';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
@@ -24,8 +29,9 @@ import {
   CompanyLogo, OPERATION_TONE, QuotationFilterSheet, QuotationRow, QuotationsHeader, RoutePriceCard, SORT_OPTIONS,
   groupByRoute, lineTypeIcon, truckOrder, type FilterOption,
 } from '../components';
-import { useQuotations } from '../hooks';
-import { filterCount, matchesFilters, matchesStatus, routeText, sortQuotations } from '../services/quotationsService';
+import { useCompanyShortcuts, useQuotations } from '../hooks';
+import { ATTENTION_LABEL, filterCount, matchesFilters, matchesStatus, needsAttention, routeText, sortQuotations } from '../services/quotationsService';
+import { shareQuotationPdf } from '../services/quotationPdf';
 import { EMPTY_QUOTATION_FILTERS, type QuotationFilters, type QuotationListItem, type QuotationSortOption, type QuotationStatusFilter } from '../types';
 
 const INK = '#3E3C3D';
@@ -92,7 +98,27 @@ export default function QuotationsScreen() {
   const needle = query.trim().toLowerCase();
   const first = loading && quotations.length === 0;
   const open = (id: string) => router.push({ pathname: '/quotation-details', params: { id } });
-  const pick = (id: string | null) => { Haptics.selectionAsync().catch(() => {}); setCustomerId(id); setQuery(''); };
+  const { pinned, recent, togglePin, markOpened } = useCompanyShortcuts();
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const pick = (id: string | null) => {
+    Haptics.selectionAsync().catch(() => {});
+    if (id) markOpened(id);
+    setCustomerId(id);
+    setQuery('');
+  };
+  const pinToggle = (id: string) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {}); togglePin(id); };
+  /** A PDF rate sheet of exactly the rates on screen (search, pills and filters applied). */
+  const sendPdf = async (cid: string, name: string, ids: string[]) => {
+    if (pdfBusy || ids.length === 0) return;
+    setPdfBusy(true);
+    try {
+      await shareQuotationPdf({ customerId: cid, ids }, `rates-${name}`);
+    } catch (e) {
+      Alert.alert('Could not send the PDF', e instanceof Error ? e.message : 'Try again.');
+    } finally {
+      setPdfBusy(false);
+    }
+  };
 
   /** The open company's quotations, or every one. */
   const scope = useMemo(() => (customerId ? quotations.filter((q) => q.customerId === customerId) : quotations), [quotations, customerId]);
@@ -129,21 +155,43 @@ export default function QuotationsScreen() {
     const lt = tally((q) => q.lineTypeKey);
     const tr = tally((q) => q.vehicleClass);
     const ba = tally((q) => (q.isMonthly ? 'PER_MONTH' : 'PER_TRIP'));
+    const cr = tally((q) => q.createdByName ?? '');
+    const at = new Map(['expiring', 'nopay', 'unused'].map((a) => [a, base.filter((q) => needsAttention(q, a)).length]));
     const keep = (picked: string[], m: Map<string, number>) => [...new Set([...m.keys(), ...picked])];
     return {
       operation: keep(filters.operation, op).sort().reverse().map((v) => ({ value: v, label: v, count: op.get(v) ?? 0 })),
       lineType: keep(filters.lineType, lt).sort().map((v) => ({ value: v, label: lineTypeLabel(v) || v, count: lt.get(v) ?? 0, Icon: lineTypeIcon(v) })),
       truck: keep(filters.truck, tr).sort((a, b) => truckOrder(a) - truckOrder(b) || a.localeCompare(b)).map((v) => ({ value: v, label: v, count: tr.get(v) ?? 0 })),
       basis: keep(filters.basis, ba).sort().reverse().map((v) => ({ value: v, label: v === 'PER_MONTH' ? 'Per month' : 'Per trip', count: ba.get(v) ?? 0 })),
+      creator: keep(filters.creator, cr).sort((a, b) => (cr.get(b) ?? 0) - (cr.get(a) ?? 0)).map((v) => ({ value: v, label: v ? niceName(v) : 'Not recorded', count: cr.get(v) ?? 0 })),
+      attention: [...at.entries()].filter(([a, n]) => n > 0 || filters.attention.includes(a)).map(([a, n]) => ({ value: a, label: ATTENTION_LABEL[a], count: n })),
     } satisfies Record<keyof QuotationFilters, FilterOption[]>;
   }, [searched, status, filters]);
+
+  /** "Needs attention" counts over every quotation (pills and filters ignored). */
+  const attention = useMemo(
+    () => (['expiring', 'nopay', 'unused'] as const).map((a) => [a, quotations.filter((q) => needsAttention(q, a)).length] as const),
+    [quotations],
+  );
 
   /* ── Companies page ── */
   const companies = useMemo(() => summarise(filtered), [filtered]);
   const companyItems = useMemo<CompanyListItem[]>(() => {
     if (customerId) return [];
     const byName = companies.filter((c) => !needle || c.name.toLowerCase().includes(needle));
-    const items: CompanyListItem[] = byName.map((c) => ({ kind: 'company', company: c }));
+    const items: CompanyListItem[] = [];
+    // Pinned first, then the last few opened, then everyone else (most quotations first).
+    const pinnedCos = pinned.map((id) => byName.find((c) => c.id === id)).filter((c): c is CompanySummary => !!c);
+    const recentCos = needle ? [] : recent.filter((id) => !pinned.includes(id)).map((id) => byName.find((c) => c.id === id)).filter((c): c is CompanySummary => !!c);
+    const rest = byName.filter((c) => !pinnedCos.includes(c) && !recentCos.includes(c));
+    const section = (title: string, list: CompanySummary[]) => {
+      if (!list.length) return;
+      if (pinnedCos.length + recentCos.length > 0 && !needle) items.push({ kind: 'heading', title });
+      list.forEach((c) => items.push({ kind: 'company', company: c }));
+    };
+    section('Pinned', pinnedCos);
+    section('Recently opened', recentCos);
+    section('All companies', rest);
     if (needle) {
       // A route search: every company's quotations that go through the place typed.
       const routes = sortQuotations(filtered.filter((q) => routeText(q).includes(needle)), sort);
@@ -153,7 +201,7 @@ export default function QuotationsScreen() {
       }
     }
     return items;
-  }, [customerId, companies, filtered, needle, query, sort]);
+  }, [customerId, companies, filtered, needle, query, sort, pinned, recent]);
 
   /* ── One company's page ── */
   const sections = useMemo(() => {
@@ -232,7 +280,7 @@ export default function QuotationsScreen() {
   if (error && quotations.length === 0) {
     return (
       <SafeAreaView style={listPage.page} edges={['top']}>
-        <QuotationsHeader onAddPress={() => router.push('/quotation-edit')} />
+        <QuotationsHeader onAddPress={() => router.push('/quotation-edit')} onFinderPress={() => router.push('/rate-finder')} />
         <ErrorState message={error} onRetry={() => refresh()} className="flex-1" />
       </SafeAreaView>
     );
@@ -253,12 +301,21 @@ export default function QuotationsScreen() {
             <Text style={s.name} numberOfLines={1}>{niceName(c?.name ?? '')}</Text>
             <Text style={s.sub} numberOfLines={1}>{c ? `${c.total} ${c.total === 1 ? 'quotation' : 'quotations'}  ·  ${c.active} active` : ''}</Text>
           </View>
+          <TouchableOpacity style={[s.backBtn, pinned.includes(customerId) && s.pinOn]} onPress={() => pinToggle(customerId)} accessibilityLabel={pinned.includes(customerId) ? 'Unpin company' : 'Pin company'} accessibilityState={{ selected: pinned.includes(customerId) }} hitSlop={6}>
+            <Pin size={16} color={pinned.includes(customerId) ? Colors.white : INK} strokeWidth={2.4} />
+          </TouchableOpacity>
           <TouchableOpacity style={s.backBtn} onPress={() => router.push({ pathname: '/customer-details', params: { id: customerId } })} accessibilityLabel="Open customer" hitSlop={8}>
             <ChevronRight size={18} color={INK} strokeWidth={2.4} />
           </TouchableOpacity>
         </View>
         {searchRow}
         {activeChips}
+        {sorted.length > 0 ? (
+          <TouchableOpacity style={s.pdfBtn} activeOpacity={0.8} disabled={pdfBusy} onPress={() => sendPdf(customerId, c?.name ?? 'customer', sorted.map((q) => q.id))} accessibilityRole="button">
+            {pdfBusy ? <ActivityIndicator size="small" color={INK} /> : <FileText size={16} color={INK} strokeWidth={2.3} />}
+            <Text style={s.pdfText}>Send {sorted.length === scope.length ? 'all' : 'these'} {sorted.length} {sorted.length === 1 ? 'rate' : 'rates'} as PDF</Text>
+          </TouchableOpacity>
+        ) : null}
         <View style={s.countRow}>
           <Text style={listPage.count}>
             {view === 'route' ? `${routeGroups.length} ${routeGroups.length === 1 ? 'route' : 'routes'}  ·  ` : ''}{sorted.length} {sorted.length === 1 ? 'quotation' : 'quotations'}
@@ -278,7 +335,7 @@ export default function QuotationsScreen() {
 
     return (
       <SafeAreaView style={listPage.page} edges={['top']}>
-        <QuotationsHeader onAddPress={() => router.push('/quotation-edit')} />
+        <QuotationsHeader onAddPress={() => router.push('/quotation-edit')} onFinderPress={() => router.push('/rate-finder')} />
         {view === 'route' ? (
           <FlatList
             key="routes"
@@ -324,7 +381,7 @@ export default function QuotationsScreen() {
   const nCompanies = companyItems.filter((i) => i.kind === 'company').length;
   return (
     <SafeAreaView style={listPage.page} edges={['top']}>
-      <QuotationsHeader onAddPress={() => router.push('/quotation-edit')} />
+      <QuotationsHeader onAddPress={() => router.push('/quotation-edit')} onFinderPress={() => router.push('/rate-finder')} />
       <FlatList
         key="companies"
         data={first ? [] : companyItems}
@@ -339,13 +396,33 @@ export default function QuotationsScreen() {
             {chips}
             {searchRow}
             {activeChips}
+            {!first && filters.attention.length === 0 && attention.some(([, n]) => n > 0) ? (
+              <View style={s.attention}>
+                <Text style={s.attentionTitle}>Needs attention</Text>
+                <View style={s.attentionRow}>
+                  {attention.filter(([, n]) => n > 0).map(([a, n]) => {
+                    const Icon = a === 'expiring' ? Clock : a === 'nopay' ? CircleAlert : Moon;
+                    const color = a === 'nopay' ? '#B42318' : a === 'expiring' ? '#B54708' : '#52525B';
+                    return (
+                      <TouchableOpacity key={a} style={s.attentionItem} activeOpacity={0.8} onPress={() => { Haptics.selectionAsync().catch(() => {}); setStatus('all'); setFilters((f) => ({ ...f, attention: [a] })); }} accessibilityRole="button" accessibilityLabel={`Show ${n} ${ATTENTION_LABEL[a]}`}>
+                        <View style={s.attentionHead}>
+                          <Icon size={14} color={color} strokeWidth={2.4} />
+                          <Text style={[s.attentionNum, { color }]}>{n}</Text>
+                        </View>
+                        <Text style={s.attentionText} numberOfLines={1}>{ATTENTION_LABEL[a]}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            ) : null}
             {!first ? <Text style={listPage.count}>{nCompanies} {nCompanies === 1 ? 'company' : 'companies'}  ·  {filtered.length} quotations</Text> : null}
           </View>
         }
         renderItem={({ item }) => {
           if (item.kind === 'heading') return <Text style={s.heading}>{item.title}</Text>;
           if (item.kind === 'quote') return <QuotationRow quotation={item.q} onPress={() => open(item.q.id)} />;
-          return <CompanyCard c={item.company} onPress={() => pick(item.company.id)} />;
+          return <CompanyCard c={item.company} pinned={pinned.includes(item.company.id)} onPress={() => pick(item.company.id)} onLongPress={() => pinToggle(item.company.id)} />;
         }}
         ListEmptyComponent={
           first ? (
@@ -364,15 +441,18 @@ export default function QuotationsScreen() {
   );
 }
 
-function CompanyCard({ c, onPress }: { c: CompanySummary; onPress: () => void }) {
+function CompanyCard({ c, pinned, onPress, onLongPress }: { c: CompanySummary; pinned: boolean; onPress: () => void; onLongPress: () => void }) {
   const trucks = c.trucks.slice(0, 4);
   const range = c.min === c.max ? `SAR ${money(c.min)}` : `SAR ${money(c.min)} – ${money(c.max)}`;
   return (
-    <TouchableOpacity style={s.company} activeOpacity={0.8} onPress={onPress} accessibilityRole="button" accessibilityLabel={`Open quotations for ${c.name}`}>
+    <TouchableOpacity style={s.company} activeOpacity={0.8} onPress={onPress} onLongPress={onLongPress} delayLongPress={350} accessibilityRole="button" accessibilityLabel={`Open quotations for ${c.name}`} accessibilityHint={pinned ? 'Long-press to unpin' : 'Long-press to pin to the top'}>
       <View style={s.companyTop}>
         <CompanyLogo name={c.name} uri={c.logo} />
         <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-          <Text style={s.name} numberOfLines={1}>{niceName(c.name)}</Text>
+          <View style={s.nameRow}>
+            {pinned ? <Pin size={13} color={Colors.primary} strokeWidth={2.6} /> : null}
+            <Text style={[s.name, { flexShrink: 1 }]} numberOfLines={1}>{niceName(c.name)}</Text>
+          </View>
           <Text style={s.sub} numberOfLines={1}>
             {range} <Text style={{ color: '#9898A4' }}>{c.perMonth ? '/ month' : '/ trip'}</Text>
           </Text>
@@ -442,5 +522,16 @@ const s = StyleSheet.create({
   section: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F6F6F7', paddingTop: 10, paddingBottom: 8 },
   sectionTitle: { fontSize: 13, fontWeight: '800', color: INK, letterSpacing: 0.2 },
   sectionCount: { fontSize: 12, fontWeight: '700', color: MUTED, backgroundColor: '#ECECEF', borderRadius: 999, paddingHorizontal: 7, paddingVertical: 1, overflow: 'hidden' },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  pinOn: { backgroundColor: Colors.primary },
+  pdfBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E9E9EC' },
+  pdfText: { fontSize: 14, fontWeight: '700', color: INK },
+  attention: { gap: 8, backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E9E9EC', padding: 12 },
+  attentionTitle: { fontSize: 12, fontWeight: '700', color: MUTED, letterSpacing: 0.6, textTransform: 'uppercase' },
+  attentionRow: { flexDirection: 'row', gap: 8 },
+  attentionItem: { flex: 1, minWidth: 0, gap: 2, borderRadius: 12, backgroundColor: '#F6F6F7', paddingHorizontal: 10, paddingVertical: 8 },
+  attentionHead: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  attentionNum: { fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  attentionText: { fontSize: 11, fontWeight: '600', color: MUTED },
   heading: { fontSize: 13, fontWeight: '800', color: MUTED, letterSpacing: 0.2, marginTop: 8 },
 });

@@ -56,8 +56,15 @@ export interface QuotationListItem {
   /** Trips booked on this rate, and the date of the latest one. */
   tripCount: number;
   lastTripAt: string | null;
+  /** Active, but no trip on it for UNUSED_DAYS (or never, and older than that). */
+  unused: boolean;
+  /** Who added it; null for imported / older rows. */
+  createdByName: string | null;
   createdAt: string;
 }
+
+/** Problems worth fixing, offered as one-tap filters. */
+export type QuotationAttention = 'expiring' | 'nopay' | 'unused';
 
 /** The status pills above the list. */
 export type QuotationStatusFilter = 'all' | 'active' | 'expiring' | 'inactive';
@@ -68,9 +75,13 @@ export interface QuotationFilters {
   lineType: string[];
   truck: string[];
   basis: string[];
+  /** User names; '' = not recorded. */
+  creator: string[];
+  /** QuotationAttention values. */
+  attention: string[];
 }
 
-export const EMPTY_QUOTATION_FILTERS: QuotationFilters = { operation: [], lineType: [], truck: [], basis: [] };
+export const EMPTY_QUOTATION_FILTERS: QuotationFilters = { operation: [], lineType: [], truck: [], basis: [], creator: [], attention: [] };
 
 export type QuotationFilterStatus = 'all' | 'Active' | 'Inactive' | 'Expired';
 

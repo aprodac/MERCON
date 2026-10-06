@@ -4,14 +4,14 @@
  * the customer's extra charges, and the trips billed on this rate.
  *
  * A ticket (company logo, status, from → to, price), the actions (Create trip
- * on this rate · Duplicate · Share), the same route in other truck sizes, the
+ * on this rate · Duplicate · Share as PDF or text), the same route in other truck sizes, the
  * terms (with margin % and usage), the route drawn from its pins plus every
  * stop, the price history, extra charges and trips. Edit sits top-right.
  * The quotation itself comes from the same cached list as the quotations page.
  */
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { formatQuotationRef } from '@mercon/shared-types';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, Share } from 'react-native';
+import { ActivityIndicator, Alert, View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, Share } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -26,6 +26,7 @@ import { operatorService } from '@/lib/operator';
 import { quotationsApi } from '../api/quotationsApi';
 import { CompanyLogo, QuotationBadges, RouteSketch, expiryText, pinnedStops, truckOrder } from '../components';
 import { useQuotations } from '../hooks';
+import { shareQuotationPdf } from '../services/quotationPdf';
 import { agoText, formatCurrency, formatValidityRange, marginOf, outboundStops } from '../services/quotationsService';
 import type { QuotationListItem, QuotationValidityStatus } from '../types';
 
@@ -77,6 +78,27 @@ export default function QuotationDetailsScreen() {
 
   const back = () => (router.canGoBack() ? router.back() : router.replace('/quotations'));
   const reload = () => { refresh(); chargesQ.refetch(); tripsQ.refetch(); historyQ.refetch(); };
+
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const sendPdf = async (x: QuotationListItem) => {
+    if (pdfBusy) return;
+    setPdfBusy(true);
+    try {
+      await shareQuotationPdf({ id: x.id }, `quotation-${formatQuotationRef(x.quotationNumber) ?? x.customerName}`);
+    } catch (e) {
+      Alert.alert('Could not send the PDF', e instanceof Error ? e.message : 'Try again.');
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+  /** Share → the customer-facing PDF, or the same as a short text message. */
+  const askShare = (x: QuotationListItem) => {
+    Alert.alert('Send quotation', 'Rates and validity only — driver pay is never included.', [
+      { text: 'PDF', onPress: () => { sendPdf(x); } },
+      { text: 'Text message', onPress: () => share(x) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
 
   const share = (x: QuotationListItem) => {
     const cur = x.currency || 'SAR';
@@ -188,8 +210,8 @@ export default function QuotationDetailsScreen() {
             <Copy size={16} color={INK} strokeWidth={2.3} />
             <Text style={s.actionText}>Duplicate</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.action} activeOpacity={0.8} onPress={() => share(q)} accessibilityRole="button">
-            <Share2 size={16} color={INK} strokeWidth={2.3} />
+          <TouchableOpacity style={s.action} activeOpacity={0.8} disabled={pdfBusy} onPress={() => askShare(q)} accessibilityRole="button">
+            {pdfBusy ? <ActivityIndicator size="small" color={INK} /> : <Share2 size={16} color={INK} strokeWidth={2.3} />}
             <Text style={s.actionText}>Share</Text>
           </TouchableOpacity>
         </View>

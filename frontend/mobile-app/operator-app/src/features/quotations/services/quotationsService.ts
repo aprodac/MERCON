@@ -8,6 +8,8 @@ import type { QuotationFilters, QuotationListItem, QuotationSortOption, Quotatio
 
 /** An active quotation ending within this many days is flagged "Expires in N days". */
 export const EXPIRING_SOON_DAYS = 30;
+/** An active quotation with no trip for this many days is flagged "Unused". */
+export const UNUSED_DAYS = 90;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export function toQuotationListItem(raw: RawQuotation): QuotationListItem {
@@ -117,6 +119,9 @@ export function toQuotationListItem(raw: RawQuotation): QuotationListItem {
     expiringSoon: validityStatus === 'Active' && daysLeft !== null && daysLeft <= EXPIRING_SOON_DAYS,
     tripCount: raw.trip_count ?? 0,
     lastTripAt: raw.last_trip_at ?? null,
+    unused: validityStatus === 'Active'
+      && now.getTime() - new Date(raw.last_trip_at ?? raw.createdAt).getTime() > UNUSED_DAYS * DAY_MS,
+    createdByName: raw.created_by_name ?? null,
     createdAt: raw.createdAt,
   };
 }
@@ -142,10 +147,23 @@ export function matchesFilters(q: QuotationListItem, f: QuotationFilters): boole
   if (f.lineType.length && !f.lineType.includes(q.lineTypeKey)) return false;
   if (f.truck.length && !f.truck.includes(q.vehicleClass)) return false;
   if (f.basis.length && !f.basis.includes(q.isMonthly ? 'PER_MONTH' : 'PER_TRIP')) return false;
+  if (f.creator.length && !f.creator.includes(q.createdByName ?? '')) return false;
+  if (f.attention.length && !f.attention.some((a) => needsAttention(q, a))) return false;
   return true;
 }
 
-export const filterCount = (f: QuotationFilters) => f.operation.length + f.lineType.length + f.truck.length + f.basis.length;
+/** Does the quotation have this problem? */
+export function needsAttention(q: QuotationListItem, a: string): boolean {
+  if (a === 'expiring') return q.expiringSoon;
+  if (a === 'nopay') return q.validityStatus === 'Active' && q.driverPayout === null;
+  if (a === 'unused') return q.unused;
+  return false;
+}
+
+export const ATTENTION_LABEL: Record<string, string> = { expiring: 'Expiring soon', nopay: 'No driver pay', unused: `Unused ${UNUSED_DAYS}+ days` };
+
+export const filterCount = (f: QuotationFilters) =>
+  f.operation.length + f.lineType.length + f.truck.length + f.basis.length + f.creator.length + f.attention.length;
 
 /** Text a route search matches: every stop, the truck and trip type, the reference. */
 export function routeText(q: QuotationListItem): string {

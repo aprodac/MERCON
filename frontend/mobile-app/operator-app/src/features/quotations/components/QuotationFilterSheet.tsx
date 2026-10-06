@@ -1,6 +1,7 @@
 /**
- * The Filters sheet on the quotations page: sort order, then billing
- * (Monthly / Extra), line type, truck type and rate basis. Several values can
+ * The Filters sheet on the quotations page: sort order, then needs attention
+ * (expiring, no driver pay, unused), billing (Monthly / Extra), line type,
+ * truck type, rate basis and who created it. Several values can
  * be picked per field; nothing picked = no filter on it. Choices are made on a
  * draft and applied with "Show N quotations", which counts live as you pick.
  */
@@ -38,7 +39,7 @@ interface Props {
   filters: QuotationFilters;
   sort: QuotationSortOption;
   onApply: (filters: QuotationFilters, sort: QuotationSortOption) => void;
-  options: { operation: FilterOption[]; lineType: FilterOption[]; truck: FilterOption[]; basis: FilterOption[] };
+  options: Record<keyof QuotationFilters, FilterOption[]>;
   /** How many quotations a set of filters would show. */
   countFor: (filters: QuotationFilters) => number;
 }
@@ -60,7 +61,7 @@ export function QuotationFilterSheet({ visible, onClose, filters, sort, onApply,
   };
   const count = countFor(draft);
 
-  const group = (title: string, field: keyof QuotationFilters, list: FilterOption[]) => (list.length > 1 || draft[field].length > 0 ? (
+  const group = (title: string, field: keyof QuotationFilters, list: FilterOption[]) => (list.length > (field === 'attention' ? 0 : 1) || draft[field].length > 0 ? (
     <View style={s.group}>
       <Text style={s.groupTitle}>{title}</Text>
       <View style={s.wrap}>
@@ -104,10 +105,12 @@ export function QuotationFilterSheet({ visible, onClose, filters, sort, onApply,
               })}
             </View>
           </View>
+          {group('Needs attention', 'attention', options.attention)}
           {group('Operation', 'operation', options.operation)}
           {group('Line type', 'lineType', options.lineType)}
           {group('Truck type', 'truck', options.truck)}
           {group('Rate basis', 'basis', options.basis)}
+          {group('Created by', 'creator', options.creator)}
         </ScrollView>
         <View style={s.actions}>
           <TouchableOpacity style={s.reset} onPress={() => { setDraft(EMPTY_QUOTATION_FILTERS); setDraftSort('route'); }} accessibilityRole="button">

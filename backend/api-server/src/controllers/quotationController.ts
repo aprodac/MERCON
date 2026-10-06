@@ -7,6 +7,7 @@ import { findQuotationForLane, quotationInclude } from '../services/rateLookup';
 import { billingTypeVariants, lineTypeVariants } from '@mercon/shared-types';
 import { getValidUuid } from '../utils/uuid';
 import { logger } from '../utils/logger';
+import { renderQuotationPdf } from '../services/quotationPdf';
 import { vehicleTypeField, rateCategoryField, billingTypeField } from '../schemas';
 
 /**
@@ -275,6 +276,12 @@ export const getQuotations = async (req: Request, res: Response) => {
         })
       : [];
     const usageById = new Map(usage.map((u) => [u.quotationId, u]));
+    // Who added each rate (created_by is a bare user id), for the app's "Created by" filter.
+    const creatorIds = [...new Set(quotations.map((q) => q.created_by).filter((v): v is string => !!v))];
+    const creators = creatorIds.length
+      ? await prisma.user.findMany({ where: { id: { in: creatorIds } }, select: { id: true, name: true, username: true } })
+      : [];
+    const creatorName = new Map(creators.map((u) => [u.id, u.name || u.username]));
 
     res.json({
       success: true,
@@ -282,6 +289,7 @@ export const getQuotations = async (req: Request, res: Response) => {
         const u = usageById.get(q.id);
         return {
           ...q,
+          created_by_name: q.created_by ? creatorName.get(q.created_by) ?? null : null,
           trip_count: u?._count._all ?? 0,
           last_trip_at: u ? (u._max.planned_start ?? u._max.createdAt) : null,
         };
@@ -959,6 +967,65 @@ export const getLanePriceHistory = async (req: Request, res: Response) => {
       success: false,
       error: { code: 'SERVER_ERROR', message: 'Failed to fetch lane price history' },
     });
+  }
+};
+
+/**
+ * GET /quotations/pdf?customerId=&ids=a,b — a customer's rate sheet as a PDF
+ * (active quotations, or just `ids`); GET /quotations/:id/pdf — one quotation.
+ * Customer-facing: rates and validity only, never driver pay.
+ */
+export const getQuotationsPdf = async (req: Request, res: Response) => {
+  try {
+    const single = req.params.id ? String(req.params.id) : null;
+    const customerId = single ? null : String(req.query.customerId || req.query.customer_id || '');
+    const ids = typeof req.query.ids === 'string' && req.query.ids ? req.query.ids.split(',').map((x) => x.trim()).filter(Boolean) : null;
+    if (!single && !customerId) {
+      return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'customerId or a quotation id is required' } });
+    }
+
+    const where: any = { deletedAt: null };
+    if (single) where.id = single;
+    else {
+      where.customerId = customerId;
+      if (ids) where.id = { in: ids };
+      else where.is_active = true;
+    }
+    const quotations = await prisma.quotation.findMany({
+      where,
+      include: { customer: { select: { name: true, logo_url: true } }, stops: { include: { location: { select: { name: true } } }, orderBy: { sequence: 'asc' } } },
+      orderBy: [{ name: 'asc' }, { rate: 'asc' }],
+    });
+    if (quotations.length === 0) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'No quotations to print' } });
+    }
+    const settings = await prisma.settings.findFirst();
+    const customer = quotations[0].customer;
+    const safe = customer.name.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'customer';
+    const file = single ? `quotation-${quotations[0].quotation_number ?? safe}.pdf` : `rates-${safe}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${file}"`);
+    res.setHeader('Cache-Control', 'no-store');
+    renderQuotationPdf(
+      {
+        title: single ? 'Quotation' : 'Rate sheet',
+        settings: {
+          companyLegalName: settings?.companyLegalName ?? 'MERCON',
+          vatNumber: settings?.vatNumber ?? null,
+          crNumber: settings?.crNumber ?? null,
+          logoUrl: settings?.logoUrl ?? null,
+        },
+        customer,
+        quotations: quotations.map((q) => ({ ...q, currency: q.currency || settings?.baseCurrency || 'SAR' })),
+        timezone: settings?.timezone || 'Asia/Riyadh',
+      },
+      res,
+    );
+  } catch (error: any) {
+    logger.error({ err: error }, 'Failed to build quotation PDF');
+    if (!res.headersSent) res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to build the PDF' } });
+    else res.end();
   }
 };
 
