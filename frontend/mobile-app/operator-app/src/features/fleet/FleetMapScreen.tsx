@@ -44,7 +44,7 @@ import { Toast } from '@mercon/mobile-shared/components/Toast';
 import { operatorService, type LiveUnit } from '../../lib/operator';
 import { AppTopBar } from '@/components/AppTopBar';
 import { makeTime } from '../trips/list/tripListModel';
-import { FleetMap, type FleetMapHandle, type FocusMode, type MapTheme, type MapView } from './FleetMap';
+import { FleetMap, SILENT_COLOR, TONE, type FleetMapHandle, type FocusMode, type MapTheme, type MapView } from './FleetMap';
 import { GroupSheet, UnitRow, UnitSheet } from './FleetSheet';
 import { FleetLegend } from './FleetLegend';
 import { FindTruckSheet, useTripActions } from './FleetActions';
@@ -66,10 +66,10 @@ const BRAND = '#FA634E';
 
 const FILTERS: { id: FleetFilter; label: string; dot?: string }[] = [
   { id: 'all', label: 'All' },
-  { id: 'on_trip', label: 'On trip', dot: INK },
-  { id: 'delayed', label: 'Delayed', dot: BRAND },
-  { id: 'free', label: 'Free', dot: '#FFFFFF' },
-  { id: 'silent', label: 'No GPS', dot: '#9898A4' },
+  { id: 'on_trip', label: 'On trip', dot: TONE.active.color },
+  { id: 'delayed', label: 'Delayed', dot: TONE.delayed.color },
+  { id: 'free', label: 'Free', dot: TONE.free.color },
+  { id: 'silent', label: 'No GPS', dot: SILENT_COLOR },
 ];
 
 export default function FleetMapScreen() {
@@ -116,10 +116,13 @@ export default function FleetMapScreen() {
   // Driver view / trip overview, and whether the camera follows the picked truck (until the map is dragged by hand).
   const [focusMode, setFocusMode] = useState<FocusMode>('none');
   const [following, setFollowing] = useState(true);
+  // The 2D / 3D toggle; picking a truck switches it to 3D.
+  const [is3D, setIs3D] = useState(false);
   const pick = (key: string | null) => {
     if (key && key !== selected) Haptics.selectionAsync().catch(() => {});
     setSelected(key); setFocusMode('none'); setGroup(null); setFollowing(true);
-    if (key) setView('map'); else setExpanded(false);
+    // Like the web map: a picked truck is seen close up and tilted (2D stays one tap away).
+    if (key) { setView('map'); setIs3D(true); } else setExpanded(false);
   };
   const openGroup = (keys: string[]) => {
     Haptics.selectionAsync().catch(() => {});
@@ -197,7 +200,6 @@ export default function FleetMapScreen() {
   // Map view state (the web map's controls): theme, 2D/3D, driver view / trip overview.
   const mapRef = useRef<FleetMapHandle>(null);
   const [theme, setTheme] = useState<MapTheme>('light');
-  const [is3D, setIs3D] = useState(false);
   const [camera, setCamera] = useState<MapView>({ zoom: 5, pitch: 0, bearing: 0 });
   const [legend, setLegend] = useState(false);
   const enterView = (mode: FocusMode) => {
@@ -294,7 +296,7 @@ export default function FleetMapScreen() {
             const on = filter === p.id;
             return (
               <TouchableOpacity key={p.id} style={[s.pill, on && s.pillOn]} onPress={() => { setFilter(p.id); pick(null); }} activeOpacity={0.8}>
-                {p.dot ? <View style={[s.dot, { backgroundColor: p.dot }, p.id === 'free' && { borderWidth: 1.5, borderColor: on ? '#FFFFFF' : INK }]} /> : null}
+                {p.dot ? <View style={[s.dot, { backgroundColor: p.dot }]} /> : null}
                 <Text style={[s.pillText, on && { color: '#FFFFFF' }]}>{p.label}</Text>
                 <Text style={[s.pillCount, on && { color: 'rgba(255,255,255,0.7)' }]}>{counts[p.id]}</Text>
               </TouchableOpacity>

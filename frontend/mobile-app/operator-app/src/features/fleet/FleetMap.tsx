@@ -1,17 +1,19 @@
 /**
  * Trucks on one MapLibre map — the phone version of the web's FleetCommandMap.
  *
- *   Marker colour: delayed trip → red · on a trip → ink · free → white.
+ *   Markers match the web live map: a white disc with a glyph coloured by the
+ *   trip — on trip blue · delayed red · scheduled violet · free green. The
+ *   glyph's shape is the movement: an arrow turned to the heading (moving), a
+ *   rounded square (stopped), a hollow grey ring with its age (GPS gone
+ *   quiet). A small dark badge says which GPS is live: truck, phone or both.
  *   Trucks close together on screen merge into a numbered group (red badge =
  *   how many in it are delayed). Tapping a group zooms in until they part;
  *   trucks parked in the same yard never part, so their list opens instead.
  *   Pins are native Markers with their own onPress — a touchable inside a map
  *   annotation never gets the tap — and draw PNG icons, which annotations
  *   show reliably where SVG icons came out blank.
- *   A truck whose GPS has gone quiet is drawn faded, whatever its colour
- *   (independent of delay, same as Home). A moving truck shows its heading.
- *   Zoomed in, trucks carry their plate — most urgent first, skipping any
- *   label that would overlap another. The selected truck gets its road route
+ *   Trucks carry their plate at every zoom — most urgent first, skipping any
+ *   label that would overlap another. Picking a truck flies in to street level. The selected truck gets its road route
  *   to the next stop (real roads when routing is up, dashed straight line
  *   otherwise), a faint line through the rest of the trip (only when it
  *   follows real roads), a grey breadcrumb trail of where it has driven on
@@ -32,7 +34,7 @@ import { View, Text, Image, StyleSheet, TurboModuleRegistry, useWindowDimensions
 import { MapPin } from 'lucide-react-native';
 import Supercluster from 'supercluster';
 import type { LiveUnit } from '../../lib/operator';
-import { isDelayed, isFree, isSilent, located, unitPriority } from './fleetModel';
+import { isDelayed, isFree, isSilent, located, shortAgo, unitPriority } from './fleetModel';
 import { quietOfflineTileErrors } from '../../lib/mapLogs';
 
 const hasNativeMap = (() => {
@@ -53,34 +55,58 @@ export const MAP_STYLES = {
 } as const;
 export type MapTheme = keyof typeof MAP_STYLES;
 
-export type UnitState = 'delayed' | 'silent' | 'moving' | 'free';
+/** What a marker's colour means — the trip, not the GPS (web `liveMapStyle.ts` TONE). */
+export type UnitTone = 'active' | 'delayed' | 'upcoming' | 'free';
 
-export const STATE_STYLE: Record<UnitState, { color: string; label: string }> = {
-  delayed: { color: '#FA634E', label: 'Delayed' },
-  silent: { color: '#9898A4', label: 'No GPS' },
-  moving: { color: '#3E3C3D', label: 'On a trip' },
-  free: { color: '#FFFFFF', label: 'Free' },
+export const TONE: Record<UnitTone, { color: string; label: string }> = {
+  active: { color: '#2563EB', label: 'On trip' },
+  delayed: { color: '#E11D48', label: 'Delayed' },
+  upcoming: { color: '#7C3AED', label: 'Scheduled' },
+  free: { color: '#059669', label: 'Free' },
 };
 
-/** One label for a card: delayed wins, then silent, then trip / free. */
-export function unitState(u: LiveUnit, now = Date.now()): UnitState {
-  return isDelayed(u) ? 'delayed' : isSilent(u, now) ? 'silent' : isFree(u) ? 'free' : 'moving';
+export function unitTone(u: LiveUnit): UnitTone {
+  if (!u.trip) return 'free';
+  return u.trip.phase === 'delayed' ? 'delayed' : u.trip.phase === 'upcoming' ? 'upcoming' : 'active';
 }
 
-const ICONS = {
-  truckInk: require('./icons/truck-ink.png'),
-  truckWhite: require('./icons/truck-white.png'),
-  // Drawn pointing north, so the heading is the rotation.
-  navInk: require('./icons/nav-ink.png'),
-  navWhite: require('./icons/nav-white.png'),
+/** Grey of a truck whose GPS has gone quiet (its ring, the No GPS chip). */
+export const SILENT_COLOR = '#94A3B8';
+
+export type UnitState = 'delayed' | 'silent' | 'moving' | 'upcoming' | 'free';
+
+export const STATE_STYLE: Record<UnitState, { color: string; label: string }> = {
+  delayed: TONE.delayed,
+  silent: { color: SILENT_COLOR, label: 'No GPS' },
+  moving: TONE.active,
+  upcoming: TONE.upcoming,
+  free: TONE.free,
+};
+
+/** One label for a card: delayed wins, then silent, then trip / scheduled / free. */
+export function unitState(u: LiveUnit, now = Date.now()): UnitState {
+  if (isDelayed(u)) return 'delayed';
+  if (isSilent(u, now)) return 'silent';
+  if (u.trip?.phase === 'upcoming') return 'upcoming';
+  return isFree(u) ? 'free' : 'moving';
+}
+
+export const ICONS = {
+  // Drawn pointing north, so the heading is the rotation; tinted to the trip's colour.
+  nav: require('./icons/nav-white.png'),
+  // The live-GPS badge: truck tracker, driver's phone.
+  truck: require('./icons/truck-white.png'),
+  person: require('./icons/person-white.png'),
 };
 
 /** Trucks closer than this many screen pixels merge into a group. */
 const GROUP_RADIUS_PX = 50;
 /** From this zoom up every truck is drawn on its own. */
 const GROUP_MAX_ZOOM = 14;
-/** From this zoom up trucks carry their plate. */
-const LABEL_MIN_ZOOM = 8;
+/** Picking a truck zooms in at least this far — street level, like the web map. */
+const PICK_ZOOM = 14;
+/** Picking a truck tilts the map this much (the web's 55°). */
+export const PICK_PITCH = 55;
 
 type GroupProps = { key: string; delayed: number };
 
@@ -132,6 +158,12 @@ function pickLabels(
     out.add(i.key);
   }
   return out;
+}
+
+/** A truck's label: its plate, plus how long ago it was seen when its GPS has gone quiet. */
+function labelText(u: LiveUnit, now: number): string {
+  const age = isSilent(u, now) ? shortAgo(u.position?.recorded_at, now) : '';
+  return age ? `${u.vehicle!.plate_number} · ${age}` : u.vehicle!.plate_number;
 }
 
 /** Compass bearing from a to b, degrees clockwise from north. */
@@ -249,18 +281,19 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
 
   // Plates on the trucks standing alone, once zoomed in far enough to read them.
   const labelled = useMemo(() => {
-    const zoom = area?.zoom ?? 0;
-    if (zoom < LABEL_MIN_ZOOM) return new Set(selected ? [selected] : []);
+    if (!area) return new Set(selected ? [selected] : []);
+    const { zoom } = area;
+    const now = Date.now();
     const items = singles.filter((u) => u.vehicle?.plate_number).map((u) => {
       const [x, y] = toScreen(u.position!, zoom, view.bearing);
-      return { key: u.key, x, y, text: u.vehicle!.plate_number, priority: unitPriority(u) + (u.key === selected ? 100 : 0) };
+      return { key: u.key, x, y, text: labelText(u, now), priority: unitPriority(u) + (u.key === selected ? 100 : 0) };
     });
     const others = groups.map((g) => {
       const [x, y] = toScreen(g, zoom, view.bearing);
       return { x, y };
     });
     return pickLabels(items, others);
-  }, [singles, groups, area?.zoom, view.bearing, selected]);
+  }, [singles, groups, area, view.bearing, selected]);
 
   const pressGroup = (g: { id: number; lng: number; lat: number }) => {
     const keys = groupIndex.getLeaves(g.id, Infinity).map((f) => (f.properties as GroupProps).key);
@@ -280,11 +313,11 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   const flyToSelected = (u: LiveUnit, pitch: number) => {
     camera.current?.easeTo?.({
       center: [u.position!.lng, u.position!.lat],
-      zoom: Math.max(zoomRef.current, 12.5),
+      zoom: Math.max(zoomRef.current, PICK_ZOOM),
       pitch,
       bearing: pitch > 0 && u.motion === 'moving' && u.position?.heading_deg != null ? u.position.heading_deg : 0,
       padding: pad,
-      duration: 900,
+      duration: 1400,
     });
   };
 
@@ -457,14 +490,14 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
       ))}
 
       {singles.map((u) => {
-        const free = isFree(u);
-        const color = isDelayed(u) ? STATE_STYLE.delayed.color : free ? '#FFFFFF' : STATE_STYLE.moving.color;
+        const tone = TONE[unitTone(u)];
         const on = selected === u.key;
         const silent = isSilent(u, now);
         const heading = u.position?.heading_deg;
         const moving = u.motion === 'moving' && heading != null && !silent;
-        const size = on ? 18 : 15;
-        const icon = moving ? (free ? ICONS.navInk : ICONS.navWhite) : free ? ICONS.truckInk : ICONS.truckWhite;
+        const feed = silent ? 'none' : u.feed ?? 'none';
+        const plate = labelled.has(u.key) ? u.vehicle?.plate_number : null;
+        const age = silent ? shortAgo(u.position?.recorded_at, now) : '';
         return (
           <Marker
             key={u.key}
@@ -472,21 +505,38 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
             lngLat={[u.position!.lng, u.position!.lat]}
             // Pinned by the pin's centre, so a plate label below doesn't shift it.
             anchor="top"
-            offset={[0, -(on ? 21 : 16)]}
+            offset={[0, -(on ? 19 : 16)]}
             onPress={interactive && onSelect ? () => onSelect(u.key) : undefined}
           >
             <View style={{ alignItems: 'center' }}>
-              <View style={[st.pin, { backgroundColor: color }, free && st.pinFree, on && st.pinOn]}>
-                <Image
-                  source={icon}
-                  style={{ width: size, height: size, transform: moving ? [{ rotate: `${heading! - mapBearing}deg` }] : [] }}
-                  fadeDuration={0}
-                />
-                {/* No signal: a small grey badge, so the pin itself stays readable */}
-                {silent ? <View style={st.silent} /> : null}
+              <View style={[st.pin, silent && st.pinSilent, on && st.pinOn, on && { borderColor: tone.color }]}>
+                {moving ? (
+                  <Image
+                    source={ICONS.nav}
+                    style={{ width: 18, height: 18, tintColor: tone.color, transform: [{ rotate: `${heading! - mapBearing}deg` }] }}
+                    fadeDuration={0}
+                  />
+                ) : silent ? (
+                  <View style={st.ring} />
+                ) : (
+                  <View style={[st.square, { backgroundColor: tone.color }]} />
+                )}
+                {feed !== 'none' ? (
+                  <View style={st.feed}>
+                    {feed === 'vehicle' || feed === 'both' ? <Image source={ICONS.truck} style={st.feedIcon} fadeDuration={0} /> : null}
+                    {feed === 'driver' || feed === 'both' ? <Image source={ICONS.person} style={st.feedIcon} fadeDuration={0} /> : null}
+                  </View>
+                ) : null}
               </View>
-              {labelled.has(u.key) && u.vehicle?.plate_number ? (
-                <View style={[st.label, !on && st.labelQuiet]}><Text style={[st.labelText, !on && st.labelTextQuiet]}>{u.vehicle.plate_number}</Text></View>
+              {plate ? (
+                <View style={[st.label, !on && st.labelQuiet]}>
+                  <Text style={[st.labelText, !on && st.labelTextQuiet]}>
+                    {plate}
+                    {age ? <Text style={st.labelAge}>{` · ${age}`}</Text> : null}
+                  </Text>
+                </View>
+              ) : age ? (
+                <Text style={st.age}>{age}</Text>
               ) : null}
             </View>
           </Marker>
@@ -499,17 +549,27 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
 const st = StyleSheet.create({
   fallback: { backgroundColor: '#EFEFF1', alignItems: 'center', justifyContent: 'center', gap: 8 },
   fallbackText: { fontSize: 13, fontWeight: '600', color: '#52525B' },
+  // White disc; the glyph inside carries the colour (web LiveUnitMarker).
   pin: {
-    width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 2.5, borderColor: '#FFFFFF',
-    shadowColor: '#000', shadowOpacity: 0.22, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3,
+    width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF',
+    borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+    shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 4,
   },
-  pinFree: { borderColor: '#3E3C3D', borderWidth: 2 },
-  pinOn: { width: 42, height: 42, borderRadius: 21, borderWidth: 3 },
-  silent: { position: 'absolute', top: -3, right: -3, width: 11, height: 11, borderRadius: 6, backgroundColor: '#9898A4', borderWidth: 2, borderColor: '#FFFFFF' },
-  label: { marginTop: 3, backgroundColor: '#3E3C3D', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  pinSilent: { backgroundColor: 'rgba(255,255,255,0.85)', shadowOpacity: 0.18, shadowRadius: 2, elevation: 2 },
+  pinOn: { width: 38, height: 38, borderRadius: 19, borderWidth: 3 },
+  square: { width: 12, height: 12, borderRadius: 4 },
+  ring: { width: 12, height: 12, borderRadius: 6, borderWidth: 3, borderColor: SILENT_COLOR },
+  feed: {
+    position: 'absolute', right: -7, bottom: -4, flexDirection: 'row', gap: 1, paddingHorizontal: 3, paddingVertical: 2,
+    borderRadius: 8, backgroundColor: '#3E3C3D', borderWidth: 2, borderColor: '#FFFFFF',
+  },
+  feedIcon: { width: 9, height: 9 },
+  label: { marginTop: 4, backgroundColor: '#3E3C3D', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   labelText: { fontSize: 11, fontWeight: '700', color: '#FFFFFF', fontFamily: 'monospace' },
   labelQuiet: { backgroundColor: 'rgba(255,255,255,0.95)', borderWidth: 1, borderColor: '#E4E4E7' },
   labelTextQuiet: { color: '#3E3C3D', fontWeight: '600' },
+  labelAge: { fontFamily: undefined, fontWeight: '500', color: '#94A3B8' },
+  age: { marginTop: 2, fontSize: 9, fontWeight: '600', color: '#64748B' },
   group: {
     minWidth: 38, height: 38, borderRadius: 19, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center',
     backgroundColor: '#3E3C3D', borderWidth: 3, borderColor: '#FFFFFF',
