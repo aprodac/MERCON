@@ -16,7 +16,8 @@
  *             long, not live, and each customer's live page to share.
  *   Changes   a toast and a buzz when a truck turns late, stops long, loses
  *             GPS, starts or finishes its trip while the map is open.
- *   Saved     filter, theme, 2D/3D and the camera come back next time.
+ *   Saved     filter, theme and the camera come back next time; the map
+ *             always opens flat (2D) and never tilts unless 3D is picked.
  *   Filters   All · On trip · Delayed · Free · Free soon · Stopped · No GPS
  *             (Free soon and Stopped only while they have trucks).
  *   Map/List  toggle. The list has three tabs (FleetLists.tsx): Trucks
@@ -39,9 +40,11 @@
  *   Deep link /fleet-map?trip=<id> (from a "Trip delayed" / "Driver app
  *             silent" notification) opens on that trip's truck, or on the
  *             trip page when the truck has no position.
- *   Camera    follows the picked truck as it moves; dragging the map stops
- *             that and shows Recenter. Zoomed in, trucks carry their plates.
- *             The ⓘ control explains colours, shapes and lines.
+ *   Camera    a picked truck is shown alone, framed with its next stop;
+ *             the card's Route frames the whole trip (tap again to go back).
+ *             It follows the truck as it moves; dragging the map stops that
+ *             and shows Recenter. Zoomed in, trucks carry their plates.
+ *   Controls  zoom ±, All trucks, and Map (2D / 3D, light / dark, map key).
  * Live feed refreshes every 15 s here (the web map's rate), 30 s on Home.
  *   Actions   the truck sheet moves its trip to the next step or cancels it;
  *             a trip without a truck (Scheduled row, or a "no truck"
@@ -55,7 +58,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import {
-  AlertTriangle, Compass, Focus, Info, List, LocateFixed, Map as MapIcon, MapPin, MessageCircle, Minus, Moon, Navigation, Plus, Search, Sun, X, type LucideIcon,
+  AlertTriangle, Compass, Info, Layers, List, LocateFixed, Map as MapIcon, MapPin, Maximize, MessageCircle, Minus, Plus, Search, X, type LucideIcon,
 } from 'lucide-react-native';
 import { Toast } from '@mercon/mobile-shared/components/Toast';
 import { operatorService, type LiveUnit } from '../../lib/operator';
@@ -108,7 +111,7 @@ export default function FleetMapScreen() {
   const { onIntent, toast, setToast } = useActionIntent();
   const [filter, setFilterRaw] = useState<FleetFilter>('all');
   const [theme, setThemeRaw] = useState<MapTheme>('light');
-  // The 2D / 3D toggle; picking a truck switches it to 3D.
+  // The 2D / 3D toggle (Map options); off unless the operator turns it on.
   const [is3D, setIs3DRaw] = useState(false);
   const [query, setQuery] = useState('');
   const [view, setView] = useState<'map' | 'list'>('map');
@@ -129,15 +132,16 @@ export default function FleetMapScreen() {
   useEffect(() => {
     if (!prefs.ready || restored.current) return;
     restored.current = true;
-    const { filter: f0, theme: t0, is3D: d0 } = prefs.prefs;
+    const { filter: f0, theme: t0 } = prefs.prefs;
     // Restoring the saved view is a one-off when it loads; later changes are the user's.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (f0) setFilterRaw(f0); if (t0) setThemeRaw(t0); if (d0 != null) setIs3DRaw(d0);
+    if (f0) setFilterRaw(f0); if (t0) setThemeRaw(t0);
   }, [prefs.ready, prefs.prefs]);
   const { save: savePrefs } = prefs;
   const setFilter = (v: FleetFilter) => { setFilterRaw(v); savePrefs({ filter: v }); };
   const setTheme = (v: MapTheme) => { setThemeRaw(v); savePrefs({ theme: v }); };
-  const setIs3D = (v: boolean) => { setIs3DRaw(v); savePrefs({ is3D: v }); };
+  // 3D is for the moment, not a saved preference: the map always opens flat.
+  const setIs3D = setIs3DRaw;
 
   // While the map is open, say when a truck turns late, stops long, loses GPS, or starts / finishes its trip.
   const onChanges = useCallback((c: FleetChange[]) => {
@@ -233,9 +237,7 @@ export default function FleetMapScreen() {
   const pick = (key: string | null) => {
     if (key && key !== selected) Haptics.selectionAsync().catch(() => {});
     setSelected(key); setFocusMode('none'); setGroup(null); setNotLive(false); setFollowing(true);
-    // Like the web map: a picked truck is seen close up and tilted (2D stays one tap away).
-    // Not saved as the 2D / 3D preference — the toggle is.
-    if (key) { setView('map'); setIs3DRaw(true); } else setExpanded(false);
+    if (key) setView('map'); else setExpanded(false);
   };
   const searchAround = (p: PlaceSearch) => {
     Haptics.selectionAsync().catch(() => {});
@@ -392,12 +394,11 @@ export default function FleetMapScreen() {
   const mapRef = useRef<FleetMapHandle>(null);
   const [camera, setCamera] = useState<MapView>({ zoom: 5, pitch: 0, bearing: 0 });
   const [legend, setLegend] = useState(false);
-  // Driver view / Trip are toggles: tapping the one that's on goes back to the truck and its card.
-  const exitView = () => { setFocusMode('none'); setFollowing(true); mapRef.current?.set3D(is3D); };
-  const enterView = (mode: FocusMode) => {
-    if (mode === focusMode) { exitView(); return; }
-    setFocusMode(mode); setFollowing(true);
-    if (mode === 'driver') mapRef.current?.driverView(); else if (mode === 'overview') mapRef.current?.tripOverview();
+  const [mapMenu, setMapMenu] = useState(false);
+  // The card's Route: frame the whole trip; tapping it again goes back to the truck.
+  const toggleRoute = () => {
+    if (focusMode === 'overview') { setFocusMode('none'); setFollowing(true); mapRef.current?.set3D(is3D); return; }
+    setFocusMode('overview'); setFollowing(true); mapRef.current?.tripOverview();
   };
   const turned = Math.abs(camera.bearing) > 1 || camera.pitch > 1;
 
@@ -457,7 +458,6 @@ export default function FleetMapScreen() {
 
   const quietUnits = useMemo(() => shown.filter((u) => isSilent(u, now)), [shown, now]);
   // With nothing picked the summary (or a place's results) is up, so a sheet is open unless a focus view hides it.
-  const sheetOpen = !unit || focusMode === 'none';
   const lastUpdate = live.dataUpdatedAt ? agoText(new Date(live.dataUpdatedAt).toISOString(), now) : null;
 
   return (
@@ -594,14 +594,15 @@ export default function FleetMapScreen() {
             theme={theme}
             tilted={is3D}
             focusMode={focusMode}
+            isolate
             routeLine={routeQ.data?.geometry ?? null}
             focus={place ? { lat: place.lat, lng: place.lng, km: radius, label: place.kind === 'me' ? 'You' : place.label } : null}
             initialCamera={!params.trip && !place && !lane ? prefs.prefs.camera ?? null : null}
             onLongPress={(at) => searchAround({ label: 'Dropped pin', lat: at.lat, lng: at.lng, kind: 'pin' })}
             lane={laneOnMap}
             ringed={lane ? ringed : undefined}
-            // Clear of the card and of the truck's view bar above it (or at the bottom in a focus view).
-            padding={{ top: 70, bottom: (sheetOpen ? sheetH : 0) + (unit?.position ? 96 : 30) }}
+            // Clear of the card (and of Recenter just above it).
+            padding={{ top: 70, bottom: sheetH + 40 }}
             onViewChange={(v) => { setCamera(v); if (v.center) savePrefs({ camera: { center: v.center, zoom: v.zoom } }); }}
             onGroupPress={openGroup}
             restLine={restStops.length >= 2 ? restQ.data?.geometry ?? null : null}
@@ -626,56 +627,58 @@ export default function FleetMapScreen() {
             ) : null}
           </View>
 
-          {/* The picked truck's views, like the web's focus bar — just above its card, or at the bottom in a focus view */}
-          {unit?.position ? (
-            <View style={[s.viewBar, { bottom: focusMode === 'none' ? sheetH + 28 : 28 }]}>
-              <Text style={s.viewPlate} numberOfLines={1}>{unit.vehicle?.plate_number ?? 'Truck'}</Text>
-              {!following ? (
-                <ViewChip icon={LocateFixed} label="Recenter" on={false} onPress={() => { setFollowing(true); mapRef.current?.recenter(); }} />
-              ) : null}
-              <ViewChip icon={Navigation} label="Driver view" on={focusMode === 'driver'} onPress={() => enterView('driver')} />
-              {unit.trip ? <ViewChip icon={MapIcon} label="Trip" on={focusMode === 'overview'} onPress={() => enterView('overview')} /> : null}
-              {focusMode !== 'none' ? (
-                <TouchableOpacity style={s.exit} onPress={exitView}>
-                  <Text style={s.exitText}>Exit</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
+          {/* Dragged away from the picked truck: one tap back to it. */}
+          {unit?.position && !following ? (
+            <TouchableOpacity style={[s.recenter, { bottom: sheetH + 24 }]} onPress={() => { setFollowing(true); mapRef.current?.recenter(); }} activeOpacity={0.85} accessibilityLabel="Back to the truck">
+              <LocateFixed size={15} color={INK} />
+              <Text style={s.recenterText}>Recenter</Text>
+            </TouchableOpacity>
           ) : null}
 
           {/* Right: map controls, one compact column */}
-          <View style={[s.ctlCol, sheetOpen ? { top: 12 } : { bottom: 84 }]}>
+          <View style={[s.ctlCol, { top: 12 }]}>
             <View style={s.ctlGroup}>
               <Ctl icon={Plus} label="Zoom in" onPress={() => mapRef.current?.zoomBy(1)} />
               <View style={s.ctlRule} />
               <Ctl icon={Minus} label="Zoom out" onPress={() => mapRef.current?.zoomBy(-1)} />
             </View>
             <View style={s.ctlGroup}>
-              <Ctl icon={Focus} label="Show all trucks" onPress={() => { pick(null); mapRef.current?.fitAll(); }} />
+              <Ctl icon={Maximize} caption="All" label="Show all trucks" onPress={() => { pick(null); setFocusMode('none'); mapRef.current?.fitAll(); }} />
               <View style={s.ctlRule} />
-              <TouchableOpacity
-                style={[s.ctl, is3D && s.ctlOn]}
-                onPress={() => { const v = !is3D; setIs3D(v); mapRef.current?.set3D(v); }}
-                accessibilityLabel={is3D ? 'Switch to 2D' : 'Switch to 3D'}
-              >
-                <Text style={[s.ctl3dText, is3D && { color: '#FFFFFF' }]}>{is3D ? '3D' : '2D'}</Text>
-              </TouchableOpacity>
+              <Ctl icon={Layers} caption="Map" label="Map options" on={mapMenu} onPress={() => { setMapMenu(!mapMenu); setLegend(false); }} />
               {turned ? (
                 <>
                   <View style={s.ctlRule} />
                   <Ctl icon={Compass} label="Face north and flatten" onPress={() => { setIs3D(false); setFocusMode('none'); mapRef.current?.faceNorth(); }} rotate={-camera.bearing - 45} />
                 </>
               ) : null}
-              <View style={s.ctlRule} />
-              <Ctl icon={theme === 'light' ? Moon : Sun} label={theme === 'light' ? 'Dark map' : 'Light map'} onPress={() => setTheme(theme === 'light' ? 'dark' : 'light')} />
-              <View style={s.ctlRule} />
-              <Ctl icon={Info} label="How to read the map" onPress={() => setLegend(!legend)} />
             </View>
           </View>
 
-          {legend ? <FleetLegend style={sheetOpen ? { top: 12 } : { bottom: 84 }} onClose={() => setLegend(false)} /> : null}
+          {mapMenu ? (
+            <View style={s.menu}>
+              <Text style={s.menuHead}>View</Text>
+              <Segment
+                options={[{ id: '2d', label: '2D flat' }, { id: '3d', label: '3D tilted' }]}
+                value={is3D ? '3d' : '2d'}
+                onChange={(v) => { const on = v === '3d'; setIs3D(on); mapRef.current?.set3D(on); }}
+              />
+              <Text style={s.menuHead}>Map colours</Text>
+              <Segment
+                options={[{ id: 'light', label: 'Light' }, { id: 'dark', label: 'Dark' }]}
+                value={theme}
+                onChange={(v) => setTheme(v as MapTheme)}
+              />
+              <TouchableOpacity style={s.menuRow} onPress={() => { setMapMenu(false); setLegend(true); }} accessibilityLabel="How to read the map">
+                <Info size={16} color={INK} />
+                <Text style={s.menuRowText}>What the colours and icons mean</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
 
-          {unit && focusMode === 'none' ? (
+          {legend ? <FleetLegend style={{ top: 12 }} onClose={() => setLegend(false)} /> : null}
+
+          {unit ? (
             <UnitSheet
               unit={unit}
               eta={eta}
@@ -699,6 +702,8 @@ export default function FleetMapScreen() {
               onCancelTrip={unit.trip ? () => tripActions.cancel(unit.trip!.id, unit.trip!.ref_id) : null}
               busy={tripActions.busy}
               onShare={unit.trip ? () => setShareChoose(true) : null}
+              onShowRoute={unit.trip && unit.position ? toggleRoute : null}
+              routeShown={focusMode === 'overview'}
               finalEta={eta?.arrival && restSec != null && restStops.length >= 2 && lastStop
                 ? { time: f.time(new Date(eta.arrival.getTime() + restSec * 1000).toISOString()), place: lastStop.name || lastStop.address }
                 : null}
@@ -791,21 +796,31 @@ export default function FleetMapScreen() {
   );
 }
 
-function ViewChip({ icon: Icon, label, on, onPress }: { icon: LucideIcon; label: string; on: boolean; onPress: () => void }) {
+/** Two or three choices side by side, the picked one filled. */
+function Segment({ options, value, onChange }: { options: { id: string; label: string }[]; value: string; onChange: (id: string) => void }) {
   return (
-    <TouchableOpacity style={[s.vchip, on && s.vchipOn]} onPress={onPress} activeOpacity={0.8}>
-      <Icon size={12} color={on ? INK : '#FFFFFF'} strokeWidth={2.4} />
-      <Text style={[s.vchipText, on && { color: INK }]}>{label}</Text>
-    </TouchableOpacity>
+    <View style={s.seg}>
+      {options.map((o) => {
+        const on = o.id === value;
+        return (
+          <TouchableOpacity key={o.id} style={[s.segBtn, on && s.segOn]} onPress={() => onChange(o.id)} activeOpacity={0.8} accessibilityState={{ selected: on }}>
+            <Text style={[s.segText, on && { color: '#FFFFFF' }]}>{o.label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
   );
 }
 
-function Ctl({ icon: Icon, label, onPress, rotate }: { icon: LucideIcon; label: string; onPress: () => void; rotate?: number }) {
+/** A map control: an icon, with a one-word caption when the icon alone wouldn't say what it does. */
+function Ctl({ icon: Icon, label, caption, on, onPress, rotate }: { icon: LucideIcon; label: string; caption?: string; on?: boolean; onPress: () => void; rotate?: number }) {
+  const color = on ? '#FFFFFF' : INK;
   return (
-    <TouchableOpacity style={s.ctl} onPress={onPress} accessibilityLabel={label} activeOpacity={0.7}>
+    <TouchableOpacity style={[s.ctl, caption ? s.ctlTall : null, on && s.ctlOn]} onPress={onPress} accessibilityLabel={label} activeOpacity={0.7}>
       <View style={rotate != null ? { transform: [{ rotate: `${rotate}deg` }] } : undefined}>
-        <Icon size={18} color={INK} strokeWidth={2.1} />
+        <Icon size={18} color={color} strokeWidth={2.1} />
       </View>
+      {caption ? <Text style={[s.ctlCaption, { color }]}>{caption}</Text> : null}
     </TouchableOpacity>
   );
 }
@@ -856,20 +871,24 @@ const s = StyleSheet.create({
   speed: { width: 56, height: 56, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.95)', alignItems: 'center', justifyContent: 'center', ...shadow },
   speedNum: { fontSize: 20, fontWeight: '700', color: INK, fontVariant: ['tabular-nums'] },
   speedUnit: { fontSize: 10, color: MUTED },
-  viewBar: {
-    position: 'absolute', alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: INK, borderRadius: 20, padding: 4, paddingLeft: 12, ...shadow,
+  recenter: {
+    position: 'absolute', alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#FFFFFF', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9, ...shadow,
   },
-  viewPlate: { fontSize: 12, fontWeight: '700', color: '#FFFFFF', fontFamily: 'monospace', marginRight: 4, maxWidth: 90 },
-  vchip: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 16, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: 'rgba(255,255,255,0.12)' },
-  vchipOn: { backgroundColor: '#FFFFFF' },
-  vchipText: { fontSize: 12, fontWeight: '600', color: '#FFFFFF' },
-  exit: { borderRadius: 16, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: 'rgba(255,255,255,0.18)' },
-  exitText: { fontSize: 12, fontWeight: '600', color: '#FFFFFF' },
+  recenterText: { fontSize: 13, fontWeight: '700', color: INK },
+  menu: { position: 'absolute', top: 12, right: 64, width: 230, backgroundColor: '#FFFFFF', borderRadius: 16, padding: 12, gap: 8, ...shadow },
+  menuHead: { fontSize: 11, fontWeight: '700', color: MUTED, textTransform: 'uppercase', letterSpacing: 0.4 },
+  menuRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 6, borderTopWidth: 1, borderTopColor: '#F1F1F3' },
+  menuRowText: { fontSize: 13, fontWeight: '600', color: INK, flexShrink: 1 },
+  seg: { flexDirection: 'row', backgroundColor: '#F1F1F3', borderRadius: 10, padding: 3 },
+  segBtn: { flex: 1, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  segOn: { backgroundColor: INK },
+  segText: { fontSize: 13, fontWeight: '600', color: INK },
   ctlCol: { position: 'absolute', right: 12, gap: 8 },
   ctlGroup: { backgroundColor: '#FFFFFF', borderRadius: 14, ...shadow },
   ctl: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   ctlRule: { height: 1, marginHorizontal: 9, backgroundColor: '#F1F1F3' },
   ctlOn: { backgroundColor: INK },
-  ctl3dText: { fontSize: 13, fontWeight: '800', color: INK },
+  ctlTall: { height: 50, gap: 1 },
+  ctlCaption: { fontSize: 10, fontWeight: '700' },
 });

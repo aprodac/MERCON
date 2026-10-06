@@ -5,9 +5,12 @@
  *               actions; drag up (or "Stops & GPS") for the stop timeline and
  *               both GPS feeds, with what the driver sent from each stop
  *               (photos, POD, delay videos and the delay reason; tap to view).
- *               The trip's next step (Arrived at pickup, Loaded · depart,
- *               Confirm delivery…) is the main button; Cancel trip sits in the
- *               expanded part (FleetActions.tsx confirms both).
+ *               Call and Open trip are the main buttons, with "Show route"
+ *               to frame the whole trip. The trip's next step (Arrived at
+ *               pickup, Confirm delivery…) and Cancel trip sit in the
+ *               expanded part, out of reach of a stray tap (FleetActions.tsx
+ *               confirms both). With no road route the ETA is an estimate
+ *               (≈); a next stop too far to be real says so instead.
  *               Swipe sideways — or the ‹ › arrows — for the
  *               next / previous truck in the current filter; drag down to
  *               shrink, then to close.
@@ -20,7 +23,7 @@ import {
   ActivityIndicator, Animated, Image, LayoutAnimation, Linking, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions,
 } from 'react-native';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
-import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, MessageCircle, Phone, Play, Smartphone, Truck, X, ZoomIn } from 'lucide-react-native';
+import { Check, ChevronDown, Route, ChevronLeft, ChevronRight, ChevronUp, MessageCircle, Phone, Play, Smartphone, Truck, X, ZoomIn } from 'lucide-react-native';
 import type { LiveTripMedia, LiveUnit, TripMediaItem } from '../../lib/operator';
 import type { ViewerItem } from '../trips/details/components/MediaViewer';
 import { niceName } from '../trips/create/components/ui';
@@ -125,7 +128,7 @@ export function SheetFrame({ children, onHeight, panHandlers, style }: {
 
 export function UnitSheet({
   unit: u, eta, routeLoading, now, f, expanded, onExpand, position, onPrev, onNext, onClose, onOpen, onHeight, media, onOpenMedia,
-  nextStep, onCancelTrip, busy, onShare, finalEta,
+  nextStep, onCancelTrip, busy, onShare, finalEta, onShowRoute, routeShown,
 }: {
   unit: LiveUnit; eta: EtaInfo | null; routeLoading: boolean; now: number; f: Time;
   expanded: boolean; onExpand: (v: boolean) => void;
@@ -145,6 +148,9 @@ export function UnitSheet({
   onShare?: (() => void) | null;
   /** Arrival at the trip's last stop (next-stop ETA + road time for the rest), when it isn't the next one. */
   finalEta?: { time: string; place: string | null } | null;
+  /** Frame the whole trip on the map (a toggle — routeShown says it's on). */
+  onShowRoute?: (() => void) | null;
+  routeShown?: boolean;
 }) {
   const { width } = useWindowDimensions();
   const t = u.trip;
@@ -235,7 +241,11 @@ export function UnitSheet({
           <View style={s.etaHead}>
             <View style={{ flex: 1 }}>
               <Text style={s.etaLabel} numberOfLines={1}>Arrives {niceName(next?.name) || `stop ${next?.sequence ?? ''}`}</Text>
-              <Text style={s.etaTime}>{eta.arrival ? f.time(eta.arrival.toISOString()) : '—'}</Text>
+              {eta.stopLooksWrong ? (
+                <Text style={s.etaWrong}>Stop location looks wrong — fix it on the trip</Text>
+              ) : (
+                <Text style={s.etaTime}>{eta.arrival ? `${eta.approx ? '≈ ' : ''}${f.time(eta.arrival.toISOString())}` : '—'}</Text>
+              )}
             </View>
             {p ? (
               <View style={[s.pill, { backgroundColor: p.good ? '#E8F5EE' : BRAND_LIGHT }]}>
@@ -244,7 +254,10 @@ export function UnitSheet({
             ) : null}
           </View>
           <Text style={s.etaSub}>
-            {[eta.durationSeconds != null ? `in ${formatDuration(eta.durationSeconds)}` : null, eta.distanceKm != null ? `${formatKm(eta.distanceKm)} ${eta.distanceIsRoad ? 'by road' : 'straight line'}` : null].filter(Boolean).join('  ·  ')}
+            {[
+              eta.durationSeconds != null ? `in ${eta.approx ? 'about ' : ''}${formatDuration(eta.durationSeconds)}` : null,
+              eta.distanceKm != null ? `${eta.approx ? '≈ ' : ''}${formatKm(eta.distanceKm)} by road` : null,
+            ].filter(Boolean).join('  ·  ')}
           </Text>
           {t && t.stops.length > 1 ? <StopProgress stops={t.stops} nextId={next?.id ?? null} /> : null}
           {finalEta ? <Text style={s.etaFinal}>Delivery at {niceName(finalEta.place)} around <Text style={{ fontWeight: '700', color: INK }}>{finalEta.time}</Text></Text> : null}
@@ -252,7 +265,7 @@ export function UnitSheet({
       ) : t && t.phase === 'upcoming' ? (
         <StartCard plannedStart={t.planned_start} now={now} f={f} />
       ) : null}
-      {eta && !eta.distanceIsRoad && !routeLoading ? <Text style={s.note}>Road routing unavailable — distance is a straight line.</Text> : null}
+      {eta?.approx && !routeLoading ? <Text style={s.note}>Estimate — the road route couldn’t be loaded.</Text> : null}
 
       {expanded ? (
         <>
@@ -276,23 +289,24 @@ export function UnitSheet({
             <MessageCircle size={17} color="#3F3F46" strokeWidth={2.2} />
           </TouchableOpacity>
         ) : null}
-        {t && nextStep ? (
-          <>
-            <TouchableOpacity style={[s.open, busy && { opacity: 0.6 }]} onPress={nextStep.onPress} disabled={busy} activeOpacity={0.85}>
-              {busy ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={s.openText} numberOfLines={1}>{nextStep.label}</Text>}
-            </TouchableOpacity>
-            <TouchableOpacity style={s.tripBtn} onPress={() => onOpen(t.id)} accessibilityLabel="Open trip">
-              <Text style={s.tripBtnText}>Trip</Text>
-              <ChevronRight size={15} color={INK} />
-            </TouchableOpacity>
-          </>
-        ) : t ? (
+        {t ? (
           <TouchableOpacity style={s.open} onPress={() => onOpen(t.id)} activeOpacity={0.85}>
             <Text style={s.openText}>Open trip</Text>
             <ChevronRight size={16} color="#FFFFFF" />
           </TouchableOpacity>
         ) : <View style={{ flex: 1 }} />}
+        {t && onShowRoute ? (
+          <TouchableOpacity style={[s.tripBtn, routeShown && s.tripBtnOn]} onPress={onShowRoute} accessibilityLabel={routeShown ? 'Back to the truck' : 'Show the whole route'}>
+            <Route size={15} color={routeShown ? '#FFFFFF' : INK} />
+            <Text style={[s.tripBtnText, routeShown && { color: '#FFFFFF' }]}>Route</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
+      {expanded && t && nextStep ? (
+        <TouchableOpacity style={[s.step, busy && { opacity: 0.6 }]} onPress={nextStep.onPress} disabled={busy} activeOpacity={0.85} accessibilityLabel={nextStep.label}>
+          {busy ? <ActivityIndicator size="small" color={INK} /> : <Text style={s.stepText} numberOfLines={1}>Update status: {nextStep.label}</Text>}
+        </TouchableOpacity>
+      ) : null}
       {expanded && t && onCancelTrip ? (
         <TouchableOpacity onPress={onCancelTrip} disabled={busy} style={s.cancel} accessibilityLabel="Cancel trip">
           <Text style={s.cancelText}>Cancel trip</Text>
@@ -628,6 +642,10 @@ const s = StyleSheet.create({
   openText: { fontSize: 14, fontWeight: '600', color: '#FFFFFF' },
   tripBtn: { height: 44, borderRadius: 12, borderWidth: 1, borderColor: LINE, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 2, paddingHorizontal: 12 },
   tripBtnText: { fontSize: 14, fontWeight: '600', color: INK },
+  tripBtnOn: { backgroundColor: INK, borderColor: INK },
+  step: { height: 42, marginTop: 8, borderRadius: 12, borderWidth: 1, borderColor: LINE, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
+  stepText: { fontSize: 14, fontWeight: '600', color: INK },
+  etaWrong: { marginTop: 4, fontSize: 15, fontWeight: '700', color: BRAND },
   cancel: { alignSelf: 'flex-start', paddingVertical: 4 },
   cancelText: { fontSize: 13, fontWeight: '600', color: '#D92D20' },
 

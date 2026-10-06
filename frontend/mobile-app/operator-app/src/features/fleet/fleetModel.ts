@@ -168,25 +168,43 @@ export function shortAgo(iso: string | null | undefined, now = Date.now()): stri
 // ── ETA ─────────────────────────────────────────────────────────────────────
 
 export interface EtaInfo {
-  /** Arrival at the next stop from road drive time; null when routing is unavailable. */
+  /** Arrival at the next stop: road drive time, or an approximate one when routing is down; null when the stop can't be placed. */
   arrival: Date | null;
   durationSeconds: number | null;
-  /** Road distance when routed, straight line otherwise. */
+  /** Road distance when routed, an estimated road distance otherwise. */
   distanceKm: number | null;
   distanceIsRoad: boolean;
-  /** Minutes late against the stop's planned arrival; negative = early. */
+  /** No road route: arrival and distance are estimated from the straight line (≈ prefix in the card). */
+  approx: boolean;
+  /** The next stop is further than any Gulf trip could be — its map location is wrong, so nothing is estimated. */
+  stopLooksWrong: boolean;
+  /** Minutes late against the stop's planned arrival (road ETA only); negative = early. */
   lateByMin: number | null;
 }
+
+/** Roads run about this much longer than the straight line. */
+const ROAD_FACTOR = 1.3;
+/** A loaded truck's average over a long run, km/h (used only when routing is down). */
+const APPROX_KPH = 70;
+/** No trip in the Gulf is this far as the crow flies; a next stop further away was placed wrong. */
+const IMPLAUSIBLE_KM = 2500;
 
 export function computeEta(u: LiveUnit, route: { distanceMeters: number; durationSeconds: number } | null, now = Date.now()): EtaInfo | null {
   const stop = nextStop(u);
   if (!stop || !u.position) return null;
-  const arrival = route ? new Date(now + route.durationSeconds * 1000) : null;
-  const distanceKm = route
-    ? route.distanceMeters / 1000
-    : stop.lat != null && stop.lng != null ? haversineKm(u.position, { lat: stop.lat, lng: stop.lng }) : null;
-  const lateByMin = arrival && stop.planned_arrival ? Math.round((arrival.getTime() - new Date(stop.planned_arrival).getTime()) / 60000) : null;
-  return { arrival, durationSeconds: route?.durationSeconds ?? null, distanceKm, distanceIsRoad: !!route, lateByMin };
+  const straight = stop.lat != null && stop.lng != null ? haversineKm(u.position, { lat: stop.lat, lng: stop.lng }) : null;
+  if (route) {
+    const arrival = new Date(now + route.durationSeconds * 1000);
+    const lateByMin = stop.planned_arrival ? Math.round((arrival.getTime() - new Date(stop.planned_arrival).getTime()) / 60000) : null;
+    return { arrival, durationSeconds: route.durationSeconds, distanceKm: route.distanceMeters / 1000, distanceIsRoad: true, approx: false, stopLooksWrong: false, lateByMin };
+  }
+  if (straight == null || straight > IMPLAUSIBLE_KM) {
+    return { arrival: null, durationSeconds: null, distanceKm: null, distanceIsRoad: false, approx: false, stopLooksWrong: straight != null, lateByMin: null };
+  }
+  // Routing is down: a rough drive time from the straight line, never "—".
+  const km = straight * ROAD_FACTOR;
+  const sec = Math.round((km / APPROX_KPH) * 3600);
+  return { arrival: new Date(now + sec * 1000), durationSeconds: sec, distanceKm: km, distanceIsRoad: false, approx: true, stopLooksWrong: false, lateByMin: null };
 }
 
 /** Five minutes of slack before an arrival counts as late. */

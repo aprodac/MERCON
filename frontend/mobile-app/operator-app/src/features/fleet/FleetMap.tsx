@@ -19,7 +19,9 @@
  *   undo the pick at once; so a map tap is hit-tested against the pins
  *   (handleMapPress) and both paths go through one dedup'd pressTarget.
  *   Trucks carry their plate at every zoom — most urgent first, skipping any
- *   label that would overlap another. Picking a truck flies in to street level. The selected truck gets its road route
+ *   label that would overlap another. Picking a truck frames it with its next
+ *   stop, flat (street level only when 3D is on), and on the Fleet map page
+ *   (isolate) hides every other truck and group until it's closed. The selected truck gets its road route
  *   to the next stop (real roads when routing is up, dashed straight line
  *   otherwise), a faint line through the rest of the trip (only when it
  *   follows real roads), a grey breadcrumb trail of where it has driven on
@@ -266,12 +268,14 @@ interface Props {
   initialCamera?: { center: LngLat; zoom: number } | null;
   /** A long press on the map — "trucks near here". */
   onLongPress?: (at: { lat: number; lng: number }) => void;
+  /** With a truck picked, draw only that truck (its trip and stops), not the rest of the fleet. */
+  isolate?: boolean;
 }
 
 export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   units, selected, onSelect, interactive = false, theme = 'light', tilted = false, focusMode = 'none',
   routeLine, focus, padding = { top: 40, bottom: 40 }, onViewChange, onGroupPress, restLine, trail, follow = true, onUserMove,
-  initialCamera, onLongPress, lane, ringed,
+  initialCamera, onLongPress, lane, ringed, isolate = false,
 }, ref) {
   const { height } = useWindowDimensions();
   const points = useMemo(() => units.filter(located), [units]);
@@ -347,7 +351,7 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
 
   const { groups, singles } = useMemo(() => {
     const out = { groups: [] as { id: number; lng: number; lat: number; count: number; mix: Mix }[], singles: [] as LiveUnit[] };
-    if (focusMode !== 'none' && sel) { out.singles = [sel]; return out; }
+    if ((focusMode !== 'none' || isolate) && sel) { out.singles = [sel]; return out; }
     const byKey = new globalThis.Map(points.map((u) => [u.key, u]));
     const bbox = area?.bbox ?? bounds;
     if (!bbox) return out;
@@ -364,7 +368,7 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
     for (const u of points) if (isDelayed(u) && u.key !== selected) out.singles.push(u);
     if (sel) out.singles.push(sel);
     return out;
-  }, [groupIndex, points, area, bounds, focusMode, sel, selected, view.zoom]);
+  }, [groupIndex, points, area, bounds, focusMode, isolate, sel, selected, view.zoom]);
 
   // Plates on the trucks standing alone, once zoomed in far enough to read them.
   const labelled = useMemo(() => {
@@ -465,6 +469,23 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
     });
   };
 
+  /**
+   * A picked truck: flat, framing it and its next stop so it's plain where it's
+   * heading. 3D on → close up and tilted as before. No usable next stop → the
+   * truck at town level.
+   */
+  const frameSelected = (u: LiveUnit, tilt: boolean) => {
+    if (tilt) { flyToSelected(u, PICK_PITCH); return; }
+    const nx = u.trip && u.trip.next_stop_index != null ? u.trip.stops[u.trip.next_stop_index] : null;
+    const to = nx && nx.lat != null && nx.lng != null && !(nx.lat === 0 && nx.lng === 0) ? { lat: nx.lat, lng: nx.lng } : null;
+    // A stop thousands of km away is a wrong pin (the card says so) — don't fly the map there.
+    if (to && Math.abs(to.lat - u.position!.lat) + Math.abs(to.lng - u.position!.lng) < 20) {
+      const b = boundsOf([u.position!, to], 0.05, 0.05);
+      if (b) { fitFlat(b, 1000); return; }
+    }
+    camera.current?.easeTo?.({ center: [u.position!.lng, u.position!.lat], zoom: Math.max(Math.min(zoomRef.current, 13), 11), pitch: 0, bearing: 0, padding: pad, duration: 1000 });
+  };
+
   const driverView = () => {
     if (!sel?.position) return;
     camera.current?.easeTo?.({
@@ -500,7 +521,7 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
       mapRef.current?.getCenter().then((center: LngLat) => camera.current?.easeTo({ center, bearing: 0, pitch: 0, duration: 600 })).catch(() => {});
     },
     set3D(on: boolean) {
-      if (sel?.position) { flyToSelected(sel, on ? 55 : 0); return; }
+      if (sel?.position) { frameSelected(sel, on); return; }
       mapRef.current?.getCenter()
         .then((center: LngLat) => camera.current?.easeTo({ center, pitch: on ? 55 : 0, zoom: on ? Math.max(zoomRef.current, 6) : zoomRef.current, duration: 700 }))
         .catch(() => {});
@@ -510,7 +531,7 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
       if (!sel?.position) return;
       if (focusMode === 'driver') driverView();
       else if (focusMode === 'overview') tripOverview();
-      else flyToSelected(sel, tilted ? 55 : 0);
+      else frameSelected(sel, tilted);
     },
     tripOverview,
   }));
@@ -518,7 +539,7 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   // Picking a truck flies to it (tilted when 3D is on); a lane frames both ends and its trucks; a city search frames the city.
   useEffect(() => {
     if (!interactive || !camera.current) return;
-    if (sel?.position) flyToSelected(sel, tilted ? 55 : 0);
+    if (sel?.position) frameSelected(sel, tilted);
     else if (lane) {
       const b = boundsOf([lane.from, lane.to, ...points.map((u) => u.position!)], 0.2, 0.3);
       if (b) fitFlat(b, 800);
