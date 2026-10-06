@@ -66,7 +66,7 @@ export function useDriverPayouts(driverId: string | undefined, trips: RawDriverT
   const paid = rows.filter((x) => x.paid).reduce((n, x) => n + x.amount, 0);
 
   return {
-    monthLabel: now.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
+    monthLabel: now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }),
     prev: () => setBack((n) => Math.min(n + 1, 23)),
     next: () => setBack((n) => Math.max(n - 1, 0)),
     isCurrent: back === 0,

@@ -128,7 +128,7 @@ export default function ThirdPartyDetailsScreen() {
                 <TouchableOpacity key={t.id} style={[s.line, i > 0 && s.lineBorder]} activeOpacity={0.6} onPress={() => router.push({ pathname: '/trip-details', params: { id: t.id } })}>
                   <View style={s.date}>
                     <Text style={s.dateDay}>{dated ? d.getDate() : '—'}</Text>
-                    <Text style={s.dateMonth}>{dated ? d.toLocaleDateString(undefined, { month: 'short' }) : ''}</Text>
+                    <Text style={s.dateMonth}>{dated ? d.toLocaleDateString('en-GB', { month: 'short' }) : ''}</Text>
                   </View>
                   <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
                     <Text style={s.rowTitle} numberOfLines={1}>{hasRoute ? `${route.from} → ${route.to}` : customer}</Text>
@@ -274,7 +274,7 @@ export default function ThirdPartyDetailsScreen() {
 /** "3 Oct 2026" */
 function fullDate(iso?: string | null): string | null {
   const d = new Date(iso ?? '');
-  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 // Same sizes, fonts and spacing as the customer page (customers/details/CustomerDetailsScreen).
