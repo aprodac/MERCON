@@ -268,7 +268,8 @@ export async function resolveVehicleLocationsForTrips(
       const locs: any[] = await db.$queryRaw(Prisma.sql`
         SELECT DISTINCT ON ("tripId") *
         FROM "TripLocation"
-        WHERE "tripId" IN (${Prisma.join(operationalTripIds.map((id) => Prisma.sql`${id}::uuid`))})
+        WHERE "source" = 'driver'
+          AND "tripId" IN (${Prisma.join(operationalTripIds.map((id) => Prisma.sql`${id}::uuid`))})
         ORDER BY "tripId", "recordedAt" DESC
       `);
       for (const loc of locs) {

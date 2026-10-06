@@ -101,3 +101,23 @@ ls -l /var/lib/mercon/osrm/ /var/lib/mercon/osrm/releases/
 
 Turn it off: `docker compose -p mercon --profile routing stop osrm` — the API
 falls back to the public demo by itself.
+
+## GPS history, stops and breaks
+
+- **Driver app** fixes go to `TripLocation` (source `driver`), as before.
+- **Truck tracker** (ICCES, polled every 30 s) used to overwrite only the
+  vehicle's latest position. During a running trip (Loading / In transit /
+  Delayed) its positions are now kept too (`TripLocation`, source `vehicle`,
+  `services/tracking/trackerHistory.ts`): when the truck moved 50 m+, or every
+  5 min while it stands. Readers that mean the phone (the live map's phone
+  feed, `stopped_since`, the location resolver) filter on `source = 'driver'`.
+- **Stops and breaks** (`services/tracking/tripHalts.ts`): from both feeds —
+  the phone where it sends, the tracker in its silences — every halt of 5 min+,
+  at one of the trip's stops or a break on the way, with how long; and the trip
+  so far split into driving / at stops / breaks. In the trip overview
+  (`halts`, `time_split`). A break's place ("Route 40, near Al Quwayiyah") is
+  looked up once per ~100 m from OpenStreetMap in the background (≤ 1/s) and
+  kept in `PlaceName` (`services/geo/placeNames.ts`).
+- Shown: operator app Fleet map (truck card, breaks list, map markers), trip
+  **Activity** on web and phone (shared wording: fleetRules
+  `haltActivityLabel`, `insertByTime`), and the web trip page's "On the road".

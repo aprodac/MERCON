@@ -4,7 +4,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeEta, punctuality, steadyArrival, truckDriveSeconds, isLongStop, isSilent, LATE_ALERT_MIN, formatDriveTime } from '@mercon/shared-types';
+import { computeEta, punctuality, steadyArrival, truckDriveSeconds, isLongStop, isSilent, LATE_ALERT_MIN, formatDriveTime, haltActivityLabel, insertByTime } from '@mercon/shared-types';
 import { lateAlertText } from '../services/tracking/etaWatcher';
 
 const unit = (stop: { lat: number; lng: number; planned_arrival?: string | null }, extra: Record<string, unknown> = {}) => ({
@@ -61,6 +61,24 @@ describe('fleet rules', () => {
     assert.equal(isLongStop(stopped, now), true);
     const atStop = unit({ lat: 24.71, lng: 46.67 }, { motion: 'idle', stopped_since: new Date(0).toISOString() });
     assert.equal(isLongStop(atStop, now), false, 'standing at its own stop is working, not stuck');
+  });
+
+  it('words stops and breaks for the activity log', () => {
+    const brk = { from: '', to: '', minutes: 45, kind: 'break' as const, ongoing: false, place: 'Route 40, near Al Quwayiyah' };
+    assert.equal(haltActivityLabel(brk), 'Break · 45 min · Route 40, near Al Quwayiyah');
+    assert.equal(haltActivityLabel({ ...brk, ongoing: true, place: null, minutes: 12 }), 'On a break · 12 min so far');
+    assert.equal(haltActivityLabel({ ...brk, kind: 'at_stop', minutes: 70 }, 'Jeddah'), 'Stood at Jeddah · 1 h 10 min');
+  });
+
+  it('puts stops and breaks into the activity in time order, planned ones last', () => {
+    const steps = [
+      { label: 'created', at: 0, done: true },
+      { label: 'started', at: 10, done: true },
+      { label: 'arrived B', at: 50, done: true },
+      { label: 'planned C', at: null, done: false },
+    ];
+    const out = insertByTime(steps, [{ label: 'break', at: 30, done: true }, { label: 'now break', at: 60, done: true }]);
+    assert.deepEqual(out.map((x) => x.label), ['created', 'started', 'break', 'arrived B', 'now break', 'planned C']);
   });
 
   it('writes the late alert an operator can act on', () => {

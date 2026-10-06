@@ -25,7 +25,8 @@
  *   to the next stop (real roads when routing is up, dashed straight line
  *   otherwise), a faint line through the rest of the trip (only when it
  *   follows real roads), a grey breadcrumb trail of where it has driven on
- *   this trip, and its trip's numbered stops. While following, the
+ *   this trip, its trip's numbered stops, and a small pause marker with the
+ *   minutes wherever it took a break on the way. While following, the
  *   camera moves with the truck as fresh positions arrive; dragging the map
  *   stops that until recenter().
  *
@@ -44,7 +45,7 @@ import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, use
 import { Animated, Easing, View, Text, Image, StyleSheet, TurboModuleRegistry, useWindowDimensions } from 'react-native';
 import { MapPin } from 'lucide-react-native';
 import Supercluster from 'supercluster';
-import type { LiveUnit } from '../../lib/operator';
+import type { LiveUnit, TripHalt } from '../../lib/operator';
 import { feedsApart, isDelayed, isFree, isLongStop, isSilent, lateMin, lateText, located, minText, shortAgo, stoppedMin, tripProgress, unitPriority } from './fleetModel';
 import { quietOfflineTileErrors } from '../../lib/mapLogs';
 import { MAP_BG, MAP_STYLES, loadMapStyle, readyMapStyle, type MapTheme, type StyleJson } from './mapStyle';
@@ -270,12 +271,14 @@ interface Props {
   onLongPress?: (at: { lat: number; lng: number }) => void;
   /** With a truck picked, draw only that truck (its trip and stops), not the rest of the fleet. */
   isolate?: boolean;
+  /** The picked truck's breaks on the way (where it stood still away from its stops). */
+  halts?: TripHalt[] | null;
 }
 
 export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   units, selected, onSelect, interactive = false, theme = 'light', tilted = false, focusMode = 'none',
   routeLine, focus, padding = { top: 40, bottom: 40 }, onViewChange, onGroupPress, restLine, trail, follow = true, onUserMove,
-  initialCamera, onLongPress, lane, ringed, isolate = false,
+  initialCamera, onLongPress, lane, ringed, isolate = false, halts,
 }, ref) {
   const { height } = useWindowDimensions();
   const points = useMemo(() => units.filter(located), [units]);
@@ -693,6 +696,18 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
         ))
         : null}
 
+      {/* Breaks on the way: where, and how long. */}
+      {sel && halts
+        ? halts.map((h) => (
+          <ViewAnnotation key={`halt-${h.from}`} id={`halt-${h.from}`} lngLat={[h.lng, h.lat]} anchor="center">
+            <View style={[st.halt, h.ongoing && st.haltNow]}>
+              <Text style={st.haltIcon}>II</Text>
+              <Text style={st.haltText}>{h.minutes < 60 ? `${h.minutes}m` : `${Math.floor(h.minutes / 60)}h${h.minutes % 60 ? ` ${h.minutes % 60}m` : ''}`}</Text>
+            </View>
+          </ViewAnnotation>
+        ))
+        : null}
+
       {stops.map((s, i) => {
         const done = !!s.actual_arrival;
         const isNext = next?.id === s.id;
@@ -958,6 +973,13 @@ const st = StyleSheet.create({
   groupBig: { minWidth: 46, height: 46, borderRadius: 23 },
   groupText: { fontSize: 14, fontWeight: '800', color: '#1E293B', fontVariant: ['tabular-nums'], marginTop: -2 },
   mix: { position: 'absolute', bottom: 7, width: 20, height: 3.5, borderRadius: 2, overflow: 'hidden', flexDirection: 'row', backgroundColor: '#E2E8F0' },
+  halt: {
+    flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, height: 20, borderRadius: 10,
+    backgroundColor: '#FFFFFF', borderWidth: 1.5, borderColor: '#9898A4',
+  },
+  haltNow: { borderColor: '#D97706' },
+  haltIcon: { fontSize: 8, fontWeight: '900', color: '#52525B', letterSpacing: -1 },
+  haltText: { fontSize: 10, fontWeight: '800', color: '#3F3F46', fontVariant: ['tabular-nums'] },
   stop: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#71717A', alignItems: 'center', justifyContent: 'center' },
   stopDone: { backgroundColor: '#3E3C3D', borderColor: '#FFFFFF' },
   stopNext: { backgroundColor: '#FA634E', borderColor: '#FFFFFF' },

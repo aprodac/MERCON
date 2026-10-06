@@ -35,6 +35,8 @@ function overview(over: Partial<TripOverview> = {}, posAgeMs = 30_000): TripOver
     },
     path: [[46.7, 24.6], [45, 23.5], [43.98, 22.12]],
     path_distance_m: 400_000,
+    halts: [],
+    time_split: null,
     checks: null,
     ...over,
   };

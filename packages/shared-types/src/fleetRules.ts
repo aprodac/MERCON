@@ -194,3 +194,38 @@ export function formatDriveTime(seconds: number): string {
   if (h >= 48) return `${Math.floor(h / 24)} d${h % 24 ? ` ${h % 24} h` : ''}`;
   return m ? `${h} h ${m} min` : `${h} h`;
 }
+
+// ── Stops and breaks in a trip's activity ───────────────────────────────────
+
+/** A place the truck stood still 5 min+ (API tracking/tripHalts.ts). */
+export interface HaltLike {
+  from: string;
+  to: string;
+  minutes: number;
+  kind: 'at_stop' | 'break';
+  ongoing: boolean;
+  /** "Route 40, near Al Quwayiyah" once known. */
+  place?: string | null;
+}
+
+/** The activity line for a halt: "Break · 45 min · Route 40, near Al Quwayiyah" / "At Jeddah · 1 h 10 min". */
+export function haltActivityLabel(h: HaltLike, stopName?: string | null): string {
+  const d = formatDriveTime(h.minutes * 60);
+  if (h.kind === 'at_stop') return `${h.ongoing ? 'At' : 'Stood at'} ${stopName || 'the stop'} · ${d}${h.ongoing ? ' so far' : ''}`;
+  return `${h.ongoing ? 'On a break' : 'Break'} · ${d}${h.ongoing ? ' so far' : ''}${h.place ? ` · ${h.place}` : ''}`;
+}
+
+/**
+ * Adds timed entries (stops, breaks) into an activity list in time order:
+ * each goes right after the last done entry at or before its time; entries
+ * still to come (planned, not done) stay after them.
+ */
+export function insertByTime<T extends { at: number | null; done: boolean }>(steps: T[], extra: T[]): T[] {
+  const out = [...steps];
+  for (const e of [...extra].sort((a, b) => (a.at ?? 0) - (b.at ?? 0))) {
+    let k = -1;
+    for (let i = 0; i < out.length; i++) if (out[i].done && out[i].at != null && out[i].at! <= (e.at ?? 0)) k = i;
+    out.splice(k + 1, 0, e);
+  }
+  return out;
+}

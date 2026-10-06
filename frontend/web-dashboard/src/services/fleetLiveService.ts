@@ -95,6 +95,29 @@ export interface LiveTripMedia {
 export type TripPhase = 'planned' | 'active' | 'done' | 'cancelled';
 
 /** Mirrors `TripOverview` in backend/api-server/src/services/tripOverview.ts. */
+/** Where a trip's truck stood still 5 min+ — at one of its stops, or a break on the way (API tracking/tripHalts.ts). */
+export interface TripHalt {
+  lat: number;
+  lng: number;
+  from: string;
+  to: string;
+  minutes: number;
+  kind: 'at_stop' | 'break';
+  stop_id: string | null;
+  ongoing: boolean;
+  /** "Route 40, near Al Quwayiyah" for a break, once the API has looked it up. */
+  place?: string | null;
+}
+
+/** The trip so far, split into driving, at stops and breaks (minutes). */
+export interface TripTimeSplit {
+  total_min: number;
+  driving_min: number;
+  at_stops_min: number;
+  breaks_min: number;
+  breaks: number;
+}
+
 export interface TripOverview {
   trip_id: string;
   status: string;
@@ -105,6 +128,9 @@ export interface TripOverview {
   /** [lng, lat] points driven, oldest first. */
   path: [number, number][];
   path_distance_m: number | null;
+  /** Absent from an older API. */
+  halts?: TripHalt[];
+  time_split?: TripTimeSplit | null;
   checks: {
     driver_assigned: boolean;
     truck_assigned: boolean;
