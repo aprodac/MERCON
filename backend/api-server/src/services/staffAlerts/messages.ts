@@ -23,6 +23,8 @@ export interface StaffAlert {
    * their name is its title — so the text leaves the name out.
    */
   pushBody: string;
+  /** The stop it happened at, so a tap opens the trip on that stop. */
+  stopId?: string;
 }
 
 export interface TripStatusChange {
@@ -46,10 +48,11 @@ export function driverDisplayName(d: { first_name?: string | null; last_name?: s
 
 const placeOf = (s: TripStopLike | null | undefined, fallback: string) => (s ? stopLabel(s) : fallback);
 
-const alert = (ctx: DriverUpdateContext, title: string, what: string): StaffAlert => ({
+const alert = (ctx: DriverUpdateContext, title: string, what: string, at?: TripStopLike | null): StaffAlert => ({
   title,
   message: `${ctx.trip} — ${ctx.driverName} ${what}`,
   pushBody: `${ctx.trip}: ${what.charAt(0).toUpperCase()}${what.slice(1)}`,
+  ...(at?.id ? { stopId: at.id } : {}),
 });
 
 /**
@@ -77,37 +80,37 @@ export function describeTripStatusChange(change: TripStatusChange, ctx: DriverUp
 
   if (change.toStatus === 'Completed') {
     const last = ret.delivery ?? out.delivery;
-    return alert(ctx, 'Trip completed', `delivered${last ? ` at ${stopLabel(last)}` : ''} and completed the trip.`);
+    return alert(ctx, 'Trip completed', `delivered${last ? ` at ${stopLabel(last)}` : ''} and completed the trip.`, last);
   }
 
   if (change.completedStopId) {
     const stop = ctx.stops.find((s) => s.id === change.completedStopId);
-    return alert(ctx, 'Stop done', `finished at ${placeOf(stop, 'a stop')} and is moving on.`);
+    return alert(ctx, 'Stop done', `finished at ${placeOf(stop, 'a stop')} and is moving on.`, stop);
   }
 
   switch (toWorkflow) {
     case 'GOING_TO_PICKUP':
-      return alert(ctx, 'Trip started', `started the trip and is driving to ${pickup}.`);
+      return alert(ctx, 'Trip started', `started the trip and is driving to ${pickup}.`, out.loading);
     case 'ARRIVED_AT_PICKUP':
-      return alert(ctx, 'Arrived at pickup', `arrived at ${pickup}.`);
+      return alert(ctx, 'Arrived at pickup', `arrived at ${pickup}.`, out.loading);
     case 'LOADING':
-      return alert(ctx, 'Loading', `started loading at ${pickup}.`);
+      return alert(ctx, 'Loading', `started loading at ${pickup}.`, out.loading);
     case 'LOADING_COMPLETED':
     case 'GOING_TO_STOP':
     case 'IN_TRANSIT':
-      return alert(ctx, 'Picked up', `loaded and left ${pickup} for ${delivery}.`);
+      return alert(ctx, 'Picked up', `loaded and left ${pickup} for ${delivery}.`, out.loading);
     case 'ARRIVED_AT_DELIVERY':
-      return alert(ctx, 'Arrived at delivery', `arrived at ${delivery}.`);
+      return alert(ctx, 'Arrived at delivery', `arrived at ${delivery}.`, out.delivery);
     case 'DELIVERY_COMPLETED':
     case 'FIRST_DELIVERY_COMPLETED':
     case 'RETURN_LOADING':
-      return alert(ctx, 'Delivered', `delivered at ${delivery} and is loading for the return at ${returnPickup}.`);
+      return alert(ctx, 'Delivered', `delivered at ${delivery} and is loading for the return at ${returnPickup}.`, out.delivery);
     case 'RETURN_LOADING_COMPLETED':
     case 'GOING_TO_RETURN_STOP':
     case 'IN_TRANSIT_RETURN':
-      return alert(ctx, 'Return leg started', `loaded and left ${returnPickup} for ${finalDelivery}.`);
+      return alert(ctx, 'Return leg started', `loaded and left ${returnPickup} for ${finalDelivery}.`, ret.loading);
     case 'ARRIVED_AT_FINAL_DELIVERY':
-      return alert(ctx, 'Arrived at final delivery', `arrived at ${finalDelivery}.`);
+      return alert(ctx, 'Arrived at final delivery', `arrived at ${finalDelivery}.`, ret.delivery);
   }
 
   // A step the app sent without a workflow state we know: say what the trip is now.
@@ -131,6 +134,8 @@ export interface TripPhotoUpload {
   /** The app's step: pickup, return_loading, delivery, return_delivery, delay… */
   operation?: string | null;
   stopId?: string | null;
+  /** The uploaded document, so a tap opens the photos it belongs to. */
+  documentId?: string | null;
 }
 
 /**
@@ -153,10 +158,10 @@ export function describeTripPhoto(upload: TripPhotoUpload, ctx: DriverUpdateCont
     (upload.stopId ? ctx.stops.find((s) => s.id === upload.stopId) : undefined) ??
     (upload.operation ? byStep[upload.operation] : null);
   const at = stop ? ` at ${stopLabel(stop)}` : '';
-  if (upload.isVideo) return alert(ctx, 'Video sent', `sent a video${at}.`);
+  if (upload.isVideo) return alert(ctx, 'Video sent', `sent a video${at}.`, stop);
   return upload.kind === 'pod'
-    ? alert(ctx, 'Delivery photos', `sent delivery (POD) photos${at}.`)
-    : alert(ctx, 'Cargo photos', `sent cargo photos${at}.`);
+    ? alert(ctx, 'Delivery photos', `sent delivery (POD) photos${at}.`, stop)
+    : alert(ctx, 'Cargo photos', `sent cargo photos${at}.`, stop);
 }
 
 export function describeTripAcknowledged(ctx: DriverUpdateContext): StaffAlert {

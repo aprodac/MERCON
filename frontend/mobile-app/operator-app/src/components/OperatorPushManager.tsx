@@ -47,6 +47,7 @@ export function OperatorPushManager() {
         is_read: true,
         entity_type: data.entity_type ?? null,
         entity_id: data.entity_id ? String(data.entity_id) : null,
+        target: data.target && typeof data.target === 'object' ? data.target : null,
         createdAt: '',
       });
       router.push(target ?? '/notifications');

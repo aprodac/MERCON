@@ -528,7 +528,7 @@ export const uploadTripPhoto = async (req: Request, res: Response) => {
       lng: location_lng,
       metadata: { kind: isVideo ? 'video' : kind, operation: operation || null, documentId: document.id },
     });
-    void notifyStaffOfTripPhoto(driverId, id, { kind, isVideo, operation: operation || null, stopId: resolvedStopId ?? null }, publicBaseUrl(req));
+    void notifyStaffOfTripPhoto(driverId, id, { kind, isVideo, operation: operation || null, stopId: resolvedStopId ?? null, documentId: document.id }, publicBaseUrl(req));
 
     res.status(201).json({ success: true, data: document });
   } catch (error: any) {

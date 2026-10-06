@@ -2290,6 +2290,10 @@ model Notification {
   is_read     Boolean @default(false)
   entity_type String? // "Trip", "Driver", "Vehicle"
   entity_id   String? @db.Uuid
+  // Where inside the entity a tap should open, e.g. {"tab":"stops","stopId":"…"}
+  // or {"tab":"stops","documentId":"…"} for the photos a driver sent. Null = the
+  // entity's page as before. Shape: NotificationTarget (notificationController).
+  target      Json?
 
   // Driver notifications only: when the driver tapped the push (opened_at) and
   // when they first saw it in the app (read_at). is_read stays for old clients.

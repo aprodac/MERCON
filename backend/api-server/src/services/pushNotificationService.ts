@@ -318,6 +318,7 @@ export async function retryPushDelivery(deliveryId: string): Promise<void> {
         entity_id: n.entity_id,
         notificationId: n.id,
         ...(n.entity_type === 'Trip' && n.entity_id ? { tripId: n.entity_id } : {}),
+        ...(n.target ? { target: n.target } : {}),
       },
       channelId: 'default',
       priority: 'high',
