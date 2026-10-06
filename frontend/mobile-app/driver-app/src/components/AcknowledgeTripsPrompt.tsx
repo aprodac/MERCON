@@ -4,9 +4,9 @@
  * trips alert operators after 30 minutes (driverWatch on the API).
  * There is deliberately no decline option.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import * as Location from 'expo-location';
 import { CheckCircle2, MapPin, Clock } from 'lucide-react-native';
@@ -49,9 +49,12 @@ export function AcknowledgeTripsPrompt() {
   const { t } = useLanguage();
   const [saving, setSaving] = useState(false);
 
-  // Refetched on focus/reconnect, every 2 minutes, and whenever the
-  // notification manager invalidates queries on a TripAssigned event.
-  const { data: pending = [] } = useQuery({
+  const pathname = usePathname();
+
+  // Refetched on every screen change, when the app comes back from the
+  // background, every 2 minutes, and whenever the notification manager
+  // invalidates queries on a TripAssigned event.
+  const { data: pending = [], refetch } = useQuery({
     queryKey: PENDING_ACKS_KEY,
     queryFn: async () => {
       const { data } = await api.get('/mobile/trips/pending-acknowledgements');
@@ -60,6 +63,13 @@ export function AcknowledgeTripsPrompt() {
     refetchInterval: 2 * 60_000,
     retry: false,
   });
+
+  // A trip assigned while the live socket was down (common on iPhones, which
+  // drop it in the background) must still be acknowledged before the driver
+  // can open and start it — not up to 2 minutes later, after they have moved on.
+  useEffect(() => {
+    void refetch();
+  }, [pathname, refetch]);
 
   const trip = pending[0];
   if (!trip) return null;
