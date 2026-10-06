@@ -86,7 +86,7 @@ jobs:
         working-directory: /mnt/osrm
         run: |
           set -euo pipefail
-          docker run -d --name osrm-check -p 5000:5000 -v "$PWD:/data:ro" "$OSRM_IMAGE" osrm-routed --algorithm mld --mmap /data/map.osrm
+          docker run -d --name osrm-check -p 5000:5000 -v "$PWD:/data:ro" "$OSRM_IMAGE" osrm-routed --algorithm mld --mmap=true /data/map.osrm
           for i in $(seq 1 60); do curl -fsS "http://127.0.0.1:5000/route/v1/driving/46.6753,24.7136;39.8262,21.4225?overview=false" -o route.json 2>/dev/null && break; sleep 2; done
           docker logs osrm-check | tail -5
           docker rm -f osrm-check >/dev/null
