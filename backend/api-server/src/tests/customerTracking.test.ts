@@ -29,7 +29,7 @@ function overview(over: Partial<TripOverview> = {}, posAgeMs = 30_000): TripOver
         lat: 22.123456789, lng: 43.987654321, speed_kph: 82.4, heading_deg: 210, accuracy_m: null,
         recorded_at: new Date(NOW.getTime() - posAgeMs).toISOString(), fresh: posAgeMs < 180_000, source: 'vehicle',
       },
-      feed: 'vehicle', motion: 'moving', feeds_gap_m: null,
+      feed: 'vehicle', motion: 'moving', feeds_gap_m: null, stopped_since: null,
     },
     path: [[46.7, 24.6], [45, 23.5], [43.98, 22.12]],
     path_distance_m: 400_000,

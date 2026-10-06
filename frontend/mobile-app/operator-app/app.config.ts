@@ -182,7 +182,7 @@ export default (): ExpoConfig => ({
     [
       'expo-location',
       {
-        locationWhenInUsePermission: `${client.name} adds your location to the photos and videos you attach to trips.`,
+        locationWhenInUsePermission: `${client.name} adds your location to the photos and videos you attach to trips, and finds the trucks nearest you on the Fleet map.`,
       },
     ],
     'expo-image',

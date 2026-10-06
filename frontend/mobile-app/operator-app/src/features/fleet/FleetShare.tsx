@@ -27,8 +27,11 @@ const LINE = '#E9E9EC';
 const RED = '#D92D20';
 const WA = '#25D366';
 
-export function ShareKindSheet({ visible, title, delayed, onPick, onClose }: {
+export function ShareKindSheet({ visible, title, delayed, onPick, onClose, customer, onCustomerPage }: {
   visible: boolean; title: string; delayed: boolean; onPick: (kind: QuickKind) => void; onClose: () => void;
+  /** The trip's customer — offers their all-trucks live page as well. */
+  customer?: { id: string; name: string } | null;
+  onCustomerPage?: (c: { id: string; name: string }) => void;
 }) {
   const rows: { kind: QuickKind; label: string; detail: string; icon: typeof MessageCircle; hot?: boolean }[] = [
     { kind: 'status', label: 'Status update', detail: 'Driver, truck, status, ETA and the live link', icon: MessageCircle },
@@ -47,6 +50,15 @@ export function ShareKindSheet({ visible, title, delayed, onPick, onClose }: {
             </View>
           </TouchableOpacity>
         ))}
+        {customer && onCustomerPage ? (
+          <TouchableOpacity style={s.kindRow} onPress={() => onCustomerPage(customer)} activeOpacity={0.7}>
+            <View style={s.kindIcon}><Users size={18} color={INK} /></View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.kindLabel}>All their trucks</Text>
+              <Text style={s.kindDetail}>One live page with every truck of {customer.name} on the road</Text>
+            </View>
+          </TouchableOpacity>
+        ) : null}
       </View>
     </AppModal>
   );
