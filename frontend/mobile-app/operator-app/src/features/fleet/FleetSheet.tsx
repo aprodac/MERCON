@@ -61,11 +61,11 @@ const humanize = (v: string) => v.replace(/[_-]+/g, ' ').replace(/([a-z])([A-Z])
 
 export function StateChip({ unit, now }: { unit: LiveUnit; now: number }) {
   const st = unitState(unit, now);
-  const bg = st === 'delayed' ? BRAND_LIGHT : '#F1F1F3';
-  const fg = st === 'delayed' ? BRAND : INK;
+  const bg = st === 'delayed' ? '#FFE4E8' : '#F1F1F3';
+  const fg = st === 'delayed' ? STATE_STYLE.delayed.color : INK;
   return (
     <View style={[s.state, { backgroundColor: bg }]}>
-      <View style={[s.dot, { backgroundColor: STATE_STYLE[st].color }, st === 'free' && { borderWidth: 1.5, borderColor: INK }]} />
+      <View style={[s.dot, { backgroundColor: STATE_STYLE[st].color }]} />
       <Text style={[s.stateText, { color: fg }]}>{STATE_STYLE[st].label}</Text>
     </View>
   );
