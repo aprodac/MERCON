@@ -3,7 +3,8 @@
  *
  *   Search    plate, driver, trip no. or customer. A city ("near Dammam",
  *             "jeddah"), an address picked from the suggestions, a long press
- *             on the map or Near me searches around that place: a circle on
+ *             on the map or "Near a place" (prefills "near " to type a city,
+ *             address or site) searches around that place: a circle on
  *             the map, radius chips (10–200 km), Free only, the trucks inside
  *             closest first with road drive time, or the nearest outside and
  *             a one-tap wider search (FleetSummary.tsx NearSheet).
@@ -56,7 +57,6 @@ import * as Haptics from 'expo-haptics';
 import {
   AlertTriangle, Compass, Focus, Info, List, LocateFixed, Map as MapIcon, MapPin, MessageCircle, Minus, Moon, Navigation, Plus, Search, Sun, X, type LucideIcon,
 } from 'lucide-react-native';
-import * as Location from 'expo-location';
 import { Toast } from '@mercon/mobile-shared/components/Toast';
 import { operatorService, type LiveUnit } from '../../lib/operator';
 import { AppTopBar } from '@/components/AppTopBar';
@@ -96,6 +96,8 @@ const FILTERS: { id: FleetFilter; label: string; dot?: string; whenAny?: boolean
 ];
 /** Wait this long after typing before asking the server for an address. */
 const PLACE_SEARCH_DELAY_MS = 450;
+/** "near riyadh", "trucks around the port": the place search prefix. */
+const NEAR_PREFIX = /^(?:trucks?\s+)?(?:near|around|close to)\s+/i;
 
 export default function FleetMapScreen() {
   const router = useRouter();
@@ -193,7 +195,9 @@ export default function FleetMapScreen() {
         .sort((a, b) => a.km - b.km)
         .map((x) => x.u);
     }
-    return byFilter.filter((u) => matchesQuery(u, query)).sort((a, b) => unitPriority(b) - unitPriority(a));
+    // "near …" still being typed is a place, not a plate or driver: keep every truck up meanwhile.
+    const q = NEAR_PREFIX.test(query) ? '' : query;
+    return byFilter.filter((u) => matchesQuery(u, q)).sort((a, b) => unitPriority(b) - unitPriority(a));
   }, [byFilter, place, radius, query, lane, runs, free]);
   // Around a place the map keeps every truck, so the nearest ones outside the circle still show.
   const mapUnits = place ? byFilter : shown;
@@ -204,11 +208,12 @@ export default function FleetMapScreen() {
     const t = setTimeout(() => setDebounced(query.trim()), PLACE_SEARCH_DELAY_MS);
     return () => clearTimeout(t);
   }, [query]);
-  const wantsPlaces = !placePick && !typedCity && !laneQuery && debounced.length >= 3 && debounced === query.trim()
-    && (/^(?:trucks?\s+)?(?:near|around|close to)\s+/i.test(debounced) || !all.some((u) => matchesQuery(u, debounced)));
+  const placeText = debounced.replace(NEAR_PREFIX, '').trim();
+  const wantsPlaces = !placePick && !typedCity && !laneQuery && placeText.length >= 3 && debounced === query.trim()
+    && (NEAR_PREFIX.test(debounced) || !all.some((u) => matchesQuery(u, debounced)));
   const placesQ = useQuery({
-    queryKey: ['fleet', 'places', debounced.replace(/^(?:trucks?\s+)?(?:near|around|close to)\s+/i, '')],
-    queryFn: () => operatorService.searchPlaces(debounced.replace(/^(?:trucks?\s+)?(?:near|around|close to)\s+/i, '')),
+    queryKey: ['fleet', 'places', placeText],
+    queryFn: () => operatorService.searchPlaces(placeText),
     enabled: wantsPlaces,
     staleTime: 10 * 60_000,
   });
@@ -243,19 +248,14 @@ export default function FleetMapScreen() {
     if (typedCity) setQuery('');
     setFreeOnly(false);
   };
-  const [locating, setLocating] = useState(false);
-  const nearMe = async () => {
-    setLocating(true);
-    try {
-      const perm = await Location.requestForegroundPermissionsAsync();
-      if (perm.status !== 'granted') { setToast({ message: 'Allow location to find trucks near you', type: 'error' }); return; }
-      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      searchAround({ label: 'Your location', lat: pos.coords.latitude, lng: pos.coords.longitude, kind: 'me' });
-    } catch {
-      setToast({ message: 'Couldn’t get your location', type: 'error' });
-    } finally {
-      setLocating(false);
-    }
+  // "Near a place": start a "near …" search and let the operator type the city, address or site.
+  const searchRef = useRef<TextInput>(null);
+  const nearPlace = () => {
+    Haptics.selectionAsync().catch(() => {});
+    if (selected || group) pick(null);
+    setPlacePick(null);
+    setQuery('near ');
+    searchRef.current?.focus();
   };
   const openGroup = (keys: string[]) => {
     Haptics.selectionAsync().catch(() => {});
@@ -469,6 +469,7 @@ export default function FleetMapScreen() {
         <View style={s.search}>
           <Search size={17} color={MUTED} />
           <TextInput
+            ref={searchRef}
             value={query}
             onChangeText={(v) => { setQuery(v); setPlacePick(null); if (selected || group) pick(null); }}
             placeholder="Plate, driver, city, address or riyadh to jeddah"
@@ -480,12 +481,15 @@ export default function FleetMapScreen() {
           {query ? (
             <TouchableOpacity onPress={() => { setQuery(''); setPlacePick(null); }} hitSlop={8} accessibilityLabel="Clear search"><X size={17} color={MUTED} /></TouchableOpacity>
           ) : (
-            <TouchableOpacity onPress={nearMe} disabled={locating} hitSlop={8} style={s.nearMe} accessibilityLabel="Trucks near me">
-              <LocateFixed size={15} color={locating ? MUTED : '#0284C7'} />
-              <Text style={s.nearMeText}>{locating ? 'Locating…' : 'Near me'}</Text>
+            <TouchableOpacity onPress={nearPlace} hitSlop={8} style={s.nearMe} accessibilityLabel="Find trucks near a place">
+              <MapPin size={15} color="#0284C7" />
+              <Text style={s.nearMeText}>Near a place</Text>
             </TouchableOpacity>
           )}
         </View>
+        {!suggestions.length && NEAR_PREFIX.test(query) && query.replace(NEAR_PREFIX, '').trim().length < 3 ? (
+          <Text style={s.near}>Type a city, address or customer site — or long-press the map — to see the closest trucks.</Text>
+        ) : null}
         {suggestions.length ? (
           <View style={s.suggest}>
             <Text style={s.suggestHead}>Find trucks near</Text>
