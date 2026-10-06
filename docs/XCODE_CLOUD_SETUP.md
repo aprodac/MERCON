@@ -130,6 +130,7 @@ the failing step (needs an App Store Connect account; the GitHub job prints the 
 | `Xcode Cloud can't see branch` | Push the branch; check Xcode Cloud still has GitHub access |
 | Build doesn't start for the branch | Workflow start conditions — needs a *Manual Start Condition* for that branch (step 2.4) |
 | `ci_post_clone.sh` fails at `npm ci` | `frontend/mobile-app/package-lock.json` out of date — run `npm install` there and commit |
+| Operator build fails resolving Swift packages / `Package.resolved` missing | `post-clone.sh` regenerates it after `pod install` — check the "Swift packages: resolve" step in the Xcode Cloud log; keep `MerconOperator.xcworkspace/xcshareddata/swiftpm/Package.resolved` committed |
 | Signing error about `aps-environment` / capabilities | App ID capabilities — `docs/IOS_DISTRIBUTION_AND_PUSH.md` A1/A2 |
 | `The bundle version must be higher` | Raise *Next Build Number* (step 4) |
 | Out of compute hours | App Store Connect → Xcode Cloud → Usage; hours reset monthly |
