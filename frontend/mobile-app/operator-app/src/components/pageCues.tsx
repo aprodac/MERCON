@@ -16,7 +16,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
-  Bell, Building2, CalendarDays, CircleAlert, CreditCard, Eye, FileText, FolderOpen, Gauge, IdCard, Inbox, Layers, LayoutGrid, Mail, Map as MapIcon, MapPin,
+  Bell, Building2, CalendarDays, Link2, CircleAlert, CreditCard, Eye, FileText, FolderOpen, Gauge, IdCard, Inbox, Layers, LayoutGrid, Mail, Map as MapIcon, MapPin,
   MessageCircle, Navigation, Phone, ReceiptText, Route, Satellite, Share2, SquareUserRound, Tag, Truck, User, UserCog, UserRound, UserRoundCog,
   Users, Wallet, Weight, Wrench, type LucideIcon,
 } from 'lucide-react-native';
@@ -46,6 +46,8 @@ const PAGE_ICONS: Record<string, LucideIcon> = {
   users: UserCog,
   profile: User,
   notifications: Bell,
+  'customer links': Link2,
+  'customer link': Link2,
 };
 
 export function pageIcon(title?: string | null): LucideIcon | null {

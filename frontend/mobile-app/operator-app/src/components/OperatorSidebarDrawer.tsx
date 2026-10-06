@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import {
   Map as MapIcon,
-  Bell, BellRing, Building2, CreditCard, FileText, FolderOpen, House, Plus, Route, Search, SquareUserRound, Tag, Truck, UserCog, Users, Wrench, X,
+  Bell, BellRing, Building2, CreditCard, FileText, FolderOpen, House, Link2, Plus, Route, Search, SquareUserRound, Tag, Truck, UserCog, Users, Wrench, X,
   type LucideIcon,
 } from 'lucide-react-native';
 import { useNotifications } from '@/features/notifications/hooks/useNotifications';
@@ -99,6 +99,7 @@ const GROUPS: MenuGroup[] = [
     items: [
       { Icon: FolderOpen, label: 'Documents', route: '/documents', badges: ['documents'], keywords: 'compliance files licence expiry papers' },
       { Icon: SquareUserRound, label: 'Customers', route: '/customers', keywords: 'clients contacts' },
+      { Icon: Link2, label: 'Customer links', route: '/links', keywords: 'tracking links share whatsapp expiry opened revoke' },
     ],
   },
   {

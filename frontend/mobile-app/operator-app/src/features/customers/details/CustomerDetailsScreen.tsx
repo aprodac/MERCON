@@ -201,10 +201,15 @@ export default function CustomerDetailsScreen() {
         <Card style={s.listCard}>
           {/* The one link that shows all of this customer's trucks */}
           <View style={[s.line, { paddingTop: 12 }]}>
-            <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+            <TouchableOpacity
+              style={{ flex: 1, minWidth: 0, gap: 1 }}
+              activeOpacity={0.6}
+              onPress={() => router.push({ pathname: '/link-details', params: { kind: 'customer', customer: cid } })}
+              accessibilityLabel="Manage the all-trucks link"
+            >
               <Text style={s.rowTitle}>All trucks</Text>
               <Text style={s.sub} numberOfLines={1}>{opensLabel(link.open_count, link.last_opened_at)}</Text>
-            </View>
+            </TouchableOpacity>
             <TouchableOpacity style={[s.round, s.roundSoft]} onPress={() => Linking.openURL(link.url!).catch(() => {})} accessibilityLabel="Open link">
               <ExternalLink size={16} color={INK} strokeWidth={2.2} />
             </TouchableOpacity>
@@ -235,6 +240,16 @@ export default function CustomerDetailsScreen() {
             );
           })}
           {live.length === 0 ? <Text style={[s.sub, s.lineBorder, { paddingVertical: 12 }]}>No trucks on the road right now.</Text> : null}
+          {/* Expiry, what each link shows, who opened it — on the Customer links page */}
+          <TouchableOpacity
+            style={[s.line, s.lineBorder]}
+            activeOpacity={0.6}
+            onPress={() => router.push({ pathname: '/links', params: { customer: cid, name } })}
+          >
+            <Text style={[s.rowTitle, { flex: 1 }]}>Manage links</Text>
+            <Text style={s.sub}>Expiry · what they show · opens</Text>
+            <ChevronRight size={16} color={MUTED} />
+          </TouchableOpacity>
         </Card>
       );
     }
