@@ -147,6 +147,7 @@ export function toCustomerListItem(
     id: raw.id,
     name: raw.name,
     phone: raw.contact_phone,
+    logoUrl: raw.logo_url ?? null,
     isActive: raw.isActive,
     createdAt: raw.createdAt,
     status: customerDisplayStatus(raw),
