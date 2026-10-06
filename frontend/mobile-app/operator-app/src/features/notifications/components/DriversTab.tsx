@@ -4,7 +4,8 @@
  * customer hasn't had yet come first under "To send"; Send opens the trip
  * with its share sheet on that set, so the WhatsApp message and the "sent"
  * record are the same as from the trip page. Sets already passed on sit
- * under "Sent".
+ * under "Sent". Tapping a card or a photo opens the photos themselves
+ * (each marked sent or not) with Send and Open trip.
  */
 import React, { useMemo } from 'react';
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Image, StyleSheet } from 'react-native';
@@ -29,7 +30,7 @@ function countLabel(list: LiveMediaItem[]): string {
   return `${list.length} items`;
 }
 
-export function DriversTab({ updates, loading, now, refreshing, onRefresh, onSend, onOpenTrip }: {
+export function DriversTab({ updates, loading, now, refreshing, onRefresh, onSend, onView }: {
   updates: DriverUpdate[];
   loading: boolean;
   now: number;
@@ -37,7 +38,8 @@ export function DriversTab({ updates, loading, now, refreshing, onRefresh, onSen
   onRefresh: () => void;
   /** Opens the trip with the share sheet on this set. */
   onSend: (u: DriverUpdate) => void;
-  onOpenTrip: (tripId: string) => void;
+  /** Opens the set's photos full screen, at `index`. */
+  onView: (u: DriverUpdate, index: number) => void;
 }) {
   const { toSend, sent } = useMemo(() => {
     const newest = [...updates].sort((a, b) => new Date(b.latest_at).getTime() - new Date(a.latest_at).getTime());
@@ -69,7 +71,7 @@ export function DriversTab({ updates, loading, now, refreshing, onRefresh, onSen
             <View>
               <SectionLabel title="To send" count={toSend.length} />
               <View style={{ gap: 10 }}>
-                {toSend.map((u) => <UpdateCard key={`${u.trip.id}:${u.key}`} u={u} when={ago(u.latest_at)} onSend={onSend} onOpenTrip={onOpenTrip} />)}
+                {toSend.map((u) => <UpdateCard key={`${u.trip.id}:${u.key}`} u={u} when={ago(u.latest_at)} onSend={onSend} onView={onView} />)}
               </View>
             </View>
           )}
@@ -78,7 +80,7 @@ export function DriversTab({ updates, loading, now, refreshing, onRefresh, onSen
             <View>
               <SectionLabel title="Sent" count={sent.length} />
               <View style={p.card}>
-                {sent.map((u, i) => <SentRow key={`${u.trip.id}:${u.key}`} u={u} first={i === 0} when={ago(u.latest_at)} onOpenTrip={onOpenTrip} />)}
+                {sent.map((u, i) => <SentRow key={`${u.trip.id}:${u.key}`} u={u} first={i === 0} when={ago(u.latest_at)} onView={onView} />)}
               </View>
             </View>
           ) : null}
@@ -102,7 +104,7 @@ function Thumb({ m, size, more }: { m: LiveMediaItem; size: number; more?: numbe
   );
 }
 
-function UpdateCard({ u, when, onSend, onOpenTrip }: { u: DriverUpdate; when: string; onSend: (u: DriverUpdate) => void; onOpenTrip: (id: string) => void }) {
+function UpdateCard({ u, when, onSend, onView }: { u: DriverUpdate; when: string; onSend: (u: DriverUpdate) => void; onView: (u: DriverUpdate, index: number) => void }) {
   const unsent = u.items.filter((m) => !u.sent_ids.includes(m.id));
   const shown = unsent.slice(0, THUMBS);
   const extra = unsent.length - shown.length;
@@ -113,7 +115,7 @@ function UpdateCard({ u, when, onSend, onOpenTrip }: { u: DriverUpdate; when: st
   const partSent = u.sent_ids.length > 0;
 
   return (
-    <TouchableOpacity style={[p.card, s.card]} onPress={() => { tap(); onOpenTrip(u.trip.id); }} activeOpacity={0.85}
+    <TouchableOpacity style={[p.card, s.card]} onPress={() => { tap(); onView(u, Math.max(0, u.items.indexOf(unsent[0]))); }} activeOpacity={0.85}
       accessibilityRole="button" accessibilityLabel={`${title}, ${u.trip.ref_id ?? ''}, ${countLabel(unsent)} to send`}>
       <View style={s.head}>
         <View style={[s.stage, u.stage === 'delay' && { backgroundColor: '#FEF3F2' }]}>
@@ -127,7 +129,11 @@ function UpdateCard({ u, when, onSend, onOpenTrip }: { u: DriverUpdate; when: st
       </View>
 
       <View style={s.thumbs}>
-        {shown.map((m, i) => <Thumb key={m.id} m={m} size={64} more={i === shown.length - 1 && extra > 0 ? extra : undefined} />)}
+        {shown.map((m, i) => (
+          <TouchableOpacity key={m.id} activeOpacity={0.85} onPress={() => { tap(); onView(u, u.items.indexOf(m)); }} accessibilityLabel={`Photo ${i + 1}`}>
+            <Thumb m={m} size={64} more={i === shown.length - 1 && extra > 0 ? extra : undefined} />
+          </TouchableOpacity>
+        ))}
       </View>
 
       {u.delay_note ? <Text style={s.note} numberOfLines={2}>“{u.delay_note}”</Text> : null}
@@ -146,11 +152,12 @@ function UpdateCard({ u, when, onSend, onOpenTrip }: { u: DriverUpdate; when: st
   );
 }
 
-function SentRow({ u, first, when, onOpenTrip }: { u: DriverUpdate; first: boolean; when: string; onOpenTrip: (id: string) => void }) {
+function SentRow({ u, first, when, onView }: { u: DriverUpdate; first: boolean; when: string; onView: (u: DriverUpdate, index: number) => void }) {
   const last = [...u.shares].sort((a, b) => new Date(b.shared_at).getTime() - new Date(a.shared_at).getTime())[0];
   const cover = u.items[0];
   return (
-    <TouchableOpacity style={[s.row, !first && p.rowBorder]} onPress={() => { tap(); onOpenTrip(u.trip.id); }} activeOpacity={0.6}>
+    <TouchableOpacity style={[s.row, !first && p.rowBorder]} onPress={() => { tap(); onView(u, 0); }} activeOpacity={0.6}
+      accessibilityRole="button" accessibilityLabel={`${STAGE_TITLE[u.stage] ?? 'Photos'}, ${u.trip.ref_id ?? ''}, sent`}>
       {cover ? <Thumb m={cover} size={40} /> : null}
       <View style={{ flex: 1, gap: 1 }}>
         <Text style={s.rowTitle} numberOfLines={1}>{STAGE_TITLE[u.stage] ?? 'Photos'} · {u.trip.ref_id ?? ''}</Text>
