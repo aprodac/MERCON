@@ -25,11 +25,31 @@ describe('describeTripStatusChange', () => {
       message: 'Trip TRP-0042 — Ahmed Ali started the trip and is driving to Jeddah Port.',
       // The push's title is the driver's name, so its text leaves the name out.
       pushBody: 'Trip TRP-0042: Started the trip and is driving to Jeddah Port.',
+      // A tap opens the trip on that stop.
+      stopId: 'p',
     });
     assert.equal(step('Scheduled', 'Loading', 'ARRIVED_AT_PICKUP')?.message, 'Trip TRP-0042 — Ahmed Ali arrived at Jeddah Port.');
     assert.equal(step('Loading', 'Loading', 'LOADING')?.title, 'Loading');
     assert.equal(step('Loading', 'InTransit', 'GOING_TO_STOP')?.message, 'Trip TRP-0042 — Ahmed Ali loaded and left Jeddah Port for Riyadh DC.');
     assert.equal(step('InTransit', 'InTransit', 'ARRIVED_AT_DELIVERY')?.message, 'Trip TRP-0042 — Ahmed Ali arrived at Riyadh DC.');
+  });
+
+  it('points each step at the stop it happened at', () => {
+    const at = (toStatus: string, toWorkflow: string, ctx = oneWay) =>
+      describeTripStatusChange({ fromStatus: 'Scheduled', toStatus, fromWorkflow: null, toWorkflow }, ctx)?.stopId;
+    assert.equal(at('Loading', 'ARRIVED_AT_PICKUP'), 'p');
+    assert.equal(at('InTransit', 'IN_TRANSIT'), 'p');
+    assert.equal(at('InTransit', 'ARRIVED_AT_DELIVERY'), 'd');
+    assert.equal(at('Loading', 'RETURN_LOADING', roundTrip), 'd');
+    assert.equal(at('InTransit', 'IN_TRANSIT_RETURN', roundTrip), 'rp');
+    assert.equal(at('InTransit', 'ARRIVED_AT_FINAL_DELIVERY', roundTrip), 'rd');
+    assert.equal(at('Completed', 'COMPLETED', roundTrip), 'rd');
+    assert.equal(
+      describeTripStatusChange({ fromStatus: 'InTransit', toStatus: 'InTransit', toWorkflow: 'IN_TRANSIT', completedStopId: 'm' }, oneWay)?.stopId,
+      'm',
+    );
+    // A state the app sent that we don't know: no stop, the trip's Stops tab.
+    assert.equal(at('InTransit', 'SOMETHING_NEW'), undefined);
   });
 
   it('says which intermediate stop was finished', () => {
@@ -85,6 +105,7 @@ describe('describeTripPhoto', () => {
       title: 'Cargo photos',
       message: 'Trip TRP-0042 — Ahmed Ali sent cargo photos at Jeddah Port.',
       pushBody: 'Trip TRP-0042: Sent cargo photos at Jeddah Port.',
+      stopId: 'p',
     });
     assert.equal(describeTripPhoto({ kind: 'pod', isVideo: false, stopId: 'd' }, oneWay).title, 'Delivery photos');
     assert.equal(

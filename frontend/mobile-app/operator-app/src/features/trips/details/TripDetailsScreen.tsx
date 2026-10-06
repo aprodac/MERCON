@@ -47,13 +47,14 @@ const MAP_H = 320;
 export default function TripDetailsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  // Links from the home's "Needs action" cards can open a tab, a message or a picker straight away.
-  const params = useLocalSearchParams<{ id: string; tab?: string; share?: string; update?: string; assign?: string; times?: string }>();
+  // Links from the home's "Needs action" cards can open a tab, a message or a picker straight away;
+  // a driver's update (push or Activity) opens on its stop (`stop`) or on the photos it sent (`photo`).
+  const params = useLocalSearchParams<{ id: string; tab?: string; share?: string; update?: string; assign?: string; times?: string; stop?: string; photo?: string }>();
   const { id } = params;
   const { trip, overview, updates, whatsappApi, tz, phase, remaining, tracking, trackingUrl, refreshTracking, loading, refreshing, error, refresh, reload } = useTripDetails(id);
   const f = useMemo(() => makeFormatters(tz), [tz]);
 
-  const [tab, setTab] = useState<Tab>(params.tab === 'stops' ? params.tab : 'details');
+  const [tab, setTab] = useState<Tab>(params.tab === 'stops' || params.stop || params.photo ? 'stops' : 'details');
   const [busy, setBusy] = useState(false);
   const [share, setShare] = useState<ShareTarget | null>(null);
   const [viewer, setViewer] = useState<{ items: ViewerItem[]; index: number; title: string; update?: DriverUpdate } | null>(null);
@@ -83,6 +84,23 @@ export default function TripDetailsScreen() {
       setShare({ type: 'update', update: u });
     }
   }
+  // `stop=<id>`: scroll the Stops tab to that stop and tint it for a few seconds.
+  const scrollRef = useRef<ScrollView>(null);
+  const tabBodyY = useRef(0);
+  const [focusStop, setFocusStop] = useState<string | null>(params.stop ?? null);
+  const scrolledToStop = useRef(false);
+  const onStopLayout = useCallback((stopId: string, y: number) => {
+    if (stopId !== params.stop || scrolledToStop.current) return;
+    scrolledToStop.current = true;
+    // After this frame, so the tab body's own position is known too.
+    setTimeout(() => {
+      scrollRef.current?.scrollTo({ y: Math.max(0, tabBodyY.current + y - insets.top - 80), animated: true });
+    }, 150);
+    setTimeout(() => setFocusStop(null), 4000);
+  }, [params.stop, insets.top]);
+  // `photo=<document id>`: open the viewer on the photo set holding it once the trip's
+  // updates arrive. Photos older than the updates window stay on the stop instead.
+  const [photoLinkDone, setPhotoLinkDone] = useState(false);
   const assignKind = params.assign === 'driver' || params.assign === 'truck' ? params.assign : null;
   const tripLoaded = !!trip;
   useEffect(() => {
@@ -224,6 +242,14 @@ export default function TripDetailsScreen() {
     else Linking.openURL(url).catch(() => {});
   };
 
+  if (params.photo && !photoLinkDone) {
+    const u = updates.find((x) => x.items.some((m) => m.id === params.photo));
+    if (u) {
+      setPhotoLinkDone(true);
+      openPhotos(u, Math.max(0, u.items.findIndex((m) => m.id === params.photo)));
+    }
+  }
+
   const quick = (kind: QuickKind) => setShare({ type: 'quick', kind });
 
   // The customer tracking link: send it, or manage it (open, expiry, what it shows, history, new link).
@@ -268,6 +294,7 @@ export default function TripDetailsScreen() {
     <View style={{ flex: 1, backgroundColor: PAGE }}>
       <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
       <ScrollView
+        ref={scrollRef}
         onScroll={(e) => { const v = e.nativeEvent.contentOffset.y > MAP_H - insets.top - 70; if (v !== pastMap) setPastMap(v); }}
         scrollEventThrottle={16}
         contentContainerStyle={{ paddingBottom: (next ? 110 : 32) + insets.bottom }}
@@ -327,7 +354,7 @@ export default function TripDetailsScreen() {
         </View>
 
         {/* 2 · tab body */}
-        <View style={{ paddingHorizontal: 16 }}>
+        <View style={{ paddingHorizontal: 16 }} onLayout={(e) => { tabBodyY.current = e.nativeEvent.layout.y; }}>
           {tab === 'stops' ? (
             <StopsTab
               trip={trip}
@@ -338,6 +365,8 @@ export default function TripDetailsScreen() {
               onSendUpdate={(u) => setShare({ type: 'update', update: u })}
               onCheckTimes={() => setCheckingTimes(true)}
               onSetPin={(st) => setPinTarget({ stop: st, label: stopName(st, stops.indexOf(st)) })}
+              focusStopId={focusStop}
+              onStopLayout={params.stop ? onStopLayout : undefined}
             />
           ) : (
             <DetailsTab

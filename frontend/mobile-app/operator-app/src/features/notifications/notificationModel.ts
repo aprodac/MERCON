@@ -74,8 +74,19 @@ export function targetFor(n: AppNotification): Href | null {
     return { pathname: '/fleet-map', params: { trip: n.entity_id } };
   }
   switch (n.entity_type) {
-    case 'Trip':
-      return { pathname: '/trip-details', params: { id: n.entity_id } };
+    case 'Trip': {
+      // A driver's update opens on the stop it happened at, or on the photos they sent.
+      const t = n.target;
+      return {
+        pathname: '/trip-details',
+        params: {
+          id: n.entity_id,
+          ...(t?.tab ? { tab: t.tab } : {}),
+          ...(t?.stopId ? { stop: t.stopId } : {}),
+          ...(t?.documentId ? { photo: t.documentId } : {}),
+        },
+      };
+    }
     case 'Driver':
       return { pathname: '/driver-details', params: { id: n.entity_id } };
     case 'Vehicle':

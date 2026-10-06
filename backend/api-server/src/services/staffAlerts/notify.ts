@@ -18,7 +18,7 @@
 import { Role } from '@prisma/client';
 import { prisma } from '../../db';
 import { logger } from '../../utils/logger';
-import { createNotification } from '../../controllers/notificationController';
+import { createNotification, type NotificationTarget } from '../../controllers/notificationController';
 import type { PushSender } from '../pushNotificationService';
 import { driverSender } from './sender';
 import {
@@ -74,7 +74,14 @@ async function loadContext(tripId: string, driverId: string, baseUrl: string | n
 }
 
 /** Sends one alert to every active Admin and Operator (each also gets a push from the driver). */
-async function notifyAllStaff(type: string, tripId: string, a: StaffAlert, sender: PushSender, repeatWithinMs?: number): Promise<void> {
+async function notifyAllStaff(
+  type: string,
+  tripId: string,
+  a: StaffAlert,
+  sender: PushSender,
+  repeatWithinMs?: number,
+  target?: NotificationTarget,
+): Promise<void> {
   if (repeatWithinMs) {
     const recent = await prisma.notification.findFirst({
       where: {
@@ -94,7 +101,7 @@ async function notifyAllStaff(type: string, tripId: string, a: StaffAlert, sende
     select: { id: true },
   });
   const push = { title: sender.name, body: a.pushBody, sender };
-  await Promise.all(staff.map((u) => createNotification(u.id, a.title, a.message, type, 'Trip', tripId, push)));
+  await Promise.all(staff.map((u) => createNotification(u.id, a.title, a.message, type, 'Trip', tripId, push, target)));
 }
 
 export async function notifyStaffOfTripStatus(
@@ -107,7 +114,18 @@ export async function notifyStaffOfTripStatus(
     const ctx = await loadContext(tripId, driverId, baseUrl);
     const a = ctx && describeTripStatusChange(change, ctx);
     if (!ctx || !a) return;
-    await notifyAllStaff(change.delayReason?.trim() ? 'DriverDelay' : 'TripUpdate', tripId, a, ctx.sender);
+    // A delay's reason is saved on the stop the truck is heading for (mobileTripController).
+    const stopId = change.delayReason?.trim()
+      ? (await prisma.tripStop.findFirst({
+          where: { tripId, deletedAt: null, actual_arrival: null },
+          orderBy: { stop_sequence: 'asc' },
+          select: { id: true },
+        }))?.id
+      : a.stopId;
+    await notifyAllStaff(change.delayReason?.trim() ? 'DriverDelay' : 'TripUpdate', tripId, a, ctx.sender, undefined, {
+      tab: 'stops',
+      ...(stopId ? { stopId } : {}),
+    });
   } catch (error) {
     logger.error({ err: error, tripId, driverId }, '[StaffAlerts] Failed to alert staff of a status update');
   }
@@ -122,7 +140,13 @@ export async function notifyStaffOfTripPhoto(
   try {
     const ctx = await loadContext(tripId, driverId, baseUrl);
     if (!ctx) return;
-    await notifyAllStaff('TripPhoto', tripId, describeTripPhoto(upload, ctx), ctx.sender, PHOTO_BATCH_MS);
+    const a = describeTripPhoto(upload, ctx);
+    // The first upload of a batch names it; the app opens the photos it belongs to.
+    await notifyAllStaff('TripPhoto', tripId, a, ctx.sender, PHOTO_BATCH_MS, {
+      tab: 'stops',
+      ...(a.stopId ? { stopId: a.stopId } : {}),
+      ...(upload.documentId ? { documentId: upload.documentId } : {}),
+    });
   } catch (error) {
     logger.error({ err: error, tripId, driverId }, '[StaffAlerts] Failed to alert staff of a trip photo');
   }

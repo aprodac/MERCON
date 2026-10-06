@@ -12,6 +12,12 @@ export interface ExpoPushMessage {
   data?: Record<string, any>;
   channelId?: string;
   priority?: 'default' | 'normal' | 'high';
+  /**
+   * iOS: 'time-sensitive' shows the push at once even when the phone holds
+   * ordinary ones back (a Focus such as Driving, the Scheduled Summary).
+   * Needs the app's Time Sensitive entitlement; without it iOS treats it as 'active'.
+   */
+  interruptionLevel?: 'passive' | 'active' | 'time-sensitive' | 'critical';
   /** iOS: lets the operator app's Notification Service Extension rewrite the push. */
   mutableContent?: boolean;
   /** Android shows the image as the notification's picture. */
@@ -51,6 +57,14 @@ const EXPO_HEADERS = {
  * so it can tell which stop it already asked about; that tag stays in the
  * database but never reaches the phone or the office trail.
  */
+/**
+ * Every driver push is about a trip they are driving now (assigned, cancelled,
+ * late, phone needs attention) — on an iPhone it must not wait for the driver's
+ * Focus or summary. Staff pushes already arrive at once as messages from the
+ * driver (Communication Notifications), so they stay as they are.
+ */
+const DRIVER_PUSH = { sound: 'default', channelId: 'default', priority: 'high', interruptionLevel: 'time-sensitive' } as const;
+
 export function visibleNotificationMessage(message: string): string {
   return message.replace(/\s*\[stop:[^\]]*\]/g, '');
 }
@@ -221,11 +235,11 @@ export async function sendDriverPushNotification(
 
     if (!notificationId) {
       // Nothing to record against — send without a trail (not used by the app today).
-      await axios.post(EXPO_PUSH_URL, targets.map((t) => ({ to: t.token, sound: 'default', title, body, data, channelId: 'default', priority: 'high' })), { headers: EXPO_HEADERS, timeout: 10000 });
+      await axios.post(EXPO_PUSH_URL, targets.map((t) => ({ to: t.token, ...DRIVER_PUSH, title, body, data })), { headers: EXPO_HEADERS, timeout: 10000 });
       return;
     }
 
-    await deliver(notificationId, targets, { sound: 'default', title, body, data, channelId: 'default', priority: 'high' });
+    await deliver(notificationId, targets, { ...DRIVER_PUSH, title, body, data });
   } catch (error: any) {
     logger.error({ err: error?.message || error, driverId }, '[PushService] Failed to send push notification');
   }
@@ -304,10 +318,11 @@ export async function retryPushDelivery(deliveryId: string): Promise<void> {
         entity_id: n.entity_id,
         notificationId: n.id,
         ...(n.entity_type === 'Trip' && n.entity_id ? { tripId: n.entity_id } : {}),
+        ...(n.target ? { target: n.target } : {}),
       },
       channelId: 'default',
       priority: 'high',
-      ...(row.userDevice ? { mutableContent: true } : {}),
+      ...(row.userDevice ? { mutableContent: true } : { interruptionLevel: DRIVER_PUSH.interruptionLevel }),
     },
   );
 }

@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { Role } from '@prisma/client';
+import { Prisma, Role } from '@prisma/client';
 import { logger } from '../utils/logger';
 import { prisma } from '../db';
 import type { DelayDetection } from '../services/tripLifecycle';
@@ -172,6 +172,17 @@ export const sendBulkCommunication = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Where inside a Trip a tap opens: the Stops tab at one stop, or the photo
+ * viewer on the batch holding one uploaded document. Saved on the row and sent
+ * in the push, so the Activity list and the push open the same place.
+ */
+export interface NotificationTarget {
+  tab?: 'stops' | 'details';
+  stopId?: string;
+  documentId?: string;
+}
+
 export const createNotification = async (
   userId: string, 
   title: string, 
@@ -181,6 +192,7 @@ export const createNotification = async (
   entity_id?: string,
   /** How the phone push differs from the in-app row (e.g. a driver's update as a message from them). */
   push?: StaffPushOptions,
+  target?: NotificationTarget,
 ) => {
   try {
     const notification = await prisma.notification.create({
@@ -190,7 +202,8 @@ export const createNotification = async (
         message,
         type,
         entity_type,
-        entity_id
+        entity_id,
+        ...(target ? { target: target as Prisma.InputJsonObject } : {}),
       }
     });
 
@@ -204,7 +217,7 @@ export const createNotification = async (
         userId,
         title,
         message,
-        { type, entity_type, entity_id, notificationId: notification.id },
+        { type, entity_type, entity_id, notificationId: notification.id, ...(target ? { target } : {}) },
         notification.id,
         push,
       ).catch((err) => logger.error({ err, userId }, '[NotificationController] Background staff push failed'));
