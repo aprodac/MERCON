@@ -346,7 +346,7 @@ export default function QuotationDetailsScreen() {
                 <TouchableOpacity key={t.id} style={[s.line, i > 0 && s.lineBorder]} activeOpacity={0.6} onPress={() => router.push({ pathname: '/trip-details', params: { id: t.id } })}>
                   <View style={s.date}>
                     <Text style={s.dateDay}>{d.getDate()}</Text>
-                    <Text style={s.dateMonth}>{d.toLocaleDateString(undefined, { month: 'short' })}</Text>
+                    <Text style={s.dateMonth}>{d.toLocaleDateString('en-GB', { month: 'short' })}</Text>
                   </View>
                   <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
                     <Text style={s.rowTitle} numberOfLines={1}>{t.ref_id ?? 'Trip'}</Text>
