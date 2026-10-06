@@ -121,6 +121,16 @@ export interface LiveRoute {
   provider: string;
 }
 
+/** The road still ahead of a trip's truck to its next stop — one route kept by the server for every screen. */
+export interface RouteAhead extends LiveRoute {
+  /** Arrival = computedAt + durationSeconds: the same on every screen. */
+  computedAt: string;
+  stopId: string;
+  /** False while a stray GPS fix is off the route (not re-routed yet). */
+  onRoute: boolean;
+  routedAt: string;
+}
+
 export const fleetLiveService = {
   async getLiveMap(): Promise<{ units: LiveUnit[]; generated_at: string }> {
     const res = await api.get<ApiResponse<{ units: LiveUnit[]; generated_at: string }>>('/vehicles/live-map');
@@ -134,6 +144,21 @@ export const fleetLiveService = {
         params: { from: `${from.lat},${from.lng}`, to: `${to.lat},${to.lng}` },
       });
       return res.data.data;
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * The road from the trip's truck to its next stop: the server keeps one route
+   * per trip (started in the truck's heading, re-routed only when it leaves it)
+   * and sends only what's still ahead. Null when there's nothing to route or
+   * routing is down — callers fall back to a straight line.
+   */
+  async getRouteAhead(tripId: string): Promise<RouteAhead | null> {
+    try {
+      const res = await api.get<ApiResponse<RouteAhead | null>>(`/vehicles/live-map/trips/${tripId}/route-ahead`);
+      return res.data.data ?? null;
     } catch {
       return null;
     }

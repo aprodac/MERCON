@@ -1309,6 +1309,23 @@ export const operatorService = {
     return data.data as TripOverview;
   },
 
+  /**
+   * The road from a trip's truck to its next stop — the server keeps one route
+   * per trip (started in the truck's heading, re-routed only when the truck
+   * leaves it) and sends only what's still ahead, so this app and the web live
+   * map show the same line, km and arrival. Null when there's nothing to route
+   * or routing is down.
+   */
+  async routeAhead(tripId: string): Promise<{ geometry: [number, number][]; distanceMeters: number; durationSeconds: number; computedAt: string; stopId: string; onRoute: boolean } | null> {
+    try {
+      const { data } = await api.get(`/vehicles/live-map/trips/${tripId}/route-ahead`, { timeout: 12_000 });
+      const r = data?.data;
+      return r && Array.isArray(r.geometry) && Number.isFinite(r.distanceMeters) ? r : null;
+    } catch {
+      return null;
+    }
+  },
+
   /** Road route between two points or through several, with its [lng, lat] geometry (null when routing is down). */
   async liveRoute(points: { lat: number; lng: number }[]): Promise<{ geometry: [number, number][]; distanceMeters: number; durationSeconds: number } | null> {
     if (points.length < 2) return null;
