@@ -159,7 +159,9 @@ services:
     restart: unless-stopped
     mem_limit: "${OSRM_MEM_LIMIT:-1g}"
     cpus: "${OSRM_CPU_LIMIT:-0.5}"
-    command: ["osrm-routed", "--algorithm", "mld", "--mmap", "/data/map.osrm"]
+    # --mmap needs its value joined (--mmap=true): on its own it swallows the next
+    # argument, the map path, and osrm-routed refuses to start.
+    command: ["osrm-routed", "--algorithm", "mld", "--mmap=true", "/data/map.osrm"]
     volumes:
       # A symlink to the live release; build-osrm.yml points it at a new one
       # and recreates this container (Docker resolves it at creation).
