@@ -67,6 +67,8 @@ export interface ActionSources {
     is_third_party?: boolean;
     carrier_name?: string | null;
     status: string;
+    /** Stops in order, as the trips list sends them — used by the Fleet map's lane search. */
+    stops?: { location_lat?: number | null; location_lng?: number | null; location?: { lat?: number | null; lng?: number | null } | null }[] | null;
   }[];
   updates: DriverUpdate[];
   expiries: ExpiryItem[];

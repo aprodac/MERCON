@@ -7,6 +7,8 @@ import {
 } from '../services/tracking/customerTracking';
 import { deliveredTripFilter, fleetTripFilter, sortFleet, summarizeMonth, toDeliveredTrip, toFleetTruck } from '../services/tracking/customerFleetTracking';
 import { renderPreviewTags, tripPreview } from '../services/tracking/trackingPreview';
+import { placeLabel, tripLinkEnds } from '../services/tracking/trackingLinksAdmin';
+import { isPublicIp, placeFromRecord } from '../services/tracking/ipPlace';
 import type { LiveTripMedia } from '../services/fleetLiveMap';
 import type { TripOverview } from '../services/tripOverview';
 import type { RouteResult } from '../services/routing/routeProvider';
@@ -51,7 +53,7 @@ const route = (distanceMeters: number, durationSeconds: number): RouteResult => 
   legs: [{ distanceMeters, durationSeconds }], provider: 'osrm',
 });
 
-const DEFAULTS: TrackingOptions = { show_deadline: false, show_delay_reason: false, show_photos: true };
+const DEFAULTS: TrackingOptions = { show_deadline: false, show_delay_reason: false, show_photos: true, show_driver: true, show_plate: true, show_position: true };
 const BRAND = { name: 'MERCON', logo_url: '/uploads/logo.png', primary_color: null, support_whatsapp: '966500000000', ask_group_url: null };
 
 const build = (
@@ -81,9 +83,9 @@ test('month summary: on time and delay reasons only when the customer sees them'
     { stops: [{ planned_arrival: null, actual_arrival: d('2026-10-03T08:00:00Z'), delay_reason: 'CustomerNotReady' }] }, // not measured
     { stops: [{ planned_arrival: null, actual_arrival: null, delay_reason: 'Traffic' }] },
   ];
-  const all = summarizeMonth('2026-10', trips, { show_deadline: true, show_delay_reason: true, show_photos: true });
+  const all = summarizeMonth('2026-10', trips, { ...DEFAULTS, show_deadline: true, show_delay_reason: true });
   assert.deepEqual(all, { month: '2026-10', trips: 4, measured: 2, on_time: 1, delayed: 3, top_reason: 'CustomerNotReady' });
-  const hidden = summarizeMonth('2026-10', trips, { show_deadline: false, show_delay_reason: false, show_photos: true });
+  const hidden = summarizeMonth('2026-10', trips, DEFAULTS);
   assert.deepEqual(hidden, { month: '2026-10', trips: 4, measured: null, on_time: null, delayed: null, top_reason: null });
 });
 
@@ -220,7 +222,7 @@ test('customer tracking', async (t) => {
     assert.deepEqual(optionsOf(null), DEFAULTS);
     assert.deepEqual(optionsOf({
       tracking_enabled: true, tracking_auto_link: false, tracking_show_deadline: true, tracking_show_delay_reason: true, tracking_show_photos: false,
-    }), { show_deadline: true, show_delay_reason: true, show_photos: false });
+    }), { ...DEFAULTS, show_deadline: true, show_delay_reason: true, show_photos: false });
   });
 
   await t.test('support number is digits only, or nothing', () => {
@@ -326,4 +328,52 @@ test('customer tracking', async (t) => {
     assert.equal(trackingLinkState(live, trip('Completed', ended(TRACKING_AFTER_END_DAYS - 1)), NOW), 'ok');
     assert.equal(trackingLinkState(live, trip('Completed', ended(TRACKING_AFTER_END_DAYS + 1)), NOW), 'expired');
   });
+
+  await t.test('link lifetime: revoked ends it; an expiry ops chose outlasts the trip finish', () => {
+    const live = { expiresAt: new Date(NOW.getTime() + 30 * 86_400_000) };
+    const done = { status: 'Completed', actual_end: new Date(NOW.getTime() - (TRACKING_AFTER_END_DAYS + 3) * 86_400_000), updatedAt: NOW };
+    assert.equal(trackingLinkState({ ...live, revokedAt: NOW }, { ...done, status: 'InTransit' }, NOW), 'expired');
+    assert.equal(trackingLinkState(live, done, NOW), 'expired');
+    assert.equal(trackingLinkState({ ...live, expiry_custom: true }, done, NOW), 'ok');
+    assert.equal(tripLinkEnds({ ...live, expiry_custom: false }, done).getTime(), done.actual_end.getTime() + TRACKING_AFTER_END_DAYS * 86_400_000);
+    assert.equal(tripLinkEnds({ ...live, expiry_custom: true }, done).getTime(), live.expiresAt.getTime());
+    assert.equal(tripLinkEnds({ ...live, expiry_custom: false }, { ...done, status: 'InTransit' }).getTime(), live.expiresAt.getTime());
+  });
+
+  await t.test('a link overrides the customer settings; null follows the customer', () => {
+    const cust = { tracking_enabled: true, tracking_auto_link: true, tracking_show_deadline: true, tracking_show_delay_reason: false, tracking_show_photos: true };
+    const view = { show_deadline: null, show_delay_reason: true, show_photos: false, show_driver: false, show_plate: true, show_position: false };
+    assert.deepEqual(optionsOf(cust, view), {
+      show_deadline: true, show_delay_reason: true, show_photos: false, show_driver: false, show_plate: true, show_position: false,
+    });
+  });
+
+  await t.test('a link can hide the driver, the plate and the truck position — the ETA stays', () => {
+    const out = build(overview(), route(300_000, 9_000), undefined, meta, { ...DEFAULTS, show_driver: false, show_plate: false, show_position: false });
+    assert.equal(out.driver_first_name, null);
+    assert.equal(out.driver_photo_url, null);
+    assert.equal(out.vehicle.plate, null);
+    assert.equal(out.vehicle.photo_url, null);
+    assert.equal(out.vehicle.type, '10 TON');
+    assert.equal(out.position, null);
+    assert.deepEqual(out.path, []);
+    assert.equal(out.ahead, null);
+    assert.ok(out.route && out.route.length > 0, 'the planned road is drawn instead');
+    assert.equal(out.eta?.seconds, 13_500);
+    assert.ok(!JSON.stringify(out).includes('VRA-3358'));
+    assert.ok(!JSON.stringify(out).includes('Umar'));
+  });
+});
+
+test('visitor place: only public addresses are looked up; records map to city and country', () => {
+  for (const ip of ['127.0.0.1', '10.1.2.3', '192.168.1.5', '172.20.0.1', '100.64.0.1', '::1', 'fd00::1', '::ffff:10.0.0.1']) {
+    assert.equal(isPublicIp(ip), false, ip);
+  }
+  for (const ip of ['5.42.200.1', '::ffff:5.42.200.1', '2a02:cb80::1']) assert.equal(isPublicIp(ip), true, ip);
+  assert.deepEqual(placeFromRecord({ city: { names: { en: 'Jeddah' } }, country: { iso_code: 'SA' } } as never), { city: 'Jeddah', country: 'SA' });
+  assert.equal(placeFromRecord({} as never), null);
+  assert.equal(placeFromRecord(null), null);
+  assert.equal(placeLabel('Jeddah', 'SA'), 'Jeddah, SA');
+  assert.equal(placeLabel(null, 'SA'), 'SA');
+  assert.equal(placeLabel(null, null), null);
 });
