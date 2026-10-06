@@ -2,7 +2,8 @@
 
 **For:** whoever owns the Apple Developer / App Store Connect / Expo accounts (Hysam).
 **Apps:** Mercon Driver (`tech.merconapp.driver`) and Mercon Operator (`tech.mercon.operator`).
-**Builds:** from **Hysam's Mac with Xcode** only (Part C). Codemagic builds Android only.
+**Builds:** from GitHub with **Xcode Cloud** — no Mac needed (`docs/XCODE_CLOUD_SETUP.md`), or
+from **Hysam's Mac with Xcode** (Part C, fallback). Codemagic builds Android only.
 
 Order: **A** (Apple Developer) → **B** (Expo push key) → **C** (build + upload on the Mac) →
 **TestFlight** → **D** (test pushes).
@@ -116,8 +117,9 @@ cd driver-app                     # or operator-app
 npx expo prebuild --platform ios --clean
 cd ios && pod install && cd ..
 ```
-The `ios/` folder is generated (git-ignored) — regenerate it with `--clean` whenever you pull
-new code or change `app.config.ts`. Don't edit files inside `ios/` by hand; changes are lost.
+The `ios/` folder is generated — regenerate it with `--clean` whenever you pull
+new code or change `app.config.ts`. (It is committed only so Xcode Cloud can find the project;
+Xcode Cloud regenerates it itself — `docs/XCODE_CLOUD_SETUP.md`.) Don't edit files inside `ios/` by hand; changes are lost.
 
 Check the push setting landed: `ios/<AppName>/<AppName>.entitlements` should contain
 `aps-environment` = **production**.
