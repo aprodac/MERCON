@@ -55,7 +55,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import {
   AlertTriangle, Compass, Info, Layers, List, LocateFixed, Map as MapIcon, MapPin, Maximize, MessageCircle, Minus, Plus, Search, X, type LucideIcon,
@@ -402,17 +402,18 @@ export default function FleetMapScreen() {
   };
   const turned = Math.abs(camera.bearing) > 1 || camera.pitch > 1;
 
-  // One road route for the selected truck: drawn on the map and used for its ETA.
+  // The selected truck's road ahead: the server's one route for this trip (the web live map shows
+  // the same), trimmed to what's left at each new GPS fix. The last answer stays up while the next loads.
   const next = unit ? nextStop(unit) : null;
   const target = next && next.lat != null && next.lng != null ? { lat: next.lat, lng: next.lng } : null;
-  // Rounded so a few metres of GPS drift don't refetch.
-  const from = unit?.position ? { lat: +unit.position.lat.toFixed(3), lng: +unit.position.lng.toFixed(3) } : null;
-  const routeQ = useQuery({
-    queryKey: ['fleet', 'route', unit?.key, from?.lat, from?.lng, target?.lat, target?.lng],
-    queryFn: () => operatorService.liveRoute([from!, target!]),
-    enabled: !!from && !!target && !!unit && onTrip(unit),
-    staleTime: 60_000,
+  const aheadQ = useQuery({
+    queryKey: ['fleet', 'route-ahead', unit?.trip?.id, next?.id, unit?.position?.recorded_at],
+    queryFn: () => operatorService.routeAhead(unit!.trip!.id),
+    enabled: !!unit?.position && !!target && !!unit && onTrip(unit),
+    placeholderData: keepPreviousData,
   });
+  // Never another trip's or stop's route while the new one loads.
+  const routeQ = { ...aheadQ, data: aheadQ.data && aheadQ.data.stopId === next?.id ? aheadQ.data : null };
   // The rest of the trip, next stop onwards — drawn faintly, and only along real roads.
   const restStops = useMemo(() => {
     const t = unit?.trip;
@@ -454,7 +455,7 @@ export default function FleetMapScreen() {
   // (at truck speed — the router times a car, and a loaded truck averages at most ~80 km/h).
   const lastStop = unit?.trip?.stops[unit.trip.stops.length - 1] ?? null;
   const restSec = restQ.data ? Math.max(restQ.data.durationSeconds, restQ.data.distanceMeters / (80 / 3.6)) : null;
-  const eta = unit && onTrip(unit) && (routeQ.isFetched || !target) ? computeEta(unit, routeQ.data ?? null, live.dataUpdatedAt || now) : null;
+  const eta = unit && onTrip(unit) && (routeQ.isFetched || !target) ? computeEta(unit, routeQ.data, routeQ.data ? Date.parse(routeQ.data.computedAt) : live.dataUpdatedAt || now) : null;
 
   const quietUnits = useMemo(() => shown.filter((u) => isSilent(u, now)), [shown, now]);
   // With nothing picked the summary (or a place's results) is up, so a sheet is open unless a focus view hides it.

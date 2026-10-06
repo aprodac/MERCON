@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { getVehicles, getVehicleById, createVehicle, updateVehicle, deleteVehicle , bulkDeleteVehicles, bulkUpdateVehicleStatus, bulkImportVehicles, getVehicleUsage, getVehicleStats, getPhysicalGpsStatusSummary } from '../controllers/vehicleController';
-import { getFleetLiveMap, getFleetLiveRoute, getFleetLiveTripMedia, getFleetLiveTripOverview } from '../controllers/fleetLiveMapController';
+import { getFleetLiveMap, getFleetLiveRoute, getFleetLiveTripMedia, getFleetLiveTripOverview, getFleetLiveRouteAhead } from '../controllers/fleetLiveMapController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles } from '../middlewares/rbac';
 import { validate } from '../middlewares/validate';
@@ -24,6 +24,8 @@ router.get('/live-map', getFleetLiveMap);
 router.get('/live-map/route', getFleetLiveRoute);
 router.get('/live-map/trips/:id/media', validate({ params: idParam }), getFleetLiveTripMedia);
 router.get('/live-map/trips/:id/overview', validate({ params: idParam }), getFleetLiveTripOverview);
+// The road ahead of the trip's truck — one shared route per trip, so every screen shows the same line and ETA.
+router.get('/live-map/trips/:id/route-ahead', validate({ params: idParam }), getFleetLiveRouteAhead);
 router.get('/', validate({ query: listQuery }), getVehicles);
 router.post('/', validate({ body: createVehicleBody }), storeInlineImages('image_url'), createVehicle);
 // Must be registered before `/:id` so the literal path isn't captured as an id.

@@ -13,6 +13,25 @@ schedule, customer tracking) comes from one place:
 | `OSRM_MAP_URL` | repo variable | Default Geofabrik GCC States (Saudi + UAE, Kuwait, Qatar, Bahrain, Oman). |
 | `OSRM_MEM_LIMIT` / `OSRM_CPU_LIMIT` | compose env | Default `1g` / `0.5`. |
 
+## The road ahead of a truck (one route per trip)
+
+`GET /vehicles/live-map/trips/:id/route-ahead` — used by the web live map,
+the trip page map and the operator app, so all three show the same line, km
+and arrival (`computedAt + durationSeconds`). `services/routing/routeAhead.ts`:
+
+- The route is asked once from the truck's position **with its heading**
+  (OSRM `bearings`, only while driving ≥ 10 km/h), so it starts on the
+  truck's side of the road — no invented U-turns at interchanges.
+- Each later fix is placed on that same route, searching forward from the last
+  spot (a cloverleaf or a road doubling back can't pull it back or ahead); only
+  the part still ahead is sent, so road already driven is never drawn.
+- A new route only when the truck really leaves it (250 m off on 2 fixes in a
+  row, or 1.5 km off at once), the next stop changes, or the route is 3 h old —
+  at most once per 30 s per trip. One stray GPS fix keeps the old route.
+- Kept in the API's memory; screens asking together share one OSRM request.
+
+Tests: `npm run test:routing` (`routeAhead.test.ts`).
+
 ## How it runs
 
 - **Build — never on the VPS.** `.github/workflows/build-osrm.yml` (monthly on

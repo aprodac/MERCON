@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import MapGL, { Layer, Source, type MapRef } from 'react-map-gl/maplibre';
 import type { StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -127,16 +127,18 @@ export default function TripMap({ tripId, className, overlay, onEta }: {
     staleTime: Infinity,
   });
 
-  const from = pos ? { lat: +pos.lat.toFixed(3), lng: +pos.lng.toFixed(3) } : null;
   const aheadTo = phase === 'active' && nextStop?.lat != null && nextStop.lng != null ? { lat: nextStop.lat, lng: nextStop.lng } : null;
   const pickupTo = phase === 'planned' && stopsWithCoords[0] ? stopsWithCoords[0] : null;
   const legTo = aheadTo ?? pickupTo;
-  const { data: leg, isFetched: legFetched } = useQuery({
-    queryKey: ['trip-route-leg', tripId, from, legTo],
-    queryFn: () => fleetLiveService.getRoute(from!, legTo!),
-    enabled: !!from && !!legTo,
-    staleTime: 60_000,
+  // The truck's road ahead: the server's one route for this trip, the same the live map and the operator app show.
+  const { data: legRaw, isFetched: legFetched } = useQuery({
+    queryKey: ['trip-route-ahead', tripId, pos?.recorded_at, nextIdx],
+    queryFn: () => fleetLiveService.getRouteAhead(tripId),
+    enabled: !!pos && !!legTo,
+    placeholderData: keepPreviousData,
   });
+  const legStopId = phase === 'active' ? nextStop?.id : data?.stops[0]?.id;
+  const leg = legRaw && legRaw.stopId === legStopId ? legRaw : null;
   const { data: restRoute } = useQuery({
     queryKey: ['trip-route-rest', tripId, nextIdx],
     queryFn: () => fleetLiveService.getRouteThrough(remaining),
@@ -145,7 +147,7 @@ export default function TripMap({ tripId, className, overlay, onEta }: {
   });
 
   const eta = useMemo(
-    () => (phase === 'active' && unit && legFetched ? computeEta(unit, leg ?? null, dataUpdatedAt || Date.now()) : null),
+    () => (phase === 'active' && unit && legFetched ? computeEta(unit, leg, leg ? Date.parse(leg.computedAt) : dataUpdatedAt || Date.now()) : null),
     [phase, unit, leg, legFetched, dataUpdatedAt],
   );
 

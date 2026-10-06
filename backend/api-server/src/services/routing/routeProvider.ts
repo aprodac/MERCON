@@ -113,13 +113,31 @@ export const MAX_ROUTE_POINTS = 25;
  * A driving route through every point in order. Used to draw a trip's
  * remaining stops on real roads instead of straight lines.
  */
-export async function getDrivingRouteThrough(points: GeoPoint[]): Promise<RouteResult> {
+export interface RouteOptions {
+  /**
+   * The way the truck at the first point is heading (degrees from north). The
+   * route then starts on the side of the road going that way — without it a
+   * truck on a divided highway or an interchange is often put on the opposite
+   * carriageway or a ramp, and the route shows a U-turn that isn't there.
+   */
+  startBearing?: number | null;
+}
+
+/** How far either side of the heading the start may snap (OSRM bearing range). */
+const START_BEARING_RANGE = 45;
+
+export async function getDrivingRouteThrough(points: GeoPoint[], options: RouteOptions = {}): Promise<RouteResult> {
   if (points.length < 2 || points.length > MAX_ROUTE_POINTS || !points.every(isFiniteCoord)) {
     throw new RoutingUnavailableError('Invalid coordinates');
   }
 
   // OSRM takes lng,lat — the reverse of how the rest of MERCON writes a point.
-  const path = `/route/v1/driving/${points.map((p) => `${p.lng},${p.lat}`).join(';')}?overview=full&geometries=geojson`;
+  let path = `/route/v1/driving/${points.map((p) => `${p.lng},${p.lat}`).join(';')}?overview=full&geometries=geojson`;
+  const b = options.startBearing;
+  if (b != null && Number.isFinite(b)) {
+    // Only the start is constrained; the other points take any direction.
+    path += `&bearings=${Math.round(((b % 360) + 360) % 360)},${START_BEARING_RANGE}${';'.repeat(points.length - 1)}`;
+  }
   const fallback = OSRM_FALLBACK_URL && OSRM_FALLBACK_URL !== OSRM_BASE_URL ? OSRM_FALLBACK_URL : null;
 
   try {
