@@ -8,7 +8,8 @@
  *                     another number) for the truck's trip.
  *   BulkStatusSheet   several picked trucks → one message per customer
  *                     (statusShare.ts), each sent to that customer's WhatsApp
- *                     number or group, or all of them as one message (our team).
+ *                     group (or, on request, their number), or all of them as
+ *                     one message (our team).
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Linking, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -106,8 +107,9 @@ export function BulkStatusSheet({ tripIds, positions, onClose }: {
   }, []);
 
   const keyOf = (m: CustomerStatusMessage) => m.customerId ?? m.customerName;
-  const send = (m: CustomerStatusMessage) => {
-    Linking.openURL(waLink(m.phone, m.text))
+  // The customer's group by default: WhatsApp opens its chat picker with the message filled in.
+  const send = (m: CustomerStatusMessage, toContact = false) => {
+    Linking.openURL(waLink(toContact ? m.phone : null, m.text))
       .then(() => setSent((prev) => new Set(prev).add(keyOf(m))))
       .catch(() => Alert.alert('Could not open WhatsApp'));
   };
@@ -137,8 +139,13 @@ export function BulkStatusSheet({ tripIds, positions, onClose }: {
                   <View style={{ flex: 1 }}>
                     <Text style={s.customer} numberOfLines={1}>{m.customerName}</Text>
                     <Text style={s.kindDetail} numberOfLines={1}>
-                      {m.tripIds.length} truck{m.tripIds.length === 1 ? '' : 's'} · to {m.phone ?? m.group ?? 'pick the chat in WhatsApp'}
+                      {m.tripIds.length} truck{m.tripIds.length === 1 ? '' : 's'} · to {m.group ? `${m.group} group` : 'customer group · pick it in WhatsApp'}
                     </Text>
+                    {m.phone ? (
+                      <TouchableOpacity onPress={() => send(m, true)} hitSlop={6} accessibilityLabel={`Send to ${m.customerName}'s contact instead`}>
+                        <Text style={s.alt}>or send to contact {m.phone}</Text>
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
                   <TouchableOpacity style={[s.send, done && s.sendDone]} onPress={() => send(m)} accessibilityLabel={`Send to ${m.customerName}`}>
                     {done ? <Check size={15} color={INK} /> : <MessageCircle size={15} color="#FFFFFF" />}
@@ -165,6 +172,7 @@ export function BulkStatusSheet({ tripIds, positions, onClose }: {
 }
 
 const s = StyleSheet.create({
+  alt: { fontSize: 12, fontWeight: '700', color: '#2449A8', marginTop: 3 },
   kindRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
   kindIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#F1F1F3', alignItems: 'center', justifyContent: 'center' },
   kindLabel: { fontSize: 15, fontWeight: '700', color: INK },
