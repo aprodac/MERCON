@@ -32,6 +32,10 @@ MERCON API ──▶ Expo push service (exp.host) ──▶ Apple APNs ──▶
 Certificates, Identifiers & Profiles → **Identifiers**:
 1. Open `tech.merconapp.driver` → **Capabilities** → tick **Push Notifications** → **Save**.
 2. Do the same for `tech.mercon.operator` (the operator app has push since 2026-10-05).
+3. On `tech.merconapp.driver` also tick **Time Sensitive Notifications** (since 2026-10-06:
+   trip pushes are sent as Time Sensitive so a Focus such as Driving or the Scheduled
+   Summary doesn't hold them back). Xcode Cloud makes a fresh profile on its own; a local
+   Xcode / EAS build needs its profile regenerated (A2). Without the tick, signing fails.
 
 If an identifier doesn't exist yet, create it (App IDs → App, explicit bundle ID) with
 Push Notifications ticked.

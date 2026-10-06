@@ -22,13 +22,17 @@ interface Props {
   onCheckTimes: () => void;
   /** Open "Set pin" for a stop still on a guessed location. */
   onSetPin: (stop: Stop) => void;
+  /** A stop to highlight — the one a tapped notification is about. */
+  focusStopId?: string | null;
+  /** Where each stop's row sits inside the tab, so the page can scroll to it. */
+  onStopLayout?: (stopId: string, y: number) => void;
 }
 
 /** Only an EXACT pin can be trusted for ETA, navigation and arrival — anything else needs one. */
 export const needsPin = (st: Stop) =>
   st.location_coordinate_precision !== 'EXACT' || !Number.isFinite(st.location_lat) || !(st.location_lat || st.location_lng);
 
-export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, onCheckTimes, onSetPin }: Props) {
+export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, onCheckTimes, onSetPin, focusStopId, onStopLayout }: Props) {
   const stops = sortedStops(trip);
   const nextIdx = phase === 'active' ? stops.findIndex((s) => !s.actual_arrival) : -1;
   const docs = trip.documents ?? [];
@@ -77,7 +81,11 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
           : st.planned_arrival ? `due ${f.smart(st.planned_arrival)}` : 'no time planned';
 
         return (
-          <View key={st.id} style={[s.row, isNext && s.rowNext]}>
+          <View
+            key={st.id}
+            style={[s.row, isNext && s.rowNext, st.id === focusStopId && s.rowFocus]}
+            onLayout={onStopLayout ? (e) => onStopLayout(st.id, e.nativeEvent.layout.y) : undefined}
+          >
             <View style={s.rail}>
               <View style={[s.bubble, { backgroundColor: bubbleBg, borderColor: bubbleBorder }, isNext && s.bubbleNext]}>
                 {done ? <Check size={13} color={Colors.white} strokeWidth={3.2} /> : (
@@ -184,6 +192,7 @@ const s = StyleSheet.create({
   muted: { fontSize: 12, color: MUTED, marginTop: 2 },
   row: { flexDirection: 'row', gap: 12, paddingTop: 8, marginHorizontal: -6, paddingHorizontal: 6, borderRadius: 14 },
   rowNext: { backgroundColor: '#F3F6FD' },
+  rowFocus: { backgroundColor: '#FFF4E5' },
   rail: { alignItems: 'center', width: 26 },
   bubble: { width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   bubbleNext: { shadowColor: '#2F5FD0', shadowOpacity: 0.35, shadowRadius: 6, shadowOffset: { width: 0, height: 0 }, elevation: 3 },

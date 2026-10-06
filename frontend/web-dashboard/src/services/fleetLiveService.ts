@@ -95,6 +95,29 @@ export interface LiveTripMedia {
 export type TripPhase = 'planned' | 'active' | 'done' | 'cancelled';
 
 /** Mirrors `TripOverview` in backend/api-server/src/services/tripOverview.ts. */
+/** Where a trip's truck stood still 5 min+ — at one of its stops, or a break on the way (API tracking/tripHalts.ts). */
+export interface TripHalt {
+  lat: number;
+  lng: number;
+  from: string;
+  to: string;
+  minutes: number;
+  kind: 'at_stop' | 'break';
+  stop_id: string | null;
+  ongoing: boolean;
+  /** "Route 40, near Al Quwayiyah" for a break, once the API has looked it up. */
+  place?: string | null;
+}
+
+/** The trip so far, split into driving, at stops and breaks (minutes). */
+export interface TripTimeSplit {
+  total_min: number;
+  driving_min: number;
+  at_stops_min: number;
+  breaks_min: number;
+  breaks: number;
+}
+
 export interface TripOverview {
   trip_id: string;
   status: string;
@@ -105,6 +128,9 @@ export interface TripOverview {
   /** [lng, lat] points driven, oldest first. */
   path: [number, number][];
   path_distance_m: number | null;
+  /** Absent from an older API. */
+  halts?: TripHalt[];
+  time_split?: TripTimeSplit | null;
   checks: {
     driver_assigned: boolean;
     truck_assigned: boolean;
@@ -121,6 +147,16 @@ export interface LiveRoute {
   provider: string;
 }
 
+/** The road still ahead of a trip's truck to its next stop — one route kept by the server for every screen. */
+export interface RouteAhead extends LiveRoute {
+  /** Arrival = computedAt + durationSeconds: the same on every screen. */
+  computedAt: string;
+  stopId: string;
+  /** False while a stray GPS fix is off the route (not re-routed yet). */
+  onRoute: boolean;
+  routedAt: string;
+}
+
 export const fleetLiveService = {
   async getLiveMap(): Promise<{ units: LiveUnit[]; generated_at: string }> {
     const res = await api.get<ApiResponse<{ units: LiveUnit[]; generated_at: string }>>('/vehicles/live-map');
@@ -134,6 +170,21 @@ export const fleetLiveService = {
         params: { from: `${from.lat},${from.lng}`, to: `${to.lat},${to.lng}` },
       });
       return res.data.data;
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * The road from the trip's truck to its next stop: the server keeps one route
+   * per trip (started in the truck's heading, re-routed only when it leaves it)
+   * and sends only what's still ahead. Null when there's nothing to route or
+   * routing is down — callers fall back to a straight line.
+   */
+  async getRouteAhead(tripId: string): Promise<RouteAhead | null> {
+    try {
+      const res = await api.get<ApiResponse<RouteAhead | null>>(`/vehicles/live-map/trips/${tripId}/route-ahead`);
+      return res.data.data ?? null;
     } catch {
       return null;
     }

@@ -106,6 +106,7 @@ import { initDriverWatch } from './services/tracking/driverWatch';
 import { initTripMediaRetention } from './services/media/tripMediaRetention';
 import { initDocumentTrashPurge } from './services/documentTrash';
 import { initQuotationExpiryAlerts } from './services/quotationExpiryAlerts';
+import { initEtaWatcher } from './services/tracking/etaWatcher';
 import { driverSocketConnected, driverSocketDisconnected } from './services/driverPhone/presence';
 
 import helmet from 'helmet';
@@ -339,6 +340,7 @@ initDriverWatch();
 initTripMediaRetention();
 initDocumentTrashPurge();
 initQuotationExpiryAlerts();
+initEtaWatcher();
 
 /**
  * Integration secrets key (docs/CLIENT_SECRETS.md). The deploy refuses to run

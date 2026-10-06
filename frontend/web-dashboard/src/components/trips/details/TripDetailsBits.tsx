@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlarmClock, CalendarCheck, Check, CircleAlert, FileText, ListOrdered, Phone, PlayCircle, Plus, Receipt, Route, Smartphone, Timer, Truck, UploadCloud, UserRound, X } from 'lucide-react';
+import { AlarmClock, CalendarCheck, Check, CircleAlert, Coffee, FileText, ListOrdered, Phone, PlayCircle, Plus, Receipt, Route, Smartphone, Timer, Truck, UploadCloud, UserRound, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -499,6 +499,41 @@ export function PaperworkSection({ documents, onUpload, onActivity }: { document
           })}
         </ul>
       )}
+    </div>
+  );
+}
+
+/**
+ * The trip on the road so far: driving vs at stops vs breaks, and each break
+ * on the way — when and how long (from the driver app's GPS; API tripHalts.ts).
+ */
+export function TimeOnRoad({ overview, formatTime }: { overview: TripOverview | undefined; formatTime: (iso: string) => string }) {
+  const split = overview?.time_split;
+  if (!split || split.total_min < 1) return null;
+  const breaks = (overview?.halts ?? []).filter((h) => h.kind === 'break');
+  const d = (min: number) => formatDuration(min * 60);
+  return (
+    <div className="space-y-2 border-b border-black/[0.06] p-3 dark:border-white/10">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
+        <span className="font-semibold text-foreground">On the road {d(split.total_min)}</span>
+        <span>Driving {d(split.driving_min)}</span>
+        <span>{split.breaks ? `${split.breaks} ${split.breaks === 1 ? 'break' : 'breaks'} ${d(split.breaks_min)}` : 'No breaks'}</span>
+        {split.at_stops_min ? <span>At stops {d(split.at_stops_min)}</span> : null}
+      </div>
+      {breaks.length ? (
+        <ul className="space-y-1">
+          {breaks.map((h) => (
+            <li key={h.from} className="flex items-center gap-2 text-[12px]">
+              <Coffee className={cn('size-3.5 shrink-0', h.ongoing ? 'text-amber-600' : 'text-muted-foreground')} />
+              <span className="flex-1 truncate tabular-nums text-foreground">
+                {formatTime(h.from)} – {h.ongoing ? 'now' : formatTime(h.to)}
+                {h.place ? <span className="text-muted-foreground"> · {h.place}</span> : null}
+              </span>
+              <span className={cn('font-semibold tabular-nums', h.ongoing ? 'text-amber-600' : 'text-foreground')}>{d(h.minutes)}{h.ongoing ? ' so far' : ''}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }

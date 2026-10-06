@@ -162,6 +162,8 @@ export function makeTime(tz: string) {
 export type TimeFmt = ReturnType<typeof makeTime>;
 
 export const tripDayIso = (t: OperatorTrip) => t.planned_start || t.createdAt || null;
+/** History is about when a trip finished: delivered time, else the planned day (cancelled trips). */
+export const finishedDayIso = (t: OperatorTrip) => t.actual_end || tripDayIso(t);
 
 /** "Today", "Tomorrow", "Yesterday" or "Fri 26 Sep". */
 export function dayLabel(key: string, todayKey: string, f: TimeFmt): string {
@@ -189,10 +191,10 @@ export function dayRange(todayKey: string, before: number, after: number): strin
 }
 
 /** Groups trips into day sections (newest day first for history, soonest first otherwise). */
-export function groupByDay(trips: OperatorTrip[], f: TimeFmt, todayKey: string, newestFirst: boolean) {
+export function groupByDay(trips: OperatorTrip[], f: TimeFmt, todayKey: string, newestFirst: boolean, dayOf = tripDayIso) {
   const map = new Map<string, OperatorTrip[]>();
   for (const t of trips) {
-    const iso = tripDayIso(t);
+    const iso = dayOf(t);
     const key = iso ? f.dayKey(iso) : 'none';
     map.set(key, [...(map.get(key) ?? []), t]);
   }
@@ -201,8 +203,8 @@ export function groupByDay(trips: OperatorTrip[], f: TimeFmt, todayKey: string, 
     key: k,
     title: k === 'none' ? 'No date' : dayLabel(k, todayKey, f),
     data: map.get(k)!.sort((a, b) => {
-      const ta = new Date(tripDayIso(a) ?? 0).getTime();
-      const tb = new Date(tripDayIso(b) ?? 0).getTime();
+      const ta = new Date(dayOf(a) ?? 0).getTime();
+      const tb = new Date(dayOf(b) ?? 0).getTime();
       return newestFirst ? tb - ta : ta - tb;
     }),
   }));

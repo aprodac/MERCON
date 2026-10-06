@@ -21,11 +21,12 @@
 import type { PrismaClient } from '@prisma/client';
 import { logger } from '../../utils/logger';
 import { getDrivingRouteThrough, MAX_ROUTE_POINTS, RoutingUnavailableError, type GeoPoint, type RouteResult } from '../routing/routeProvider';
+import { getRouteAhead } from '../routing/routeAhead';
 import { SHARE_LINK_TTL_DAYS, newShareToken } from '../operatorInbox';
 import { loadTripOverview, thinPath, type TripOverview, type TripPhase } from '../tripOverview';
 import { loadTripMedia, type LiveStop, type LiveTripMedia } from '../fleetLiveMap';
 import { publicImage } from './publicImages';
-import { whatsAppGroupUrl } from '@mercon/shared-types';
+import { whatsAppGroupUrl, TRUCK_MAX_KPH, truckDriveSeconds } from '@mercon/shared-types';
 import { logLinkOpen } from './linkOpens';
 
 export const TRACKING_UPDATE_KEY = 'tracking';
@@ -35,9 +36,10 @@ export const TRACKING_AFTER_END_DAYS = 7;
 /**
  * The routing provider times a car. A loaded truck averages less, so an ETA
  * never assumes a faster average than this — a customer holds us to the time
- * we show, and arriving early is fine where arriving late is not.
+ * we show, and arriving early is fine where arriving late is not. The one
+ * shared number (@mercon/shared-types fleetRules), same as every map.
  */
-export const TRUCK_MAX_AVG_KMH = 80;
+export const TRUCK_MAX_AVG_KMH = TRUCK_MAX_KPH;
 /** Past this, a position is too old to base an ETA on. */
 export const ETA_STALE_MS = 30 * 60_000;
 /** Minutes of slack before an arrival counts as late — same as the dashboard. */
@@ -198,10 +200,7 @@ const optionsKey = (o: TrackingOptions) =>
 // ── Pure helpers ────────────────────────────────────────────────────────────
 
 /** Drive time a truck needs: the provider's time, but never faster than TRUCK_MAX_AVG_KMH on average. */
-export function truckSeconds(distanceMeters: number, providerSeconds: number): number {
-  const floor = distanceMeters / (TRUCK_MAX_AVG_KMH / 3.6);
-  return Math.round(Math.max(providerSeconds, floor));
-}
+export const truckSeconds = truckDriveSeconds;
 
 export function firstName(full: string | null | undefined): string | null {
   const f = (full ?? '').trim().split(/\s+/)[0];
@@ -443,11 +442,11 @@ export function buildPublicTracking(input: {
 // ── Routes and payloads, cached ─────────────────────────────────────────────
 // A tracking page is polled by every customer who has it open, and the
 // customer-wide page asks for every truck at once. Routing goes to a
-// third-party provider, so answers are cached: the road ahead per ~1 km of
-// truck movement, the whole-trip route per trip, and the finished payload per
+// third-party provider, so answers are cached: the road to the next stop is
+// the operators' shared route (routeAhead.ts), the routes through the stops
+// are kept per trip, and the finished payload per
 // trip for a few seconds.
 
-const AHEAD_TTL_MS = 5 * 60_000;
 const ALL_TTL_MS = 6 * 60 * 60_000;
 const PAYLOAD_TTL_MS = 20_000;
 const CACHE_MAX = 500;
@@ -470,6 +469,41 @@ async function cachedRoute(key: string, ttl: number, points: GeoPoint[]): Promis
   }
   remember(routeCache, key, { at: Date.now(), route });
   return route;
+}
+
+/**
+ * The truck's road through its remaining stops, as the customer sees it. To
+ * the next stop it is the operators' own shared route (routeAhead.ts: one
+ * route per trip, started in the truck's heading, trimmed as it drives, the
+ * arrival held steady) — so the customer's ETA is the very one on the
+ * operators' maps. From there on, the route through the later stops (cached
+ * per trip). Null when the next stop can't be routed.
+ */
+async function roadAhead(
+  tripId: string,
+  pos: { lat: number; lng: number; heading_deg: number | null; speed_kph: number | null; accuracy_m: number | null },
+  remaining: LiveStop[],
+  now: Date,
+): Promise<RouteResult | null> {
+  const next = remaining[0];
+  if (!next || next.lat == null || next.lng == null || (next.lat === 0 && next.lng === 0)) return null;
+  let first;
+  try {
+    first = await getRouteAhead(tripId, pos, { id: next.id, lat: next.lat, lng: next.lng }, now.getTime());
+  } catch (err) {
+    if (!(err instanceof RoutingUnavailableError)) logger.warn({ err }, '[tracking] road ahead failed');
+    return null;
+  }
+  const later = remaining.map(pointOf).filter((p): p is GeoPoint => !!p);
+  const restKey = `rest:${tripId}:${later.map((p) => `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`).join(';')}`;
+  const rest = later.length >= 2 ? await cachedRoute(restKey, ALL_TTL_MS, later) : null;
+  return {
+    geometry: [...first.geometry, ...(rest?.geometry.slice(1) ?? [])],
+    distanceMeters: first.distanceMeters + (rest?.distanceMeters ?? 0),
+    durationSeconds: first.durationSeconds + (rest?.durationSeconds ?? 0),
+    legs: [{ distanceMeters: first.distanceMeters, durationSeconds: first.durationSeconds }, ...(rest?.legs ?? [])],
+    provider: first.provider,
+  };
 }
 
 /** For tests. */
@@ -549,11 +583,7 @@ export async function buildTripTracking(
   const pos = overview.unit?.position;
   if (pos && (overview.phase === 'active' || overview.phase === 'planned')) {
     const from = overview.phase === 'planned' ? 0 : overview.next_stop_index;
-    const remaining = from == null ? [] : overview.stops.slice(from).map(pointOf).filter((p): p is GeoPoint => !!p);
-    if (remaining.length) {
-      const key = `ahead:${tripId}:${from}:${pos.lat.toFixed(2)},${pos.lng.toFixed(2)}`;
-      ahead = await cachedRoute(key, AHEAD_TTL_MS, [{ lat: pos.lat, lng: pos.lng }, ...remaining]);
-    }
+    ahead = from == null ? null : await roadAhead(tripId, pos, overview.stops.slice(from), now);
   }
 
   // Photos go out as links only — an inline (base64) image is moved to a file first.

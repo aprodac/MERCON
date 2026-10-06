@@ -189,6 +189,30 @@ export interface LiveGpsFix {
   fresh: boolean;
 }
 
+/** Where a trip's truck stood still 5 min+ — at one of its stops, or a break on the way (API tracking/tripHalts.ts). */
+export interface TripHalt {
+  lat: number;
+  lng: number;
+  from: string;
+  to: string;
+  minutes: number;
+  kind: 'at_stop' | 'break';
+  stop_id: string | null;
+  /** Still standing there. */
+  ongoing: boolean;
+  /** "Route 40, near Al Quwayiyah" for a break, once the API has looked it up. */
+  place?: string | null;
+}
+
+/** The trip so far, split into driving, at stops and breaks (minutes). */
+export interface TripTimeSplit {
+  total_min: number;
+  driving_min: number;
+  at_stops_min: number;
+  breaks_min: number;
+  breaks: number;
+}
+
 export interface TripOverview {
   trip_id: string;
   status: string;
@@ -203,6 +227,9 @@ export interface TripOverview {
   /** [lng, lat] points driven, oldest first. */
   path: [number, number][];
   path_distance_m: number | null;
+  /** Absent from an older API. */
+  halts?: TripHalt[];
+  time_split?: TripTimeSplit | null;
   checks: {
     driver_assigned: boolean;
     truck_assigned: boolean;
@@ -1307,6 +1334,23 @@ export const operatorService = {
   async tripOverview(id: string): Promise<TripOverview> {
     const { data } = await api.get(`/vehicles/live-map/trips/${id}/overview`);
     return data.data as TripOverview;
+  },
+
+  /**
+   * The road from a trip's truck to its next stop — the server keeps one route
+   * per trip (started in the truck's heading, re-routed only when the truck
+   * leaves it) and sends only what's still ahead, so this app and the web live
+   * map show the same line, km and arrival. Null when there's nothing to route
+   * or routing is down.
+   */
+  async routeAhead(tripId: string): Promise<{ geometry: [number, number][]; distanceMeters: number; durationSeconds: number; computedAt: string; stopId: string; onRoute: boolean } | null> {
+    try {
+      const { data } = await api.get(`/vehicles/live-map/trips/${tripId}/route-ahead`, { timeout: 12_000 });
+      const r = data?.data;
+      return r && Array.isArray(r.geometry) && Number.isFinite(r.distanceMeters) ? r : null;
+    } catch {
+      return null;
+    }
   },
 
   /** Road route between two points or through several, with its [lng, lat] geometry (null when routing is down). */

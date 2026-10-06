@@ -854,6 +854,11 @@ model TripLocation {
   accuracy_m Float?
   recordedAt DateTime @db.Timestamptz
   createdAt  DateTime @default(now()) @db.Timestamptz
+  // Which GPS sent it: "driver" (the driver app) or "vehicle" (the truck's
+  // tracker, saved during a trip by services/icces/fleetPoller.ts so a trip
+  // has a path and its stops/breaks even when the phone isn't sending).
+  // Readers that mean the phone filter on "driver".
+  source     String   @default("driver")
 
   @@index([tripId, recordedAt])
 }
@@ -2290,6 +2295,10 @@ model Notification {
   is_read     Boolean @default(false)
   entity_type String? // "Trip", "Driver", "Vehicle"
   entity_id   String? @db.Uuid
+  // Where inside the entity a tap should open, e.g. {"tab":"stops","stopId":"…"}
+  // or {"tab":"stops","documentId":"…"} for the photos a driver sent. Null = the
+  // entity's page as before. Shape: NotificationTarget (notificationController).
+  target      Json?
 
   // Driver notifications only: when the driver tapped the push (opened_at) and
   // when they first saw it in the app (read_at). is_read stays for old clients.
@@ -2582,4 +2591,34 @@ model VehicleCompatibilityRule {
   updatedAt                  DateTime @default(now()) @updatedAt @db.Timestamptz
 
   @@index([serviceVehicleClassCode])
+}
+
+// What the ETA said, and when, for a stop not yet reached — kept to measure
+// how good ETAs are (System health → ETA accuracy): once the truck arrives,
+// predicted vs actual arrival per stop, by how far ahead it was predicted.
+// Written by services/tracking/etaWatcher.ts at most every 10 min per stop;
+// rows older than 120 days are removed there. No relations on purpose: a
+// deleted trip just leaves rows the report no longer joins to.
+model EtaPrediction {
+  id               String   @id @default(uuid()) @db.Uuid
+  tripId           String   @db.Uuid
+  stopId           String   @db.Uuid
+  predictedAt      DateTime @default(now()) @db.Timestamptz
+  predictedArrival DateTime @db.Timestamptz
+  // Road distance left, metres.
+  distanceMeters   Int
+  // True when there was no road route and the ETA was a straight-line estimate.
+  approx           Boolean  @default(false)
+
+  @@index([stopId])
+  @@index([predictedAt])
+}
+
+// Place names for map points ("Route 40, near Al Quwayiyah"), so a break on a
+// trip reads as a place, not coordinates. Looked up once per ~100 m (key:
+// lat,lng to 3 decimals) from OpenStreetMap and kept (services/geo/placeNames.ts).
+model PlaceName {
+  key       String   @id
+  name      String
+  createdAt DateTime @default(now()) @db.Timestamptz
 }

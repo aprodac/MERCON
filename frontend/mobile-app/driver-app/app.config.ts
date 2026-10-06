@@ -90,6 +90,12 @@ export default (): ExpoConfig => ({
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
     },
+    // Trip pushes are sent as Time Sensitive (pushNotificationService on the
+    // API), so a Focus such as Driving or the Scheduled Summary doesn't hold
+    // them back. Without this entitlement iOS delivers them as ordinary pushes.
+    entitlements: {
+      'com.apple.developer.usernotifications.time-sensitive': true,
+    },
   },
   android: {
     adaptiveIcon: {

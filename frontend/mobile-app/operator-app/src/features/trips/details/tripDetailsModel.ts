@@ -6,8 +6,8 @@
  */
 import { STAGE_TITLE } from '../../dashboard/actions/actionModel';
 import type { TripStatus } from '@mercon/mobile-shared/lib/trips';
-import { formatTripStatusMessage, type StatusTrip } from '@mercon/shared-types';
-import { operatorService, type DriverUpdate, type OperatorTripDetail, type OperatorTripStop, type TripPhase } from '../../../lib/operator';
+import { formatTripStatusMessage, haltActivityLabel, insertByTime, type StatusTrip } from '@mercon/shared-types';
+import { operatorService, type DriverUpdate, type OperatorTripDetail, type OperatorTripStop, type TripHalt, type TripPhase } from '../../../lib/operator';
 import { niceName } from '../create/components/ui';
 
 export type Stop = OperatorTripStop;
@@ -548,28 +548,47 @@ export function quickMessage(kind: QuickKind, { trip, phase, f, position, remain
 
 // ── Activity log ──────────────────────────────────────────────────────────────
 
-export function activitySteps(t: OperatorTripDetail, f: Formatters): { label: string; time: string | null; done: boolean; tone?: Tone }[] {
-  const steps: { label: string; time: string | null; done: boolean; tone?: Tone }[] = [
-    { label: 'Trip created', time: f.dateTime(t.createdAt) || null, done: true },
+export type ActivityStep = { label: string; time: string | null; done: boolean; tone?: Tone; at: number | null };
+
+/**
+ * The trip's activity: created, started, each stop (arrived, delay, left), and
+ * from the GPS history every stop and break on the way with how long it took
+ * (the API's trip overview `halts`), in time order.
+ */
+export function activitySteps(t: OperatorTripDetail, f: Formatters, halts?: TripHalt[] | null): ActivityStep[] {
+  const ms = (iso: string | null | undefined) => (iso ? new Date(iso).getTime() : null);
+  const steps: ActivityStep[] = [
+    { label: 'Trip created', time: f.dateTime(t.createdAt) || null, done: true, at: ms(t.createdAt) },
   ];
-  if (t.actual_start) steps.push({ label: 'Trip started', time: f.dateTime(t.actual_start), done: true });
+  if (t.actual_start) steps.push({ label: 'Trip started', time: f.dateTime(t.actual_start), done: true, at: ms(t.actual_start) });
+  const names = new Map<string, string>();
   sortedStops(t).forEach((s, i) => {
     const name = stopName(s, i);
+    names.set(s.id, name);
     steps.push({
       label: s.actual_arrival ? `Arrived at ${name}` : `Planned arrival at ${name}`,
       time: f.dateTime(s.actual_arrival || s.planned_arrival) || null,
       done: !!s.actual_arrival,
+      at: ms(s.actual_arrival),
     });
     if (s.delay_reason || s.delay_note) {
-      steps.push({ label: `Delay at ${name}: ${delayText(s)}`, time: f.dateTime(s.delay_logged_at) || null, done: true, tone: 'red' });
+      steps.push({ label: `Delay at ${name}: ${delayText(s)}`, time: f.dateTime(s.delay_logged_at) || null, done: true, tone: 'red', at: ms(s.delay_logged_at) });
     }
-    if (s.actual_departure) steps.push({ label: `Left ${name}`, time: f.dateTime(s.actual_departure), done: true });
+    if (s.actual_departure) steps.push({ label: `Left ${name}`, time: f.dateTime(s.actual_departure), done: true, at: ms(s.actual_departure) });
   });
-  if (t.status === 'Cancelled') steps.push({ label: 'Trip cancelled', time: f.dateTime(t.updatedAt) || null, done: true, tone: 'gray' });
+  if (t.status === 'Cancelled') steps.push({ label: 'Trip cancelled', time: f.dateTime(t.updatedAt) || null, done: true, tone: 'gray', at: ms(t.updatedAt) });
   else steps.push({
     label: t.status === 'Completed' || t.status === 'Invoiced' ? 'Trip completed' : 'Expected finish',
     time: f.dateTime(t.actual_end || t.planned_end) || null,
     done: t.status === 'Completed' || t.status === 'Invoiced',
+    at: t.status === 'Completed' || t.status === 'Invoiced' ? ms(t.actual_end) : null,
   });
-  return steps;
+  const fromGps: ActivityStep[] = (halts ?? []).map((h) => ({
+    label: haltActivityLabel(h, h.stop_id ? names.get(h.stop_id) : null),
+    time: `${f.dateTime(h.from)} – ${h.ongoing ? 'now' : f.time(h.to)}`,
+    done: true,
+    tone: h.kind === 'break' ? (h.ongoing ? 'amber' : 'gray') : undefined,
+    at: ms(h.from),
+  }));
+  return insertByTime(steps, fromGps);
 }

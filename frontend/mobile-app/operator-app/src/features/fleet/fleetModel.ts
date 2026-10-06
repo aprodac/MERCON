@@ -1,39 +1,35 @@
 /**
- * Pure helpers for the Fleet map, ported from the web live map
- * (web-dashboard lib/fleetLive.ts and lib/placeSearch.ts) so both apps answer
- * the same questions the same way: which filter a truck is in, what a search
- * matches, where a city is, the ETA to the next stop and the WhatsApp text.
+ * Pure helpers for the Fleet map. The rules themselves — on trip / delayed /
+ * free, silent GPS, late, stopped long, the ETA and its estimate, truck
+ * speed, what counts as late — are the shared ones in @mercon/shared-types
+ * fleetRules, the very code the web live map and the API's late alerts run.
+ * What's here is the phone's own: its filters, search, city lookup, labels.
  */
+import {
+  formatDriveTime,
+  haversineKm,
+  isDelayed,
+  isFree,
+  isLongStop,
+  isSilent,
+  located,
+  onTrip,
+  punctuality as sharedPunctuality,
+} from '@mercon/shared-types';
 import type { LiveUnit } from '../../lib/operator';
 import { SAUDI_CITY_COORDS } from '../trips/services/travelTimeService';
 
+export {
+  computeEta, feedsApart, FEEDS_APART_M, formatKm, haversineKm, isDelayed, isFree, isLongStop, isSilent, lateMin, located,
+  LONG_STOP_MIN, nextStop, onTrip, stoppedMin, truckDriveSeconds, type EtaInfo,
+} from '@mercon/shared-types';
+
+/** "45 min" · "2 h 5 min" · "3 d 4 h" (shared fleetRules). */
+export const formatDuration = formatDriveTime;
+
 export type FleetFilter = 'all' | 'on_trip' | 'delayed' | 'free' | 'free_soon' | 'long_stop' | 'silent';
 
-/** GPS older than this counts as silent (same threshold as Home's Needs action). */
-const QUIET_MS = 30 * 60_000;
-
-export const onTrip = (u: LiveUnit) => !!u.trip && u.trip.phase !== 'upcoming';
-export const isDelayed = (u: LiveUnit) => u.trip?.phase === 'delayed';
-export const isFree = (u: LiveUnit) => !u.trip || u.trip.phase === 'upcoming';
-export function isSilent(u: LiveUnit, now = Date.now()): boolean {
-  const seen = u.position?.recorded_at ? new Date(u.position.recorded_at).getTime() : 0;
-  return !u.position || now - seen > QUIET_MS;
-}
-
-/** Has a real fix (not missing, not the 0,0 a dead tracker reports). */
-export const located = (u: LiveUnit) =>
-  !!u.position && Number.isFinite(u.position.lat) && Number.isFinite(u.position.lng) && !(u.position.lat === 0 && u.position.lng === 0);
-
 // ── What needs a look: late, ending soon, stopped long, feeds apart ─────────
-
-/** Minutes a delayed truck is past its next stop's planned arrival; null when not late or unknown. */
-export function lateMin(u: LiveUnit, now = Date.now()): number | null {
-  if (!isDelayed(u)) return null;
-  const due = nextStop(u)?.planned_arrival;
-  if (!due) return null;
-  const min = Math.round((now - new Date(due).getTime()) / 60000);
-  return min > 0 ? min : null;
-}
 
 /** "+40m" · "+2h 10m" · "+1d 3h" — compact, for a chip on the map. */
 export function lateText(min: number): string {
@@ -66,28 +62,6 @@ export function isFreeSoon(u: LiveUnit, now = Date.now()): boolean {
   const at = freeAt(u);
   return at != null && at >= now - 15 * 60_000 && at <= now + FREE_SOON_MIN * 60_000;
 }
-
-/** Stopped this long on a running trip, away from its stops, is worth a look. */
-export const LONG_STOP_MIN = 30;
-/** Within this of one of its stops a truck is working, not stuck. */
-const AT_STOP_KM = 0.5;
-
-/** Minutes a running trip's truck has stood still (from the driver app's GPS); null when moving or unknown. */
-export function stoppedMin(u: LiveUnit, now = Date.now()): number | null {
-  if (!u.stopped_since || u.motion !== 'idle') return null;
-  return Math.max(0, Math.round((now - new Date(u.stopped_since).getTime()) / 60000));
-}
-
-/** Stopped 30 min+ on a running trip, and not at one of its stops — a breakdown or an unplanned stop. */
-export function isLongStop(u: LiveUnit, now = Date.now()): boolean {
-  const min = stoppedMin(u, now);
-  if (min == null || min < LONG_STOP_MIN || !onTrip(u) || !u.position) return false;
-  return !(u.trip?.stops ?? []).some((x) => x.lat != null && x.lng != null && haversineKm(u.position!, { lat: x.lat, lng: x.lng }) <= AT_STOP_KM);
-}
-
-/** Tracker and driver phone both live but over a kilometre apart — the driver may not be with the truck. */
-export const FEEDS_APART_M = 1000;
-export const feedsApart = (u: LiveUnit) => (u.feeds_gap_m ?? 0) > FEEDS_APART_M;
 
 /** "45m" · "2h 5m" — how long, compact. */
 export function minText(min: number): string {
@@ -122,31 +96,6 @@ export function unitPriority(u: LiveUnit): number {
   return base + (u.motion === 'moving' ? 5 : u.motion === 'idle' ? 3 : 0);
 }
 
-export const nextStop = (u: LiveUnit) => (u.trip && u.trip.next_stop_index != null ? u.trip.stops[u.trip.next_stop_index] ?? null : null);
-
-export function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
-  const toRad = (x: number) => (x * Math.PI) / 180;
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
-  return 2 * 6371 * Math.asin(Math.sqrt(h));
-}
-
-export function formatKm(km: number): string {
-  if (km < 1) return `${Math.round(km * 1000)} m`;
-  return km < 10 ? `${km.toFixed(1)} km` : `${Math.round(km)} km`;
-}
-
-export function formatDuration(seconds: number): string {
-  const mins = Math.max(1, Math.round(seconds / 60));
-  if (mins < 60) return `${mins} min`;
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  // Past two days, hours and minutes stop being useful: "4 d 16 h".
-  if (h >= 48) return `${Math.floor(h / 24)} d${h % 24 ? ` ${h % 24} h` : ''}`;
-  return m ? `${h} h ${m} min` : `${h} h`;
-}
-
 export function agoText(iso: string | null | undefined, now = Date.now()): string {
   if (!iso) return 'never';
   const min = Math.floor((now - new Date(iso).getTime()) / 60000);
@@ -167,32 +116,10 @@ export function shortAgo(iso: string | null | undefined, now = Date.now()): stri
 
 // ── ETA ─────────────────────────────────────────────────────────────────────
 
-export interface EtaInfo {
-  /** Arrival at the next stop from road drive time; null when routing is unavailable. */
-  arrival: Date | null;
-  durationSeconds: number | null;
-  /** Road distance when routed, straight line otherwise. */
-  distanceKm: number | null;
-  distanceIsRoad: boolean;
-  /** Minutes late against the stop's planned arrival; negative = early. */
-  lateByMin: number | null;
-}
-
-export function computeEta(u: LiveUnit, route: { distanceMeters: number; durationSeconds: number } | null, now = Date.now()): EtaInfo | null {
-  const stop = nextStop(u);
-  if (!stop || !u.position) return null;
-  const arrival = route ? new Date(now + route.durationSeconds * 1000) : null;
-  const distanceKm = route
-    ? route.distanceMeters / 1000
-    : stop.lat != null && stop.lng != null ? haversineKm(u.position, { lat: stop.lat, lng: stop.lng }) : null;
-  const lateByMin = arrival && stop.planned_arrival ? Math.round((arrival.getTime() - new Date(stop.planned_arrival).getTime()) / 60000) : null;
-  return { arrival, durationSeconds: route?.durationSeconds ?? null, distanceKm, distanceIsRoad: !!route, lateByMin };
-}
-
-/** Five minutes of slack before an arrival counts as late. */
+/** "On time" / "40 min late" (shared grace), in the phone's shape. */
 export function punctuality(lateByMin: number | null): { label: string; good: boolean } | null {
-  if (lateByMin == null) return null;
-  return lateByMin <= 5 ? { label: 'On time', good: true } : { label: `${formatDuration(lateByMin * 60)} late`, good: false };
+  const p = sharedPunctuality(lateByMin);
+  return p ? { label: p.label, good: !p.late } : null;
 }
 
 // ── City search ─────────────────────────────────────────────────────────────

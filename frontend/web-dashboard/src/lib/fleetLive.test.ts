@@ -52,11 +52,14 @@ describe('fleet live map helpers', () => {
     expect(punctuality(3)).toEqual({ label: 'On time', tone: 'good' });
   });
 
-  it('without a route there is no ETA, only a straight-line distance', () => {
+  it('without a road route the ETA is an estimate, never a dash, and never says late', () => {
     const eta = computeEta(unit(), null, NOW)!;
-    expect(eta.arrival).toBeNull();
+    expect(eta.approx).toBe(true);
+    expect(eta.arrival).not.toBeNull();
     expect(eta.distanceIsRoad).toBe(false);
     expect(eta.distanceKm).toBeGreaterThan(10);
+    expect(eta.lateByMin).toBeNull();
+    expect(buildEtaShareText(unit(), eta, () => '14:38')).toContain('ETA: around 14:38 (about ');
   });
 
   it('builds a short ETA message for WhatsApp', () => {

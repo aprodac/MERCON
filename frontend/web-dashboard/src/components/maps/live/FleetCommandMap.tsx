@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import MapGL, { Layer, Marker, Source, type MapRef } from 'react-map-gl/maplibre';
 import type { StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -304,19 +304,20 @@ export default function FleetCommandMap({
 
   const hovered = hoverKey && hoverKey !== selectedKey ? singles.find((u) => u.key === hoverKey) ?? null : null;
 
-  // ── Road route to the next stop (rounded so a few metres of drift don't refetch) ──
-  const fromLat = selected?.position ? +selected.position.lat.toFixed(3) : null;
-  const fromLng = selected?.position ? +selected.position.lng.toFixed(3) : null;
-  const routeFrom = useMemo(() => (fromLat != null && fromLng != null ? { lat: fromLat, lng: fromLng } : null), [fromLat, fromLng]);
+  // ── Road ahead to the next stop: the server's one route for this trip (same as the operator app),
+  // trimmed to what's left at each new GPS fix; the last answer stays up while the next one loads. ──
   const toLat = stop?.lat ?? null;
   const toLng = stop?.lng ?? null;
   const routeTo = useMemo(() => (toLat != null && toLng != null ? { lat: toLat, lng: toLng } : null), [toLat, toLng]);
-  const { data: route, isFetched: routeFetched } = useQuery({
-    queryKey: ['fleet-live-route', routeFrom, routeTo],
-    queryFn: () => fleetLiveService.getRoute(routeFrom!, routeTo!),
-    enabled: !!routeFrom && !!routeTo,
-    staleTime: 60_000,
+  const aheadTripId = selected?.position ? selected.trip?.id ?? null : null;
+  const { data: aheadRaw, isFetched: routeFetched } = useQuery({
+    queryKey: ['fleet-route-ahead', aheadTripId, stop?.id, selected?.position?.recorded_at],
+    queryFn: () => fleetLiveService.getRouteAhead(aheadTripId!),
+    enabled: !!aheadTripId && !!routeTo,
+    placeholderData: keepPreviousData,
   });
+  // Never another trip's or stop's route while the new one loads.
+  const route = aheadRaw && aheadRaw.stopId === stop?.id ? aheadRaw : null;
   const restStops = useMemo(() => {
     const t = selected?.trip;
     if (!t || t.next_stop_index == null) return [];
@@ -332,7 +333,8 @@ export default function FleetCommandMap({
   const eta = useMemo(
     () => {
       // Arrival is counted from the latest fleet refresh, so the clock moves on with each update.
-      const now = dataUpdatedAt || Date.now();
+      // Counted from when the server worked the route out, so every screen shows the same arrival.
+      const now = route ? Date.parse(route.computedAt) : dataUpdatedAt || Date.now();
       if (!selected) return null;
       if (routeFetched) return computeEta(selected, route ?? null, now);
       return routeTo ? null : computeEta(selected, null, now);
