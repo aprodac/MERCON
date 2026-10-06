@@ -80,6 +80,12 @@ services:
       # Rotation: docs/CLIENT_SECRETS.md.
       DATA_ENCRYPTION_KEY: "${DATA_ENCRYPTION_KEY:-}"
       DATA_ENCRYPTION_KEY_PREVIOUS: "${DATA_ENCRYPTION_KEY_PREVIOUS:-}"
+      # Road routing (ETAs, route lines). Production sets http://osrm:5000 —
+      # the `osrm` service below. Empty: the public OSRM demo, as before. Our
+      # own server unreachable → the API asks the public one instead
+      # (services/routing/routeProvider.ts), so this never breaks routing.
+      OSRM_BASE_URL: "${OSRM_BASE_URL:-}"
+      ROUTE_TRUCK_MAX_KPH: "${ROUTE_TRUCK_MAX_KPH:-}"
       PORT: 3000
     volumes:
       # Persistent host directories under /var/lib/mercon, one pair per
@@ -131,6 +137,29 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+
+  # Our own road-routing server (OSRM) — free, no request limits, ETAs on real
+  # roads. Optional: in the `routing` profile, so a normal deploy (`docker
+  # compose up` without --profile) never starts, stops or waits for it, and
+  # nothing fails while it isn't installed. Its map data is built off this
+  # host (it needs more RAM than this VPS has) and installed by
+  # .github/workflows/build-osrm.yml, which also starts this service.
+  # Read-only data, mmap'd: the route server itself stays small.
+  # docs/infra/ROUTING.md.
+  osrm:
+    <<: *default-logging
+    image: "${OSRM_IMAGE:-ghcr.io/project-osrm/osrm-backend:v5.27.1}"
+    container_name: "${CLIENT_NAME:-mercon}-osrm"
+    profiles: ["routing"]
+    restart: unless-stopped
+    mem_limit: "${OSRM_MEM_LIMIT:-1g}"
+    cpus: "${OSRM_CPU_LIMIT:-0.5}"
+    command: ["osrm-routed", "--algorithm", "mld", "--mmap", "/data/map.osrm"]
+    volumes:
+      # A symlink to the live release; build-osrm.yml points it at a new one
+      # and recreates this container (Docker resolves it at creation).
+      - "${OSRM_DATA_DIR:-/var/lib/mercon/osrm/current}:/data:ro"
+    # No published port: only the API reaches it, as http://osrm:5000.
 
 volumes:
   # Deliberately not given an explicit name: each client runs this compose
