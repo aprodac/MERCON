@@ -1275,3 +1275,4 @@ export * from './assistantConfig';
 export * from './saudiPlate';
 export * from './quotationRef';
 export * from './statusMessage';
+export * from './fleetRules';

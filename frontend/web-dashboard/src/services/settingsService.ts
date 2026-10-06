@@ -1,6 +1,24 @@
 import { api, ApiResponse } from '@/lib/api';
 import type { AssistantConfig, PublicSettings, Settings } from '@mercon/shared-types';
 
+export interface EtaAccuracyRow {
+  horizon: string;
+  label: string;
+  predictions: number;
+  stops: number;
+  typicalMissMin: number | null;
+  biasMin: number | null;
+  p90Min: number | null;
+  within15Pct: number | null;
+}
+
+export interface EtaAccuracy {
+  days: number;
+  rows: EtaAccuracyRow[];
+  overall: Omit<EtaAccuracyRow, 'horizon' | 'label'>;
+  estimates: number;
+}
+
 export interface ServerSnapshotStatus {
   configured: boolean;
   missing: string[];
@@ -64,6 +82,12 @@ export const settingsService = {
   /** SuperAdmin, dev databases only: remove the chosen data. */
   async runDataCleanup(body: { allTrips: boolean; finance: boolean; customerIds: string[]; driverIds: string[]; locationIds: string[]; confirm: string }): Promise<DataCleanupResult> {
     const res = await api.post<ApiResponse<DataCleanupResult>>('/settings/data-cleanup', body, { timeout: 180_000 });
+    return res.data.data;
+  },
+
+  /** How far ETAs were off once trucks arrived, by how far ahead they were predicted. */
+  async getEtaAccuracy(days = 30): Promise<EtaAccuracy> {
+    const res = await api.get<ApiResponse<EtaAccuracy>>('/settings/eta-accuracy', { params: { days } });
     return res.data.data;
   },
 

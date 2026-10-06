@@ -110,6 +110,8 @@ export default function SystemHealthPage() {
         </SettingsRow>
       </SettingsSection>
 
+      <EtaAccuracySection />
+
       <ServerSnapshotSection />
 
       <SettingsSection
@@ -229,6 +231,93 @@ function ServerSnapshotSection() {
         confirmLabel="Take snapshot"
         isLoading={take.isPending}
       />
+    </SettingsSection>
+  );
+}
+
+/**
+ * How good the ETAs are: once trucks arrive, what the ETA said vs when they
+ * really came, by how far ahead it was said (backend etaAccuracy.ts). The
+ * number to watch after every change to routing or the ETA rules.
+ */
+function EtaAccuracySection() {
+  const [days, setDays] = useState(30);
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['eta-accuracy', days],
+    queryFn: () => settingsService.getEtaAccuracy(days),
+    staleTime: 5 * 60_000,
+  });
+  const min = (v: number | null | undefined) => (v == null ? '—' : `${Math.round(v)} min`);
+  const bias = (v: number | null | undefined) =>
+    v == null ? '—' : Math.abs(v) < 1 ? 'on the dot' : v < 0 ? `${Math.round(-v)} min later than said` : `${Math.round(v)} min earlier than said`;
+  const o = data?.overall;
+
+  return (
+    <SettingsSection
+      title="ETA accuracy"
+      description="Once a truck reaches a stop, what its ETA said against when it really arrived — the closer to the arrival, the closer it should be. Road-route ETAs only."
+      action={
+        <select
+          value={days}
+          onChange={(e) => setDays(Number(e.target.value))}
+          className="h-8 rounded-lg border border-black/10 bg-transparent px-2 text-xs dark:border-white/15"
+          aria-label="Period"
+        >
+          <option value={7}>Last 7 days</option>
+          <option value={30}>Last 30 days</option>
+          <option value={90}>Last 90 days</option>
+        </select>
+      }
+    >
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : isError || !data ? (
+        <p className="text-sm text-red-600">Couldn’t load ETA accuracy.</p>
+      ) : !o?.predictions ? (
+        <p className="text-sm text-muted-foreground">
+          Nothing to measure yet. ETAs are recorded every 10 minutes while trucks drive, and counted once they reach the stop.
+        </p>
+      ) : (
+        <>
+          <StatStrip
+            items={[
+              { label: 'Typical miss', value: min(o.typicalMissMin), hint: `${o.stops} stops reached` },
+              { label: 'Within 15 min', value: o.within15Pct != null ? `${o.within15Pct}%` : '—' },
+              { label: '9 in 10 within', value: min(o.p90Min) },
+              { label: 'Trucks arrive', value: bias(o.biasMin) },
+            ]}
+          />
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-muted-foreground">
+                  <th className="py-1.5 pr-3 font-medium">Said</th>
+                  <th className="py-1.5 pr-3 font-medium">Typical miss</th>
+                  <th className="py-1.5 pr-3 font-medium">Within 15 min</th>
+                  <th className="py-1.5 pr-3 font-medium">Trucks arrive</th>
+                  <th className="py-1.5 font-medium">Predictions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-black/[0.05] dark:divide-white/10">
+                {data.rows.map((r) => (
+                  <tr key={r.horizon}>
+                    <td className="py-1.5 pr-3 text-foreground">{r.label}</td>
+                    <td className="py-1.5 pr-3 tabular-nums">{min(r.typicalMissMin)}</td>
+                    <td className="py-1.5 pr-3 tabular-nums">{r.within15Pct != null ? `${r.within15Pct}%` : '—'}</td>
+                    <td className="py-1.5 pr-3">{bias(r.biasMin)}</td>
+                    <td className="py-1.5 tabular-nums text-muted-foreground">{r.predictions}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {data.estimates ? (
+            <p className="text-xs text-muted-foreground">
+              Not counted: {data.estimates} straight-line estimates made while the road route couldn’t be loaded.
+            </p>
+          ) : null}
+        </>
+      )}
     </SettingsSection>
   );
 }

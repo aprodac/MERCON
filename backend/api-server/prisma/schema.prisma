@@ -2587,3 +2587,24 @@ model VehicleCompatibilityRule {
 
   @@index([serviceVehicleClassCode])
 }
+
+// What the ETA said, and when, for a stop not yet reached — kept to measure
+// how good ETAs are (System health → ETA accuracy): once the truck arrives,
+// predicted vs actual arrival per stop, by how far ahead it was predicted.
+// Written by services/tracking/etaWatcher.ts at most every 10 min per stop;
+// rows older than 120 days are removed there. No relations on purpose: a
+// deleted trip just leaves rows the report no longer joins to.
+model EtaPrediction {
+  id               String   @id @default(uuid()) @db.Uuid
+  tripId           String   @db.Uuid
+  stopId           String   @db.Uuid
+  predictedAt      DateTime @default(now()) @db.Timestamptz
+  predictedArrival DateTime @db.Timestamptz
+  // Road distance left, metres.
+  distanceMeters   Int
+  // True when there was no road route and the ETA was a straight-line estimate.
+  approx           Boolean  @default(false)
+
+  @@index([stopId])
+  @@index([predictedAt])
+}

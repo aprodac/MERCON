@@ -30,7 +30,7 @@ import { SILENT_COLOR, TONE } from './FleetMap';
 import { SheetFrame, UnitRow } from './FleetSheet';
 import {
   formatDuration, freeAt, haversineKm, isDelayed, isFree, isFreeSoon, isLongStop, isSilent, lateMin, lateText, located, minText, nextStop, onTrip,
-  stoppedMin, type FleetFilter,
+  stoppedMin, truckDriveSeconds, type FleetFilter,
 } from './fleetModel';
 
 type Time = ReturnType<typeof makeTime>;
@@ -237,7 +237,7 @@ export function NearSheet({ place, radius, onRadius, freeOnly, onFreeOnly, units
     const i = closest.findIndex((x) => x.u.key === key);
     const r = i >= 0 ? drives[i]?.data : null;
     // The router times a car; a loaded truck averages at most ~80 km/h.
-    return r ? `${formatDuration(Math.max(r.durationSeconds, r.distanceMeters / (80 / 3.6)))} drive` : null;
+    return r ? `${formatDuration(truckDriveSeconds(r.distanceMeters, r.durationSeconds))} drive` : null;
   };
 
   return (
