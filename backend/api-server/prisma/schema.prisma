@@ -171,6 +171,7 @@ model User {
   verifiedDocs         Document[]            @relation("VerifiedBy")
   driver               Driver?
   notifications        Notification[]
+  devices              UserDevice[]
   tripStopDelayLogs    TripStop[]            @relation("TripStopDelayLogger")
   tripAssignmentEvents TripAssignmentEvent[]
   tripUpdateShares     TripUpdateShare[]     @relation("TripUpdateShareUser")
@@ -2304,6 +2305,31 @@ model DriverDevice {
   @@map("driver_devices")
 }
 
+// One row per operator-app install signed in as an Admin or Operator, so
+// staff alerts (emergencies, delays, password resets…) reach their phone as a
+// push. A row follows whoever last signed in on that install.
+model UserDevice {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Random id the app keeps in secure storage for the life of the install.
+  install_id String?  @unique
+  token      String?  @unique
+  platform   String
+  // The API address this install talks to ("https://mercon.tech"), from its
+  // sign-in — where the iOS extension reports that a push arrived.
+  api_base   String?
+  isActive   Boolean  @default(true)
+  lastSeenAt DateTime @default(now()) @db.Timestamptz
+  createdAt  DateTime @default(now()) @db.Timestamptz
+  updatedAt  DateTime @updatedAt @db.Timestamptz
+
+  pushDeliveries PushDelivery[]
+
+  @@index([userId, isActive])
+  @@map("user_devices")
+}
+
 // One push attempt: a driver notification sent to one device (or a NoDevice
 // row when the driver had nowhere to send it). Expo first answers with a
 // ticket; the driverWatch job later fetches the receipt that says whether
@@ -2314,6 +2340,9 @@ model PushDelivery {
   notification   Notification  @relation(fields: [notificationId], references: [id], onDelete: Cascade)
   deviceId       String?       @db.Uuid
   device         DriverDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  // Set instead of deviceId when the notification went to a staff phone.
+  userDeviceId   String?       @db.Uuid
+  userDevice     UserDevice?   @relation(fields: [userDeviceId], references: [id], onDelete: SetNull)
 
   status             String // NoDevice | Sent | Delivered | Failed | Unknown
   expo_ticket_id     String?
@@ -2322,6 +2351,9 @@ model PushDelivery {
   attempts           Int       @default(1)
   sent_at            DateTime  @default(now()) @db.Timestamptz
   receipt_checked_at DateTime? @db.Timestamptz
+  // When the phone itself got it — reported by the operator app's iOS
+  // extension (staff phones only; Android and the driver app don't report).
+  received_at        DateTime? @db.Timestamptz
 
   @@index([notificationId])
   @@index([status, sent_at])

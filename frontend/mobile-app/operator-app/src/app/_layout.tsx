@@ -15,6 +15,8 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { LanguageProvider } from '@mercon/mobile-shared/lib/language-context';
 import { ThemeProvider } from '@mercon/mobile-shared/lib/theme-context';
 import { OPERATOR_APP_ROLES, signInOperator } from '@/lib/auth';
+import { registerOperatorPush, unregisterOperatorPush } from '@/lib/push';
+import { OperatorPushManager } from '@/components/OperatorPushManager';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -22,7 +24,7 @@ const TAB_ROUTES = [
   '/', '/trips', '/drivers', '/vehicles', '/invoices',
   '/more', '/profile', '/customers',
   '/quotations', '/third-party', '/maintenance',
-  '/expenses', '/documents', '/notifications', '/user-management',
+  '/expenses', '/documents', '/notifications', '/user-management', '/push-log',
 ];
 
 function RootNavigator() {
@@ -61,6 +63,7 @@ function RootNavigator() {
 
   return (
     <View style={styles.container}>
+      <OperatorPushManager />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#F3F4F6' } }}>
         <Stack.Screen name="index" options={{ animation: 'none' }} />
         <Stack.Screen name="login" />
@@ -87,9 +90,11 @@ function RootNavigator() {
         <Stack.Screen name="customer-details" />
         <Stack.Screen name="customer-edit" />
         <Stack.Screen name="user-management" options={{ animation: 'none' }} />
+        <Stack.Screen name="push-log" options={{ animation: 'none' }} />
         <Stack.Screen name="user-edit" />
         <Stack.Screen name="quotation-details" />
         <Stack.Screen name="quotation-edit" />
+        <Stack.Screen name="rate-finder" />
         <Stack.Screen name="trip-edit" />
         <Stack.Screen name="third-party-details" />
         <Stack.Screen name="third-party-edit" />
@@ -109,7 +114,12 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <QueryClientProvider client={queryClient}>
-        <AuthProvider signIn={signInOperator} allowedRoles={OPERATOR_APP_ROLES}>
+        <AuthProvider
+          signIn={signInOperator}
+          allowedRoles={OPERATOR_APP_ROLES}
+          onSessionStart={registerOperatorPush}
+          onSignOut={unregisterOperatorPush}
+        >
           <LanguageProvider>
             <ThemeProvider>
               <RootNavigator />

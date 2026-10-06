@@ -8,6 +8,7 @@ import { STAGE_TITLE } from '../../dashboard/actions/actionModel';
 import type { TripStatus } from '@mercon/mobile-shared/lib/trips';
 import { formatTripStatusMessage, type StatusTrip } from '@mercon/shared-types';
 import { operatorService, type DriverUpdate, type OperatorTripDetail, type OperatorTripStop, type TripPhase } from '../../../lib/operator';
+import { niceName } from '../create/components/ui';
 
 export type Stop = OperatorTripStop;
 
@@ -303,6 +304,19 @@ const RECIPIENT_LABEL: Record<string, string> = {
   other: 'another number',
 };
 export const recipientLabel = (r: string) => RECIPIENT_LABEL[r] ?? r;
+
+export type SendState = 'sent' | 'partial' | 'unsent';
+
+/** Has this photo set reached the customer? One line for the viewer and the stop list. */
+export function sendStatus(u: DriverUpdate): { state: SendState; text: string } {
+  const last = [...u.shares].sort((a, b) => new Date(b.shared_at).getTime() - new Date(a.shared_at).getTime())[0];
+  const state: SendState = u.unsent_count === 0 && u.items.length > 0 ? 'sent' : u.sent_ids.length > 0 ? 'partial' : 'unsent';
+  if (state === 'unsent' || !last) return { state: 'unsent', text: 'Not sent to the customer yet' };
+  const to = `to ${recipientLabel(last.recipient)}${last.shared_by ? ` by ${niceName(last.shared_by)}` : ''} · ${ago(last.shared_at)}`;
+  return state === 'sent'
+    ? { state, text: `Sent ${to}` }
+    : { state, text: `${u.unsent_count} new not sent · last sent ${to}` };
+}
 
 // ── WhatsApp texts ────────────────────────────────────────────────────────────
 

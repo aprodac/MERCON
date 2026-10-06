@@ -58,7 +58,7 @@ export default function MaintenanceScreen() {
 
       <View className="mt-3 pt-2 border-t border-gray-100 flex-row items-center justify-between">
         <Text style={{ fontSize: 11, color: Colors.gray400 }}>
-          {item.completed_date ? `Completed: ${new Date(item.completed_date).toLocaleDateString()}` : item.scheduled_date ? `Scheduled: ${new Date(item.scheduled_date).toLocaleDateString()}` : 'No date'}
+          {item.completed_date ? `Completed: ${new Date(item.completed_date).toLocaleDateString('en-GB')}` : item.scheduled_date ? `Scheduled: ${new Date(item.scheduled_date).toLocaleDateString('en-GB')}` : 'No date'}
         </Text>
         {item.cost != null && (
           <Text style={{ fontSize: Typography.sm, fontWeight: '800', color: Colors.charcoal }}>

@@ -41,6 +41,7 @@ export interface CustomerListItem {
   id: string;
   name: string;
   phone: string;
+  logoUrl: string | null;
   isActive: boolean;
   createdAt: string;
   status: CustomerDisplayStatus;

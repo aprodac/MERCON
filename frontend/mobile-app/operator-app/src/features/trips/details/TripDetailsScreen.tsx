@@ -23,7 +23,7 @@ import {
 } from '../../../lib/operator';
 import { PickerSheet, niceName } from '../create/components/ui';
 import { useTripDetails } from './useTripDetails';
-import { ago, digits, hoursText, makeFormatters, mapsLink, nextActionFor, sortedStops, stopName, updateTitle, type QuickKind, type Stop } from './tripDetailsModel';
+import { ago, digits, hoursText, makeFormatters, mapsLink, nextActionFor, sendStatus, sortedStops, stopName, updateTitle, type QuickKind, type Stop } from './tripDetailsModel';
 import { TripMap } from './components/TripMap';
 import { TripHeader } from './components/TripHeader';
 import { StopsTab } from './components/StopsTab';
@@ -33,7 +33,7 @@ import { MediaViewer, type ViewerItem } from './components/MediaViewer';
 import { TripTimesSheet } from './components/TripTimesSheet';
 import { PinSheet } from './components/PinSheet';
 import { ActivitySheet, ChargesSheet, MoreSheet, UploadSheet } from './components/Sheets';
-import { ACTION, INK, MUTED, PAGE, WA, tap } from './components/parts';
+import { ACTION, INK, MUTED, PAGE, WA, WA_INK, WA_LIGHT, tap } from './components/parts';
 import { shareTextToWhatsApp } from '../../dashboard/components/ActiveTripsSection';
 
 /** Under the More sheet's tracking row: has the customer looked at it? */
@@ -199,10 +199,10 @@ export default function TripDetailsScreen() {
   };
 
 
-  const openStopMedia = (st: Stop) => {
-    const ups = updates.filter((u) => u.stop?.id === st.id);
-    const items = ups.flatMap((u) => u.items.map((m) => ({ id: m.id, url: m.url, kind: m.kind, caption: `${updateTitle(u)} · ${f.smart(m.captured_at)}` })));
-    if (items.length) setViewer({ title: stopName(st, stops.indexOf(st)), index: 0, items, update: ups.length === 1 ? ups[0] : undefined });
+  const openPhotos = (u: DriverUpdate, index: number) => {
+    const st = stops.find((x) => x.id === u.stop?.id);
+    const items = u.items.map((m) => ({ id: m.id, url: m.url, kind: m.kind, caption: `${updateTitle(u)} · ${f.smart(m.captured_at)}`, sent: u.sent_ids.includes(m.id) }));
+    if (items.length) setViewer({ title: st ? stopName(st, stops.indexOf(st)) : updateTitle(u), index, items, update: u });
   };
 
   const openDoc = (d: OperatorTripDocument) => {
@@ -245,11 +245,12 @@ export default function TripDetailsScreen() {
   const nextIdx = stops.findIndex((st) => !st.actual_arrival);
   const target = phase === 'active' && nextIdx >= 0 ? stops[nextIdx] : stops[stops.length - 1];
   const hasTarget = !!target && Number.isFinite(target.location_lat) && !!(target.location_lat || target.location_lng);
-  const actions: { key: string; label: string; icon: LucideIcon; onPress?: () => void }[] = [
-    { key: 'call', label: 'Call', icon: Phone, onPress: driverPhone ? () => Linking.openURL(`tel:${driverPhone}`).catch(() => {}) : undefined },
-    { key: 'wa', label: 'WhatsApp', icon: MessageCircle, onPress: driverPhone ? () => Linking.openURL(`https://wa.me/${digits(driverPhone)}`).catch(() => {}) : undefined },
-    { key: 'nav', label: 'Directions', icon: Navigation, onPress: hasTarget ? () => Linking.openURL(mapsLink(target.location_lat, target.location_lng)).catch(() => {}) : undefined },
-    { key: 'status', label: 'Send status', icon: Send, onPress: () => quick('status') },
+  // Each has its own colour so they read at a glance; a missing phone / pin says why instead of just fading.
+  const actions: { key: string; label: string; icon: LucideIcon; fg: string; bg: string; onPress?: () => void; off?: string }[] = [
+    { key: 'call', label: 'Call driver', icon: Phone, fg: '#1D4ED8', bg: '#E8EFFD', onPress: driverPhone ? () => Linking.openURL(`tel:${driverPhone}`).catch(() => {}) : undefined, off: 'No phone' },
+    { key: 'wa', label: 'WhatsApp', icon: MessageCircle, fg: WA_INK, bg: WA_LIGHT, onPress: driverPhone ? () => Linking.openURL(`https://wa.me/${digits(driverPhone)}`).catch(() => {}) : undefined, off: 'No phone' },
+    { key: 'nav', label: phase === 'active' && nextIdx >= 0 ? 'To next stop' : 'Directions', icon: Navigation, fg: '#6D28D9', bg: '#F1EBFD', onPress: hasTarget ? () => Linking.openURL(mapsLink(target.location_lat, target.location_lng)).catch(() => {}) : undefined, off: 'No pin' },
+    { key: 'status', label: 'Send status', icon: Send, fg: '#C2410C', bg: '#FFEFE6', onPress: () => quick('status') },
   ];
 
   return (
@@ -284,11 +285,12 @@ export default function TripDetailsScreen() {
             <TripHeader trip={trip} phase={phase} f={f}>
               <View style={s.actions}>
                 {actions.map((a) => (
-                  <TouchableOpacity key={a.key} style={[s.action, !a.onPress && { opacity: 0.35 }]} disabled={!a.onPress} onPress={() => { tap(); a.onPress?.(); }} activeOpacity={0.7}>
-                    <View style={s.actionIcon}>
-                      <a.icon size={19} color={INK} strokeWidth={2.1} />
+                  <TouchableOpacity key={a.key} style={s.action} disabled={!a.onPress} onPress={() => { tap(); a.onPress?.(); }} activeOpacity={0.7}
+                    accessibilityRole="button" accessibilityLabel={a.onPress ? a.label : `${a.label}, ${a.off}`} accessibilityState={{ disabled: !a.onPress }}>
+                    <View style={[s.actionIcon, { backgroundColor: a.onPress ? a.bg : '#F4F4F5', borderColor: a.onPress ? a.fg + '33' : 'transparent' }]}>
+                      <a.icon size={20} color={a.onPress ? a.fg : '#B4B4BC'} strokeWidth={2.3} />
                     </View>
-                    <Text style={s.actionText} numberOfLines={1}>{a.label}</Text>
+                    <Text style={[s.actionText, { color: a.onPress ? a.fg : '#A1A1AA' }]} numberOfLines={1}>{a.onPress ? a.label : a.off}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -321,7 +323,8 @@ export default function TripDetailsScreen() {
               phase={phase}
               updates={updates}
               f={f}
-              onOpenStopMedia={openStopMedia}
+              onOpenPhotos={openPhotos}
+              onSendUpdate={(u) => setShare({ type: 'update', update: u })}
               onCheckTimes={() => setCheckingTimes(true)}
               onSetPin={(st) => setPinTarget({ stop: st, label: stopName(st, stops.indexOf(st)) })}
             />
@@ -380,6 +383,7 @@ export default function TripDetailsScreen() {
         startIndex={viewer?.index ?? 0}
         title={viewer?.title ?? ''}
         onClose={() => setViewer(null)}
+        status={viewer?.update ? sendStatus(viewer.update) : undefined}
         onSend={viewer?.update ? () => { const u = viewer.update!; setViewer(null); setTimeout(() => setShare({ type: 'update', update: u }), 250); } : undefined}
       />
       <PinSheet target={pinTarget} tripId={trip.id} onClose={() => setPinTarget(null)} onSaved={reload} />
@@ -453,8 +457,8 @@ const s = StyleSheet.create({
   badgeText: { color: Colors.white, fontSize: 11, fontWeight: '800' },
   actions: { flexDirection: 'row', paddingTop: 14, borderTopWidth: 1, borderTopColor: '#F1F1F3' },
   action: { flex: 1, alignItems: 'center', gap: 6 },
-  actionIcon: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#F4F4F5', alignItems: 'center', justifyContent: 'center' },
-  actionText: { fontSize: 12, fontWeight: '500', color: MUTED },
+  actionIcon: { width: 50, height: 50, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  actionText: { fontSize: 12, fontWeight: '700' },
   tabOn: { backgroundColor: Colors.white, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
   tabText: { fontSize: 14, fontWeight: '600', color: MUTED },
   tabTextOn: { color: INK, fontWeight: '700' },

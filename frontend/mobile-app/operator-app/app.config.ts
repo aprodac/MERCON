@@ -28,6 +28,9 @@ const CLIENT_PROFILES = {
     androidAdaptiveBackground: '../shared/assets/images/operator-icon-background.png',
     androidAdaptiveMonochrome: '../shared/assets/images/android-icon-monochrome.png',
     favicon: '../shared/assets/images/favicon.png',
+    // Android draws the push icon from its transparency only — a full-colour
+    // logo shows up as a white square. A white "M" on transparent.
+    notificationIcon: '../shared/assets/images/notification-icon.png',
     apiUrl: process.env.EXPO_PUBLIC_API_URL || 'https://dev.mercon.tech/api',
     brandColor: '#FA634E',
     brandColorLight: '#FFF0EB',
@@ -50,6 +53,20 @@ const clientKey = (process.env.APP_CLIENT as ClientKey) || 'mercon';
 const appVersion: { version: string; buildNumber: number } = require('./version.json');
 const buildNumber = Math.max(appVersion.buildNumber, Number(process.env.BUILD_NUMBER) || 0);
 const client = CLIENT_PROFILES[clientKey];
+
+// EAS project for this app (@alan32/mercon-operator) — Expo push tokens are
+// issued per project, and the project holds the APNs key / FCM credentials for
+// tech.mercon.operator. EAS_PROJECT_ID overrides it for another client's build.
+const easProjectId = process.env.EAS_PROJECT_ID || 'fd61fc52-4ed8-4469-ab81-f681e6b2fda3';
+
+// Firebase config for Android push (Expo delivers to Android through Firebase
+// Cloud Messaging) — needs an Android app for tech.mercon.operator in Firebase.
+// EAS can hand the file over as a file secret (GOOGLE_SERVICES_JSON); otherwise
+// it is read from this folder. Without it the build still works — Android just
+// cannot receive pushes.
+const googleServicesFile =
+  process.env.GOOGLE_SERVICES_JSON ||
+  (require('fs').existsSync(`${process.cwd()}/google-services.json`) ? './google-services.json' : undefined);
 
 if (!client) {
   throw new Error(
@@ -74,6 +91,13 @@ export default (): ExpoConfig => ({
     buildNumber: String(buildNumber),
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
+      // Driver updates arrive as "messages" from that driver: their photo and
+      // name instead of the app icon (iOS Communication Notifications, built by
+      // targets/notification-service). Apple requires this with the entitlement.
+      NSUserActivityTypes: ['INSendMessageIntent'],
+    },
+    entitlements: {
+      'com.apple.developer.usernotifications.communication': true,
     },
   },
   android: {
@@ -88,9 +112,11 @@ export default (): ExpoConfig => ({
       'android.permission.RECORD_AUDIO',
       'android.permission.ACCESS_COARSE_LOCATION',
       'android.permission.ACCESS_FINE_LOCATION',
+      'android.permission.POST_NOTIFICATIONS',
     ],
     package: client.androidPackage,
     versionCode: buildNumber,
+    ...(googleServicesFile ? { googleServicesFile } : {}),
   },
   web: {
     output: 'single',
@@ -124,6 +150,21 @@ export default (): ExpoConfig => ({
     // Release signing from Codemagic's keystore (no-op elsewhere)
     '../shared/tooling/with-release-signing',
     [
+      'expo-notifications',
+      {
+        icon: client.notificationIcon,
+        color: client.brandColor,
+        // TestFlight / App Store builds talk to Apple's production push service.
+        // Set APS_ENVIRONMENT=production in .env.local before prebuilding for an
+        // Xcode archive (docs/IOS_DISTRIBUTION_AND_PUSH.md); dev-client builds keep
+        // 'development' (matching a development profile).
+        mode: process.env.APS_ENVIRONMENT === 'production' ? 'production' : 'development',
+      },
+    ],
+    // Native extension targets from ./targets — the Notification Service
+    // Extension that puts the driver's photo on their pushes.
+    '@bacons/apple-targets',
+    [
       'expo-splash-screen',
       {
         backgroundColor: '#FFFFFF',
@@ -141,7 +182,7 @@ export default (): ExpoConfig => ({
     [
       'expo-location',
       {
-        locationWhenInUsePermission: `${client.name} adds your location to the photos and videos you attach to trips.`,
+        locationWhenInUsePermission: `${client.name} adds your location to the photos and videos you attach to trips, and finds the trucks nearest you on the Fleet map.`,
       },
     ],
     'expo-image',
@@ -156,8 +197,7 @@ export default (): ExpoConfig => ({
   },
   extra: {
     router: {},
-    // EAS project: run `eas init` in operator-app once to create it and add
-    // `eas: { projectId: '<id>' }` here.
+    ...(easProjectId ? { eas: { projectId: easProjectId } } : {}),
     // Read by shared/lib/api.ts (@mercon/mobile-shared) as the required fallback when EXPO_PUBLIC_API_URL
     // isn't set — per-client, so a misconfigured build can't silently talk to
     // another client's API.

@@ -7,7 +7,7 @@
 import type { LiveUnit } from '../../lib/operator';
 import { SAUDI_CITY_COORDS } from '../trips/services/travelTimeService';
 
-export type FleetFilter = 'all' | 'on_trip' | 'delayed' | 'free' | 'silent';
+export type FleetFilter = 'all' | 'on_trip' | 'delayed' | 'free' | 'free_soon' | 'long_stop' | 'silent';
 
 /** GPS older than this counts as silent (same threshold as Home's Needs action). */
 const QUIET_MS = 30 * 60_000;
@@ -24,12 +24,86 @@ export function isSilent(u: LiveUnit, now = Date.now()): boolean {
 export const located = (u: LiveUnit) =>
   !!u.position && Number.isFinite(u.position.lat) && Number.isFinite(u.position.lng) && !(u.position.lat === 0 && u.position.lng === 0);
 
+// ── What needs a look: late, ending soon, stopped long, feeds apart ─────────
+
+/** Minutes a delayed truck is past its next stop's planned arrival; null when not late or unknown. */
+export function lateMin(u: LiveUnit, now = Date.now()): number | null {
+  if (!isDelayed(u)) return null;
+  const due = nextStop(u)?.planned_arrival;
+  if (!due) return null;
+  const min = Math.round((now - new Date(due).getTime()) / 60000);
+  return min > 0 ? min : null;
+}
+
+/** "+40m" · "+2h 10m" · "+1d 3h" — compact, for a chip on the map. */
+export function lateText(min: number): string {
+  if (min < 60) return `+${min}m`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `+${h}h${min % 60 ? ` ${min % 60}m` : ''}`;
+  return `+${Math.floor(h / 24)}d${h % 24 ? ` ${h % 24}h` : ''}`;
+}
+
+/** Stops reached of all stops, for a running trip of two or more stops. */
+export function tripProgress(u: LiveUnit): { done: number; total: number } | null {
+  if (!onTrip(u) || !u.trip || u.trip.stops.length < 2) return null;
+  return { done: u.trip.stops.filter((x) => x.actual_arrival).length, total: u.trip.stops.length };
+}
+
+/** When the running trip should be over: its last stop's planned arrival, else its planned end. */
+export function freeAt(u: LiveUnit): number | null {
+  if (!onTrip(u) || !u.trip) return null;
+  const last = u.trip.stops[u.trip.stops.length - 1];
+  const iso = last?.planned_arrival ?? u.trip.planned_end;
+  return iso ? new Date(iso).getTime() : null;
+}
+
+/** A truck whose trip ends within this — the one to promise to the next job. */
+export const FREE_SOON_MIN = 60;
+
+/** On a trip that's on time and due to end within the hour (a delayed one can't be promised). */
+export function isFreeSoon(u: LiveUnit, now = Date.now()): boolean {
+  if (!u.vehicle || isDelayed(u) || isSilent(u, now)) return false;
+  const at = freeAt(u);
+  return at != null && at >= now - 15 * 60_000 && at <= now + FREE_SOON_MIN * 60_000;
+}
+
+/** Stopped this long on a running trip, away from its stops, is worth a look. */
+export const LONG_STOP_MIN = 30;
+/** Within this of one of its stops a truck is working, not stuck. */
+const AT_STOP_KM = 0.5;
+
+/** Minutes a running trip's truck has stood still (from the driver app's GPS); null when moving or unknown. */
+export function stoppedMin(u: LiveUnit, now = Date.now()): number | null {
+  if (!u.stopped_since || u.motion !== 'idle') return null;
+  return Math.max(0, Math.round((now - new Date(u.stopped_since).getTime()) / 60000));
+}
+
+/** Stopped 30 min+ on a running trip, and not at one of its stops — a breakdown or an unplanned stop. */
+export function isLongStop(u: LiveUnit, now = Date.now()): boolean {
+  const min = stoppedMin(u, now);
+  if (min == null || min < LONG_STOP_MIN || !onTrip(u) || !u.position) return false;
+  return !(u.trip?.stops ?? []).some((x) => x.lat != null && x.lng != null && haversineKm(u.position!, { lat: x.lat, lng: x.lng }) <= AT_STOP_KM);
+}
+
+/** Tracker and driver phone both live but over a kilometre apart — the driver may not be with the truck. */
+export const FEEDS_APART_M = 1000;
+export const feedsApart = (u: LiveUnit) => (u.feeds_gap_m ?? 0) > FEEDS_APART_M;
+
+/** "45m" · "2h 5m" — how long, compact. */
+export function minText(min: number): string {
+  if (min < 60) return `${min}m`;
+  const h = Math.floor(min / 60);
+  return `${h}h${min % 60 ? ` ${min % 60}m` : ''}`;
+}
+
 export function matchesFilter(u: LiveUnit, f: FleetFilter, now = Date.now()): boolean {
   switch (f) {
     case 'all': return true;
     case 'on_trip': return onTrip(u);
     case 'delayed': return isDelayed(u);
     case 'free': return isFree(u);
+    case 'free_soon': return isFreeSoon(u, now);
+    case 'long_stop': return isLongStop(u, now);
     case 'silent': return isSilent(u, now);
   }
 }
@@ -80,6 +154,15 @@ export function agoText(iso: string | null | undefined, now = Date.now()): strin
   if (min < 60) return `${min} min ago`;
   const h = Math.floor(min / 60);
   return h < 48 ? `${h} h ago` : `${Math.floor(h / 24)} days ago`;
+}
+
+/** "12m" / "3h" / "2d" — the age tag under a truck that isn't live (web `shortAgo`). */
+export function shortAgo(iso: string | null | undefined, now = Date.now()): string {
+  if (!iso) return '';
+  const min = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 60000));
+  if (min < 60) return `${min}m`;
+  const h = Math.floor(min / 60);
+  return h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`;
 }
 
 // ── ETA ─────────────────────────────────────────────────────────────────────

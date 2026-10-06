@@ -20,8 +20,8 @@ MERCON API ──▶ Expo push service (exp.host) ──▶ Apple APNs ──▶
   — on trip assignment, trip changes, delay alerts and operator messages to drivers.
 - **Expo needs an APNs key** from our Apple account to hand pushes to Apple. The app being
   built by Codemagic (not EAS) doesn't change that.
-- **Only the driver app has push today.** The operator app has none yet (needs its own
-  Expo project + backend work — see the end).
+- **Both apps have push code.** The operator app's still needs its own Expo project
+  (`eas init`) and the APNs key uploaded there before it receives anything — see the end.
 
 ---
 
@@ -30,7 +30,7 @@ MERCON API ──▶ Expo push service (exp.host) ──▶ Apple APNs ──▶
 ### A1. Turn on Push Notifications for the App IDs
 Certificates, Identifiers & Profiles → **Identifiers**:
 1. Open `tech.merconapp.driver` → **Capabilities** → tick **Push Notifications** → **Save**.
-2. Do the same for `tech.mercon.operator` (not used yet, but saves a re-sign later).
+2. Do the same for `tech.mercon.operator` (the operator app has push since 2026-10-05).
 
 If an identifier doesn't exist yet, create it (App IDs → App, explicit bundle ID) with
 Push Notifications ticked.
@@ -107,7 +107,8 @@ EXPO_PUBLIC_API_URL=https://dev.mercon.tech/api
 # TestFlight / App Store use Apple's production push servers
 APS_ENVIRONMENT=production
 ```
-(For the operator app, the same file in `operator-app/` with just `EXPO_PUBLIC_API_URL`.)
+(For the operator app, the same two lines in `operator-app/.env.local` — it has push too since
+2026-10-05.)
 
 ### C4. Generate the iOS project
 ```bash
@@ -148,7 +149,7 @@ In Xcode:
 1. Select the app target → **Signing & Capabilities** → tick **Automatically manage signing**
    → **Team** = the MERCON team. The Bundle Identifier must stay `tech.merconapp.driver`
    (or `tech.mercon.operator`). **Push Notifications** should be listed under capabilities
-   (driver app).
+   (both apps).
 2. **General** → check **Version** / **Build** match what `version:bump` printed. Don't edit them
    here — Xcode edits live in the git-ignored `ios/` and are lost; use `npm run version:bump`.
    In the Organizer's distribute options, untick **Manage Version and Build Number** so Xcode
@@ -215,7 +216,7 @@ Internal testers (App Store Connect users on the team) don't need Beta App Revie
 
 ---
 
-## Android (for completeness)
+## Android
 
 Android uses a **different package**, `tech.mercon.driver` (the Play Console app, its EAS upload
 key and Firebase are on it — do not change it to the iOS ID). Expo push on Android uses **FCM**:
@@ -223,11 +224,82 @@ Firebase project `mercon-driver` with an Android app for `tech.mercon.driver`, i
 `google-services.json` in `driver-app/`, and the FCM v1 key in the Expo project. Set up and
 tested on a real phone (2026-10-03).
 
-## Operator app — push not built yet
+The operator app (`tech.mercon.operator`) is **not** in Firebase yet — without it Android
+operator phones get no push token at all. To add it:
 
-The operator app has no push code. To add it later: run `eas init` in
-`frontend/mobile-app/operator-app` (creates its Expo project; put the `projectId` in its
-`app.config.ts`), upload the **same** APNs key to that project (Part B), and the backend
-needs a device table for operators (a schema change — needs owner approval) plus the events
-that should push (emergencies, delays, photos to send). Parts A1–A3 above already cover the
-Apple side for `tech.mercon.operator`.
+1. Firebase console → project `mercon-driver` → Add app → Android → package
+   `tech.mercon.operator`. Download its `google-services.json` into `operator-app/`
+   (its `app.config.ts` reads it from there, or from the `GOOGLE_SERVICES_JSON` env var).
+2. Upload the Firebase **FCM v1 service-account key** to the operator app's Expo project
+   (expo.dev → project → Credentials → Android → FCM V1) — after `eas init` below.
+3. New Android build, sign in, check the phone appears in the `user_devices` table with a token.
+
+## Operator app push
+
+Built (2026-10-05): on sign-in the operator app registers its push token
+(`POST /notifications/devices`, table `user_devices`) and signs it out on logout. Every staff
+notification the backend creates (`createNotification`) is pushed to each signed-in phone,
+except `system` confirmations:
+
+- **Every driver update on a trip** (`services/staffAlerts/`): trip started, arrived at
+  pickup, loading, picked up, stop done, arrived at delivery, delivered (round trip), return
+  leg started, arrived at final delivery, trip completed, delay reported (with the driver's
+  reason), cargo / delivery photos and videos (one push per batch of photos within 15 min),
+  "Got it" on a new trip. Each names the trip, driver and place.
+- Alerts that already existed: driver emergencies, late arrivals/departures (instead of the
+  plain "arrived" push for that moment), trips that never started, driver phone problems,
+  password-reset requests.
+
+Sent to every active Admin and Operator. Deliveries are recorded in `push_deliveries` and go
+through the same receipt check and retry as driver pushes. Tapping a push opens the same page
+as tapping it in the app's Activity list.
+
+Still needed before it delivers anything (Expo/Apple/Firebase side, not code):
+
+1. ✅ Expo project `@alan32/mercon-operator` (`fd61fc52-4ed8-4469-ab81-f681e6b2fda3`, in
+   `operator-app/app.config.ts`) — created 2026-10-06.
+2. ✅ The same APNs key uploaded to that Expo project (Part B) — 2026-10-06. Parts A1–A3 cover
+   the Apple side for `tech.mercon.operator`.
+3. Android: Firebase app for `tech.mercon.operator` (section above).
+4. A new operator-app build (expo-notifications is native) — `APS_ENVIRONMENT=production` in
+   `.env.local` before the Xcode prebuild, as for the driver app.
+5. Release the backend: migration `20261006090000_staff_push_devices` (new `user_devices`
+   table + a nullable column on `push_deliveries`; additive).
+
+### Driver updates look like a message from the driver (2026-10-06)
+
+A push about something a driver did (every trip step, photos, "Got it", emergencies) comes
+**from that driver**: their name is the title, and their profile photo replaces the Mercon
+icon — like a WhatsApp message from a contact. Drivers without a photo show the Mercon icon.
+
+- **Backend** (`services/staffAlerts/`, `sendUserPushNotification`): the push carries
+  `data.sender = { id, name, image }` (image = a signed https link to the driver's photo,
+  valid 1–2 h), `mutableContent: true` and `richContent.image`.
+- **Android**: shows `richContent.image` as the notification's picture — nothing to set up.
+- **iPhone**: Apple's *Communication Notifications*. A Notification Service Extension
+  (`operator-app/targets/notification-service/`, added to `ios/` by `@bacons/apple-targets`
+  on prebuild) downloads the photo and turns the push into a message from the driver; each
+  driver is one conversation, so iOS groups their updates. Needs:
+  - the **Communication Notifications** capability on App ID `tech.mercon.operator`
+    (app.config adds the entitlement + `NSUserActivityTypes: INSendMessageIntent`);
+  - an App ID + App Store profile for the extension, `tech.mercon.operator.NotificationService`
+    (with automatic signing, Xcode creates both on the first archive).
+- The extension version must match the app's: `npm run version:bump` / `version:sync`
+  write the numbers into every target, extension included.
+
+### Push log — did it arrive? (operator app, Admins; 2026-10-06)
+
+Side menu → Settings → **Push log** (`GET /notifications/push-log`, Admins only — server
+and app). Last 24 h in numbers (sent / arrived / failed / typical delay / slow), each staff
+member's phones ("no phone signed in" = gets no pushes), and every push of the last 7 days:
+
+- **Arrived · 2 s** — the phone said it got it. The iOS extension calls the signed link the
+  push carries (`data.receipt` → `POST /api/push-receipts/<id>/<sig>`, sets
+  `push_deliveries.received_at`); delay = alert created → phone got it. Over 1 min = slow.
+  iPhones on operator app **1.1.0 (104)+** only.
+- **Delivered to Apple / Google** — Expo's receipt (checked ~15 min after sending). The most
+  Android can show.
+- **Waiting / Retrying / Failed** (+ the reason in plain words) / **Unknown**.
+
+The phone's API address is saved at sign-in (`user_devices.api_base`) so the extension
+reports to the server that phone uses. Migration `20261006120000_push_receipts` (additive).

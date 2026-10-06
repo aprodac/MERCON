@@ -136,11 +136,11 @@ export default function CustomerDetailsScreen() {
     ...(customer.whatsapp_number && !listed(customer.whatsapp_number) && !same(customer.whatsapp_number, customer.contact_phone)
       ? [{ key: 'wa', name: 'WhatsApp number', phone: customer.whatsapp_number }] : []),
   ];
-  const mainPhone = contacts.find((x) => x.phone)?.phone ?? null;
   const invoices = [...(c.statement?.invoices ?? [])].filter((i) => i.status !== 'Void')
     .sort((a, b) => new Date(b.invoice_date ?? 0).getTime() - new Date(a.invoice_date ?? 0).getTime());
 
-  const waText = (text: string) => Linking.openURL(`https://wa.me/${waNumber(customer.whatsapp_number || mainPhone)}?text=${encodeURIComponent(text)}`).catch(() => {});
+  // Tracking links go to the customer's group: WhatsApp opens its chat picker with the message filled in.
+  const waText = (text: string) => Linking.openURL(`https://wa.me/?text=${encodeURIComponent(text)}`).catch(() => {});
   const copy = async (url: string) => {
     setToast((await setStringAsync(url)) ? 'Link copied' : 'Couldn’t copy the link');
   };
@@ -173,7 +173,7 @@ export default function CustomerDetailsScreen() {
                 <TouchableOpacity key={t.id} style={[s.line, i > 0 && s.lineBorder]} activeOpacity={0.6} onPress={() => openTrip(t.id)}>
                   <View style={s.date}>
                     <Text style={s.dateDay}>{d ? d.getDate() : '—'}</Text>
-                    <Text style={s.dateMonth}>{d ? d.toLocaleDateString(undefined, { month: 'short' }) : ''}</Text>
+                    <Text style={s.dateMonth}>{d ? d.toLocaleDateString('en-GB', { month: 'short' }) : ''}</Text>
                   </View>
                   <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
                     <Text style={s.rowTitle} numberOfLines={1}>{r.from} → {r.to}{r.round ? ' ↺' : ''}</Text>
@@ -366,16 +366,32 @@ export default function CustomerDetailsScreen() {
                 ) : null}
               </View>
             ))}
-            {customer.whatsapp_group_link ? (
-              <TouchableOpacity style={[s.line, s.lineBorder]} onPress={() => Linking.openURL(customer.whatsapp_group_link!).catch(() => {})} activeOpacity={0.6}>
-                <Tile icon={Users} />
-                <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-                  <Text style={s.rowLabel}>WhatsApp group</Text>
-                  <Text style={s.rowTitle} numberOfLines={1}>{customer.whatsapp_group_name || 'Open group'}</Text>
-                </View>
-                <ChevronRight size={18} color="#A1A1AA" />
+            {/* Always shown: shares default to this group, so a missing one is one tap from being added. */}
+            <TouchableOpacity
+              style={[s.line, s.lineBorder]}
+              activeOpacity={0.6}
+              onPress={() => {
+                tap();
+                if (customer.whatsapp_group_link) Linking.openURL(customer.whatsapp_group_link).catch(() => {});
+                else router.push({ pathname: '/customer-edit', params: { id: customer.id } });
+              }}
+              accessibilityLabel={customer.whatsapp_group_link ? 'Open the WhatsApp group' : 'Add the WhatsApp group'}
+            >
+              <Tile icon={Users} />
+              <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+                <Text style={s.rowLabel}>WhatsApp group</Text>
+                <Text style={[s.rowTitle, !customer.whatsapp_group_name && !customer.whatsapp_group_link && { color: '#2449A8' }]} numberOfLines={1}>
+                  {customer.whatsapp_group_name || (customer.whatsapp_group_link ? 'Open group' : 'Add group name & link')}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[s.round, s.roundSoft]}
+                onPress={() => { tap(); router.push({ pathname: '/customer-edit', params: { id: customer.id } }); }}
+                accessibilityLabel="Edit the WhatsApp group"
+              >
+                <SquarePen size={16} color={INK} strokeWidth={2.2} />
               </TouchableOpacity>
-            ) : null}
+            </TouchableOpacity>
           </Card>
         </View>
 

@@ -1,5 +1,12 @@
 import { Router } from 'express';
-import { getNotifications, markAsRead, sendBulkCommunication } from '../controllers/notificationController';
+import {
+  getNotifications,
+  getPushLog,
+  logoutUserDevice,
+  markAsRead,
+  registerUserDevice,
+  sendBulkCommunication,
+} from '../controllers/notificationController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles } from '../middlewares/rbac';
 
@@ -9,7 +16,12 @@ router.use(authenticateJWT);
 router.use(authorizeRoles('Admin', 'Operator'));
 
 router.get('/', getNotifications);
+// Operator app's Push log — Admins only (platform admins pass as Admins).
+router.get('/push-log', authorizeRoles('Admin'), getPushLog);
 router.patch('/:id/read', markAsRead);
 router.post('/bulk-send', sendBulkCommunication);
+// Operator app: push token for this phone (Admin/Operator only, per router.use above)
+router.post('/devices', registerUserDevice);
+router.post('/devices/logout', logoutUserDevice);
 
 export default router;

@@ -9,7 +9,7 @@
  * Opens on From drivers; `?tab=todo` / `?tab=activity` open the others, and
  * `?filter=trips|whatsapp|documents|money` opens To do on that chip.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -26,6 +26,10 @@ import { targetFor } from '../notificationModel';
 import { TodoTab, type GroupFilter } from '../components/TodoTab';
 import { ActivityTab } from '../components/ActivityTab';
 import { DriversTab } from '../components/DriversTab';
+import { MediaViewer } from '../../trips/details/components/MediaViewer';
+import { ago, sendStatus, updateTitle } from '../../trips/details/tripDetailsModel';
+import { niceName } from '../../trips/create/components/ui';
+import type { DriverUpdate } from '../../../lib/operator';
 import { BG, INK, LINE, MUTED, tap } from '../components/parts';
 
 type Tab = 'drivers' | 'todo' | 'activity';
@@ -48,6 +52,16 @@ export default function NotificationsScreen() {
   const inbox = useActionInbox();
   const { onIntent, openTrip, toast, setToast } = useActionIntent();
   const { refreshing, refresh } = useDashboardRefresh();
+
+  // From drivers: a set's photos open right here, with Send and Open trip.
+  const [viewing, setViewing] = useState<{ update: DriverUpdate; index: number } | null>(null);
+  // Re-read the set from the live list so its "sent" marks update after a refresh.
+  const viewed = viewing ? inbox.updates.find((u) => u.trip.id === viewing.update.trip.id && u.key === viewing.update.key) ?? viewing.update : null;
+  const viewerItems = useMemo(() => viewed ? viewed.items.map((m) => ({
+    id: m.id, url: m.url, kind: m.kind, sent: viewed.sent_ids.includes(m.id),
+    caption: [viewed.stop?.name ? niceName(viewed.stop.name) : null, ago(m.captured_at)].filter(Boolean).join(' · '),
+  })) : null, [viewed]);
+  const leaveViewer = (go: () => void) => { setViewing(null); setTimeout(go, 250); };
 
   const feed = useNotifications();
   const { markRead, markIds } = useMarkNotificationsRead();
@@ -111,7 +125,7 @@ export default function NotificationsScreen() {
             refreshing={refreshing}
             onRefresh={refresh}
             onSend={(u) => openTrip(u.trip.id, { share: 'update', update: u.key })}
-            onOpenTrip={(id) => openTrip(id)}
+            onView={(update, index) => setViewing({ update, index })}
           />
         ) : tab === 'todo' ? (
           <TodoTab
@@ -141,6 +155,16 @@ export default function NotificationsScreen() {
           />
         )}
       </View>
+
+      <MediaViewer
+        items={viewerItems}
+        startIndex={viewing?.index ?? 0}
+        title={viewed ? `${updateTitle(viewed)} · ${viewed.trip.ref_id ?? ''}` : ''}
+        status={viewed ? sendStatus(viewed) : undefined}
+        onClose={() => setViewing(null)}
+        onSend={viewed ? () => leaveViewer(() => openTrip(viewed.trip.id, { share: 'update', update: viewed.key })) : undefined}
+        onOpenTrip={viewed ? () => leaveViewer(() => openTrip(viewed.trip.id, { tab: 'stops' })) : undefined}
+      />
 
       <Toast visible={!!toast} message={toast?.message ?? ''} type={toast?.type ?? 'success'} onDismiss={() => setToast(null)} />
     </SafeAreaView>

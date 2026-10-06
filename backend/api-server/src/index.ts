@@ -104,6 +104,7 @@ import { initTripDelayMonitor } from './services/tracking/tripDelayMonitor';
 import { initDriverWatch } from './services/tracking/driverWatch';
 import { initTripMediaRetention } from './services/media/tripMediaRetention';
 import { initDocumentTrashPurge } from './services/documentTrash';
+import { initQuotationExpiryAlerts } from './services/quotationExpiryAlerts';
 import { driverSocketConnected, driverSocketDisconnected } from './services/driverPhone/presence';
 
 import helmet from 'helmet';
@@ -143,6 +144,8 @@ app.use(express.json({ limit: '250mb' }));
 app.use(express.urlencoded({ limit: '250mb', extended: true }));
 import { getUploadDir } from './middlewares/upload';
 import { uploadsGuard, apiFileLinks } from './middlewares/fileLinks';
+import mediaRoutes from './routes/mediaRoutes';
+import pushReceiptRoutes from './routes/pushReceiptRoutes';
 // Private documents (driver / vehicle / customer / company) need a signed link;
 // signed links are checked and handed to the static handlers below.
 app.use('/uploads', uploadsGuard);
@@ -161,6 +164,10 @@ apiRouter.use((_req, res, next) => {
 // Signs links to private documents for signed-in users; strips signatures from request bodies.
 apiRouter.use(apiFileLinks);
 apiRouter.use('/auth', authRoutes);
+// Inline truck / driver / customer pictures behind signed links (no login, like /uploads).
+apiRouter.use('/media', mediaRoutes);
+// The operator app's iOS extension: "this push reached the phone" (signed, no login).
+apiRouter.use('/push-receipts', pushReceiptRoutes);
 apiRouter.use('/drivers', driverRoutes);
 apiRouter.use('/vehicles', vehicleRoutes);
 apiRouter.use('/customers', customerRoutes);
@@ -329,6 +336,7 @@ initTripDelayMonitor();
 initDriverWatch();
 initTripMediaRetention();
 initDocumentTrashPurge();
+initQuotationExpiryAlerts();
 
 /**
  * Integration secrets key (docs/CLIENT_SECRETS.md). The deploy refuses to run

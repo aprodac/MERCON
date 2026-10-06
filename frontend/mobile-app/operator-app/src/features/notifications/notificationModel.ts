@@ -2,11 +2,13 @@
  * How the Activity tab sorts and shows the operator's notifications. Pure.
  * Types are the ones the API creates for staff: Emergency, Delay,
  * StaleScheduled, DriverNotReady, TripNotAcknowledged, DriverSilent,
- * Security and system.
+ * Security and system, plus every step a driver takes on a trip
+ * (TripUpdate, DriverDelay, TripPhoto, TripAcknowledged).
  */
 import type { Href } from 'expo-router';
 import {
-  AlarmClock, Bell, Clock3, FileText, MessageSquareWarning, Settings, ShieldAlert, Siren, Smartphone, Truck, WifiOff,
+  AlarmClock, Bell, Camera, CircleCheckBig, Clock3, FileText, MessageSquareWarning, Settings, ShieldAlert, Siren, Smartphone, Tag, Truck,
+  WifiOff,
   type LucideIcon,
 } from 'lucide-react-native';
 import type { AppNotification } from '@mercon/mobile-shared/lib/notifications';
@@ -22,9 +24,14 @@ const STYLE: Record<string, { icon: LucideIcon; tone: Tone; category: Category }
   drivernotready: { icon: Smartphone, tone: 'amber', category: 'drivers' },
   tripnotacknowledged: { icon: MessageSquareWarning, tone: 'amber', category: 'drivers' },
   driversilent: { icon: WifiOff, tone: 'amber', category: 'drivers' },
+  tripupdate: { icon: Truck, tone: 'gray', category: 'trips' },
+  driverdelay: { icon: Clock3, tone: 'amber', category: 'trips' },
+  tripphoto: { icon: Camera, tone: 'gray', category: 'trips' },
+  tripacknowledged: { icon: CircleCheckBig, tone: 'gray', category: 'drivers' },
   security: { icon: ShieldAlert, tone: 'gray', category: 'system' },
   system: { icon: Settings, tone: 'gray', category: 'system' },
   document: { icon: FileText, tone: 'gray', category: 'system' },
+  quotationexpiring: { icon: Tag, tone: 'amber', category: 'system' },
 };
 
 export function notificationStyle(n: AppNotification) {
@@ -57,6 +64,8 @@ export function matchesFilter(n: AppNotification, f: ActivityFilter): boolean {
 
 /** The record a notification is about, if the app has a page for it. */
 export function targetFor(n: AppNotification): Href | null {
+  // Several quotations expiring at once: the Quotations page (its Needs attention strip).
+  if (n.entity_type === 'QuotationList') return '/quotations';
   if (!n.entity_id) return null;
   // "Trip delayed" and "Driver app silent" are about where a truck is — open the
   // Fleet map on it (it falls back to the trip page when the truck isn't on the map).
@@ -71,6 +80,8 @@ export function targetFor(n: AppNotification): Href | null {
       return { pathname: '/driver-details', params: { id: n.entity_id } };
     case 'Vehicle':
       return { pathname: '/vehicle-details', params: { id: n.entity_id } };
+    case 'Quotation':
+      return { pathname: '/quotation-details', params: { id: n.entity_id } };
     default:
       return null;
   }

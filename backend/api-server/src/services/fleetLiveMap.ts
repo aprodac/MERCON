@@ -26,7 +26,14 @@ interface LatestTripFix {
   heading: number | null;
   accuracy_m: number | null;
   recordedAt: Date;
+  /** When the phone arrived within STOP_RADIUS_M of this fix and stayed (or its oldest fix in the look-back). */
+  stoppedSince: Date | null;
 }
+
+/** A truck that stays within this of one spot counts as stopped there. */
+export const STOP_RADIUS_M = 300;
+/** How far back the stopped-since look goes — long enough for any stop worth flagging. */
+const STOP_LOOKBACK_HOURS = 6;
 
 export const DRIVER_GPS_FRESH_MS = 120_000;
 export const VEHICLE_GPS_FRESH_MS = 180_000;
@@ -88,6 +95,7 @@ export interface LiveUnit {
     ref_id: string | null;
     status: string;
     phase: LiveTripPhase;
+    customer_id: string | null;
     customer_name: string | null;
     planned_start: string | null;
     planned_end: string | null;
@@ -104,6 +112,12 @@ export interface LiveUnit {
   motion: LiveMotion;
   /** Metres between the two feeds when both are live — a large gap means they disagree. */
   feeds_gap_m: number | null;
+  /**
+   * Since when a running trip's truck has stayed within STOP_RADIUS_M of where
+   * it is now — from the driver app's GPS history. Null while moving, or when
+   * the trip has no phone history to tell.
+   */
+  stopped_since: string | null;
 }
 
 // ── Inputs (the subset of Prisma rows the builder reads) ─────────────────────
@@ -143,6 +157,7 @@ export interface LiveTripRow {
   planned_start: Date | null;
   planned_end: Date | null;
   updatedAt: Date;
+  customerId?: string | null;
   customer: { name: string } | null;
   driver: LiveDriverRow | null;
   stops: Array<{
@@ -167,6 +182,8 @@ export interface LiveTripLocationRow {
   heading: number | null;
   accuracy_m: number | null;
   recordedAt: Date;
+  /** See LatestTripFix.stoppedSince; absent from callers that don't look it up. */
+  stoppedSince?: Date | null;
 }
 
 // ── Pure builder ────────────────────────────────────────────────────────────
@@ -266,6 +283,7 @@ export function tripOut(t: LiveTripRow | undefined): LiveUnit['trip'] {
     ref_id: t.ref_id,
     status: t.status,
     phase: t.status === 'Delayed' ? 'delayed' : t.status === 'Scheduled' ? 'upcoming' : 'active',
+    customer_id: t.customerId ?? null,
     customer_name: t.customer?.name ?? null,
     planned_start: iso(t.planned_start),
     planned_end: iso(t.planned_end),
@@ -283,6 +301,7 @@ function finishUnit(
   base: Pick<LiveUnit, 'key' | 'vehicle' | 'driver' | 'trip'>,
   vehicle_gps: LiveGpsFix | null,
   driver_gps: LiveGpsFix | null,
+  stoppedSince: Date | null = null,
 ): LiveUnit {
   const position = pickPosition(vehicle_gps, driver_gps);
   const vLive = !!vehicle_gps?.fresh;
@@ -296,7 +315,10 @@ function finishUnit(
         ? 'moving'
         : 'idle';
   const feeds_gap_m = vLive && dLive ? Math.round(haversineMeters(vehicle_gps!, driver_gps!)) : null;
-  return { ...base, vehicle_gps, driver_gps, position, feed, motion, feeds_gap_m };
+  // Only a running trip standing still has a stop worth timing.
+  const running = !!base.trip && base.trip.phase !== 'upcoming';
+  const stopped_since = running && motion === 'idle' && stoppedSince ? iso(stoppedSince) : null;
+  return { ...base, vehicle_gps, driver_gps, position, feed, motion, feeds_gap_m, stopped_since };
 }
 
 export function buildLiveUnits(
@@ -345,6 +367,7 @@ export function buildLiveUnits(
         },
         vehicleFix(v, now),
         trip ? driverFix(locByTrip.get(trip.id), now) : null,
+        trip ? locByTrip.get(trip.id)?.stoppedSince ?? null : null,
       ),
     );
   }
@@ -359,7 +382,7 @@ export function buildLiveUnits(
     const fix = driverFix(locByTrip.get(t.id), now);
     if (!fix) continue;
     seenDrivers.add(t.driver.id);
-    units.push(finishUnit({ key: `d:${t.driver.id}`, vehicle: null, driver: driverOut(t.driver), trip: tripOut(t) }, null, fix));
+    units.push(finishUnit({ key: `d:${t.driver.id}`, vehicle: null, driver: driverOut(t.driver), trip: tripOut(t) }, null, fix, locByTrip.get(t.id)?.stoppedSince ?? null));
   }
 
   return units;
@@ -376,6 +399,42 @@ export const DRIVER_SELECT = {
   avatar_url: true,
   status: true,
 } as const;
+
+/**
+ * Latest phone fix per trip, with when it stopped moving (see LatestTripFix).
+ */
+export async function loadLatestTripFixes(db: PrismaClient, tripIds: string[]): Promise<LatestTripFix[]> {
+  // Latest phone fix per trip. Prisma's `distinct` runs in memory — it read every
+  // GPS ping of every live trip (thousands per multi-day trip) on each 15 s map
+  // refresh. One index-backed LIMIT 1 per trip instead.
+  // Stopped since: the first ping after the last one more than STOP_RADIUS_M from
+  // the latest (when it arrived where it is), else the oldest ping in the look-back.
+  // Both are range scans on the (tripId, recordedAt) index, bounded by the look-back.
+  const stopDeg = STOP_RADIUS_M / 111_320;
+  const lookback = Prisma.raw(`interval '${STOP_LOOKBACK_HOURS} hours'`);
+  return tripIds.length
+    ? await db.$queryRaw<LatestTripFix[]>(Prisma.sql`
+        SELECT l."tripId", l.lat, l.lng, l.speed_kph, l.heading, l.accuracy_m, l."recordedAt",
+          (SELECT min(p."recordedAt") FROM "TripLocation" p
+            WHERE p."tripId" = t.id
+              AND p."recordedAt" > COALESCE(
+                (SELECT max(q."recordedAt") FROM "TripLocation" q
+                  WHERE q."tripId" = t.id
+                    AND q."recordedAt" > l."recordedAt" - ${lookback}
+                    AND power(q.lat - l.lat, 2) + power((q.lng - l.lng) * cos(radians(l.lat)), 2) > ${stopDeg * stopDeg}),
+                l."recordedAt" - ${lookback})
+          ) AS "stoppedSince"
+        FROM unnest(${tripIds}::uuid[]) AS t(id)
+        CROSS JOIN LATERAL (
+          SELECT "tripId", lat, lng, speed_kph, heading, accuracy_m, "recordedAt"
+          FROM "TripLocation"
+          WHERE "tripId" = t.id
+          ORDER BY "recordedAt" DESC
+          LIMIT 1
+        ) l
+      `)
+    : [];
+}
 
 export async function loadLiveUnits(db: PrismaClient): Promise<LiveUnit[]> {
   const [vehicles, trips] = await Promise.all([
@@ -405,6 +464,7 @@ export async function loadLiveUnits(db: PrismaClient): Promise<LiveUnit[]> {
         ref_id: true,
         status: true,
         vehicleId: true,
+        customerId: true,
         planned_start: true,
         planned_end: true,
         updatedAt: true,
@@ -430,22 +490,7 @@ export async function loadLiveUnits(db: PrismaClient): Promise<LiveUnit[]> {
   ]);
 
   const tripIds = trips.map((t) => t.id);
-  // Latest phone fix per trip. Prisma's `distinct` runs in memory — it read every
-  // GPS ping of every live trip (thousands per multi-day trip) on each 15 s map
-  // refresh. One index-backed LIMIT 1 per trip instead.
-  const tripLocations = tripIds.length
-    ? await db.$queryRaw<LatestTripFix[]>(Prisma.sql`
-        SELECT l."tripId", l.lat, l.lng, l.speed_kph, l.heading, l.accuracy_m, l."recordedAt"
-        FROM unnest(${tripIds}::uuid[]) AS t(id)
-        CROSS JOIN LATERAL (
-          SELECT "tripId", lat, lng, speed_kph, heading, accuracy_m, "recordedAt"
-          FROM "TripLocation"
-          WHERE "tripId" = t.id
-          ORDER BY "recordedAt" DESC
-          LIMIT 1
-        ) l
-      `)
-    : [];
+  const tripLocations = await loadLatestTripFixes(db, tripIds);
 
   return buildLiveUnits({
     vehicles: vehicles as unknown as LiveVehicleRow[],
