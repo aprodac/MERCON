@@ -1,6 +1,14 @@
 import { api, ApiResponse } from '@/lib/api';
 import type { AssistantConfig, PublicSettings, Settings } from '@mercon/shared-types';
 
+export interface ServerSnapshotStatus {
+  configured: boolean;
+  missing: string[];
+  hostname: string | null;
+  snapshot: { createdAt: string | null; expiresAt: string | null } | null;
+  running: { startedAt: string; state: string } | null;
+}
+
 export const settingsService = {
   async getPublic(): Promise<PublicSettings> {
     try {
@@ -56,6 +64,18 @@ export const settingsService = {
   /** SuperAdmin, dev databases only: remove the chosen data. */
   async runDataCleanup(body: { allTrips: boolean; finance: boolean; customerIds: string[]; driverIds: string[]; locationIds: string[]; confirm: string }): Promise<DataCleanupResult> {
     const res = await api.post<ApiResponse<DataCleanupResult>>('/settings/data-cleanup', body, { timeout: 180_000 });
+    return res.data.data;
+  },
+
+  /** Superadmin: this server's Hostinger snapshot (one per VPS). */
+  async getServerSnapshot(): Promise<ServerSnapshotStatus> {
+    const res = await api.get<ApiResponse<ServerSnapshotStatus>>('/settings/server-snapshot');
+    return res.data.data;
+  },
+
+  /** Superadmin: replace the snapshot with a new one. */
+  async takeServerSnapshot(): Promise<{ startedAt: string; actionId: string | null }> {
+    const res = await api.post<ApiResponse<{ startedAt: string; actionId: string | null }>>('/settings/server-snapshot', { confirm: true }, { timeout: 60_000 });
     return res.data.data;
   },
 
