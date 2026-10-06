@@ -290,7 +290,10 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   const [view, setView] = useState<MapView>({ zoom: 5, pitch: 0, bearing: 0 });
   // What's on screen when the camera settles — drives grouping.
   const [area, setArea] = useState<{ bbox: Bounds; zoom: number } | null>(null);
-  const pad = { top: padding.top, bottom: padding.bottom, left: 50, right: 50 };
+  // The right side keeps clear of the page's control column.
+  const pad = { top: padding.top, bottom: padding.bottom, left: 40, right: interactive ? 76 : 50 };
+  // The camera as last reported — a tilted map has to be laid flat before a fit (fitFlat).
+  const tiltRef = useRef({ pitch: 0, bearing: 0 });
   // The clock for "no GPS for 30 min" and the age tags; ticks so they don't go stale on an open map.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -391,7 +394,7 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
     const set = new Set(keys);
     const b = boundsOf(points.filter((u) => set.has(u.key)).map((u) => u.position!), 0.002, 0.004);
     const target = Math.min(Math.max(zoom + 0.5, zoomRef.current + 1), 16);
-    if (b && zoom > GROUP_MAX_ZOOM) camera.current?.fitBounds(b, { padding: pad, pitch: 0, bearing: 0, duration: 700 });
+    if (b && zoom > GROUP_MAX_ZOOM) fitFlat(b, 700);
     else camera.current?.easeTo?.({ center: [g.lng, g.lat], zoom: target, padding: pad, duration: 700 });
     onGroupPress?.(keys);
   };
@@ -429,6 +432,21 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
     onSelect?.(null);
   };
 
+  /**
+   * Frame these bounds flat and north-up. On iOS a fit is worked out for the
+   * camera's current tilt and only then flattened, so from driver view (70°)
+   * or 3D it landed zoomed into the wrong street; lay the map flat first.
+   */
+  const fitFlat = (b: Bounds, duration: number) => {
+    const cam = camera.current;
+    if (!cam) return;
+    if (tiltRef.current.pitch > 1 || Math.abs(tiltRef.current.bearing) > 1) {
+      try { cam.setStop?.({ pitch: 0, bearing: 0, padding: pad, duration: 0 })?.catch?.(() => {}); } catch { /* map not ready */ }
+      tiltRef.current = { pitch: 0, bearing: 0 };
+    }
+    cam.fitBounds(b, { padding: pad, pitch: 0, bearing: 0, duration, easing: 'ease' });
+  };
+
   const headingOf = (u: LiveUnit): number => {
     if (u.motion === 'moving' && u.position?.heading_deg != null) return u.position.heading_deg;
     if (routeLine && routeLine.length > 1) return bearingBetween({ lng: routeLine[0][0], lat: routeLine[0][1] }, { lng: routeLine[1][0], lat: routeLine[1][1] });
@@ -463,17 +481,17 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   const tripOverview = () => {
     if (!sel?.position) return;
     const b = boundsOf([sel.position, ...stops.map((s) => ({ lat: s.lat!, lng: s.lng! }))], 0.02, 0.05);
-    if (b) camera.current?.fitBounds(b, { padding: pad, pitch: 0, bearing: 0, duration: 1000 });
+    if (b) fitFlat(b, 1000);
   };
 
   useImperativeHandle(ref, () => ({
     fitAll() {
-      if (bounds) camera.current?.fitBounds(bounds, { padding: pad, pitch: 0, bearing: 0, duration: 800 });
+      if (bounds) fitFlat(bounds, 800);
     },
     fitKeys(keys: string[]) {
       const set = new Set(keys);
       const b = boundsOf(points.filter((u) => set.has(u.key)).map((u) => u.position!), 0.005, 0.01);
-      if (b) camera.current?.fitBounds(b, { padding: pad, pitch: 0, bearing: 0, duration: 900 });
+      if (b) fitFlat(b, 900);
     },
     zoomBy(delta: number) {
       camera.current?.zoomTo(Math.max(3, Math.min(19, zoomRef.current + delta)), { duration: 250 });
@@ -503,10 +521,10 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
     if (sel?.position) flyToSelected(sel, tilted ? 55 : 0);
     else if (lane) {
       const b = boundsOf([lane.from, lane.to, ...points.map((u) => u.position!)], 0.2, 0.3);
-      if (b) camera.current.fitBounds(b, { padding: pad, pitch: 0, bearing: 0, duration: 800 });
+      if (b) fitFlat(b, 800);
     } else if (focus) {
       const d = focus.km / 111;
-      camera.current.fitBounds([focus.lng - d, focus.lat - d, focus.lng + d, focus.lat + d], { padding: pad, pitch: 0, bearing: 0, duration: 700 });
+      fitFlat([focus.lng - d, focus.lat - d, focus.lng + d, focus.lat + d], 700);
     }
     // Only a new selection or search moves the camera, not padding/tilt changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -561,6 +579,7 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
       onRegionDidChange={(e) => {
         const v = { zoom: e.nativeEvent.zoom, pitch: e.nativeEvent.pitch, bearing: e.nativeEvent.bearing, center: e.nativeEvent.center };
         zoomRef.current = v.zoom;
+        tiltRef.current = { pitch: v.pitch, bearing: v.bearing };
         setView(v);
         setArea({ bbox: e.nativeEvent.bounds, zoom: v.zoom });
         onViewChange?.(v);

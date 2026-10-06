@@ -392,7 +392,10 @@ export default function FleetMapScreen() {
   const mapRef = useRef<FleetMapHandle>(null);
   const [camera, setCamera] = useState<MapView>({ zoom: 5, pitch: 0, bearing: 0 });
   const [legend, setLegend] = useState(false);
+  // Driver view / Trip are toggles: tapping the one that's on goes back to the truck and its card.
+  const exitView = () => { setFocusMode('none'); setFollowing(true); mapRef.current?.set3D(is3D); };
   const enterView = (mode: FocusMode) => {
+    if (mode === focusMode) { exitView(); return; }
     setFocusMode(mode); setFollowing(true);
     if (mode === 'driver') mapRef.current?.driverView(); else if (mode === 'overview') mapRef.current?.tripOverview();
   };
@@ -597,7 +600,8 @@ export default function FleetMapScreen() {
             onLongPress={(at) => searchAround({ label: 'Dropped pin', lat: at.lat, lng: at.lng, kind: 'pin' })}
             lane={laneOnMap}
             ringed={lane ? ringed : undefined}
-            padding={{ top: 70, bottom: sheetOpen ? sheetH + 30 : 70 }}
+            // Clear of the card and of the truck's view bar above it (or at the bottom in a focus view).
+            padding={{ top: 70, bottom: (sheetOpen ? sheetH : 0) + (unit?.position ? 96 : 30) }}
             onViewChange={(v) => { setCamera(v); if (v.center) savePrefs({ camera: { center: v.center, zoom: v.zoom } }); }}
             onGroupPress={openGroup}
             restLine={restStops.length >= 2 ? restQ.data?.geometry ?? null : null}
@@ -632,7 +636,7 @@ export default function FleetMapScreen() {
               <ViewChip icon={Navigation} label="Driver view" on={focusMode === 'driver'} onPress={() => enterView('driver')} />
               {unit.trip ? <ViewChip icon={MapIcon} label="Trip" on={focusMode === 'overview'} onPress={() => enterView('overview')} /> : null}
               {focusMode !== 'none' ? (
-                <TouchableOpacity style={s.exit} onPress={() => { setFocusMode('none'); setFollowing(true); mapRef.current?.set3D(is3D); }}>
+                <TouchableOpacity style={s.exit} onPress={exitView}>
                   <Text style={s.exitText}>Exit</Text>
                 </TouchableOpacity>
               ) : null}
