@@ -222,7 +222,31 @@ function recentRoutesFrom(trips: OperatorTrip[]): RecentRoute[] {
   return [...map.values()].sort((a, b) => b.count - a.count || b.lastUsed - a.lastUsed).slice(0, 4);
 }
 
-export function useCreateTrip(params: { customerId?: string; billingType?: string; assignment?: string; vehicleId?: string; quotationId?: string }) {
+/** Opened from a lane search (Fleet map): its two ends, by name and city-centre coordinates. */
+export interface RoutePreset {
+  from?: string; fromLat?: string; fromLng?: string;
+  to?: string; toLat?: string; toLng?: string;
+}
+
+/** A blank trip, or one starting on a preset lane. A city centre is only approximate — the operator can pick the real site. */
+function initialSlot(p: RoutePreset): TripSlotDraft {
+  const slot = emptySlot();
+  const coord = (v?: string) => (v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : null);
+  if (!p.from?.trim() || !p.to?.trim()) return slot;
+  return {
+    ...slot,
+    origin: p.from.trim(),
+    originName: p.from.trim(),
+    originLat: coord(p.fromLat),
+    originLng: coord(p.fromLng),
+    destination: p.to.trim(),
+    destinationName: p.to.trim(),
+    destinationLat: coord(p.toLat),
+    destinationLng: coord(p.toLng),
+  };
+}
+
+export function useCreateTrip(params: { customerId?: string; billingType?: string; assignment?: string; vehicleId?: string; quotationId?: string } & RoutePreset) {
   const [tz, setTz] = useState('Asia/Riyadh');
   const [today, setToday] = useState(() => dateInZone(Date.now(), 'Asia/Riyadh'));
 
@@ -253,7 +277,7 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
   const [billingType, setBillingType] = useState<'Extra' | 'Monthly'>(params.billingType === 'Monthly' ? 'Monthly' : 'Extra');
   const [vehicleType, setVehicleType] = useState<string>('10 TON');
   // The slot as entered; `slot` below adds the suggested drop-off until the user sets one.
-  const [rawSlot, setSlot] = useState<TripSlotDraft>(() => emptySlot());
+  const [rawSlot, setSlot] = useState<TripSlotDraft>(() => initialSlot(params));
   const [charges, setCharges] = useState<TripChargeInput[]>([]);
   const [dropoffTouched, setDropoffTouched] = useState(false);
   const [routeEstimate, setRouteEstimate] = useState<RouteEstimate | null>(null);

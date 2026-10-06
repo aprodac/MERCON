@@ -763,6 +763,25 @@ model TripUpdateShare {
   first_opened_at DateTime? @db.Timestamptz
   last_opened_at  DateTime? @db.Timestamptz
   opens           TrackingLinkOpen[]
+  /// Turned off by ops (Links page) — the page then says the link has expired.
+  revokedAt       DateTime? @db.Timestamptz
+  revoked_by      String?   @db.Uuid
+  /// Ops chose the expiry: the link lasts exactly until expiresAt, even past the
+  /// trip's finish (otherwise it also ends TRACKING_AFTER_END_DAYS after the finish).
+  expiry_custom   Boolean   @default(false)
+  /// Ops' own note for the link, e.g. "Sent to the Jeddah warehouse".
+  label           String?
+  // What this link's page shows. The first three override the customer's
+  // tracking_* setting (null = follow the customer); the last three are per link only.
+  show_deadline      Boolean?
+  show_delay_reason  Boolean?
+  show_photos        Boolean?
+  /// The driver's first name and photo.
+  show_driver        Boolean   @default(true)
+  /// The truck's plate number and photo.
+  show_plate         Boolean   @default(true)
+  /// The truck on the map and the road it drove; off = status, stops and ETA only.
+  show_position      Boolean   @default(true)
 
   @@index([tripId, update_key])
   @@map("trip_update_shares")
@@ -779,9 +798,24 @@ model CustomerTrackingLink {
   createdAt      DateTime  @default(now()) @db.Timestamptz
   /// Set when replaced by a new link; the old one then stops working.
   revokedAt      DateTime? @db.Timestamptz
+  revoked_by     String?   @db.Uuid
+  /// Null = never expires (the default for the all-trucks page).
+  expiresAt      DateTime? @db.Timestamptz
+  label          String?
   open_count     Int       @default(0)
   last_opened_at DateTime? @db.Timestamptz
   opens          TrackingLinkOpen[]
+  // What this link's page shows. The first three override the customer's
+  // tracking_* setting (null = follow the customer); the last three are per link only.
+  show_deadline      Boolean?
+  show_delay_reason  Boolean?
+  show_photos        Boolean?
+  /// The driver's first name and photo.
+  show_driver        Boolean   @default(true)
+  /// The truck's plate number and photo.
+  show_plate         Boolean   @default(true)
+  /// The truck on the map and the road it drove; off = status, stops and ETA only.
+  show_position      Boolean   @default(true)
 
   @@index([customerId])
   @@map("customer_tracking_links")
@@ -799,6 +833,10 @@ model TrackingLinkOpen {
   opened_at      DateTime              @default(now()) @db.Timestamptz
   /// e.g. "iPhone · Safari", "Android · Chrome".
   device         String?
+  /// Rough place looked up from the visitor's IP on this server (DB-IP Lite);
+  /// the IP itself is never stored. "Jeddah", "SA".
+  city           String?
+  country        String?
 
   @@index([tripShareId, opened_at])
   @@index([customerLinkId, opened_at])

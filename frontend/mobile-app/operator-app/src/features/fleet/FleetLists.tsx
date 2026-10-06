@@ -139,7 +139,7 @@ function startsIn(iso: string | null, now: number): { text: string; hot: boolean
   return { text: `in ${span(min)}`, hot: false };
 }
 
-function ScheduledRow({ trip: t, f, now, onPress, onFindTruck }: { trip: ScheduledTrip; f: Time; now: number; onPress: () => void; onFindTruck: () => void }) {
+export function ScheduledRow({ trip: t, f, now, onPress, onFindTruck }: { trip: ScheduledTrip; f: Time; now: number; onPress: () => void; onFindTruck: () => void }) {
   const when = startsIn(t.planned_start, now);
   const driver = [t.driver?.first_name, t.driver?.last_name].filter(Boolean).join(' ');
   const plate = t.vehicle?.plate_number ?? null;

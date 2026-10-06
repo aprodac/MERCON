@@ -7,11 +7,11 @@
  *   Details — pre-trip checks or trip summary, truck & driver, financials, paperwork.
  * The next status step, WhatsApp and "more" stay pinned at the bottom.
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl, ActivityIndicator, Alert, Modal, Linking, StatusBar,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, Check, LayoutList, Maximize2, MessageCircle, MoreHorizontal, Navigation, Phone, Route, Send, X, type LucideIcon } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
@@ -50,7 +50,7 @@ export default function TripDetailsScreen() {
   // Links from the home's "Needs action" cards can open a tab, a message or a picker straight away.
   const params = useLocalSearchParams<{ id: string; tab?: string; share?: string; update?: string; assign?: string; times?: string }>();
   const { id } = params;
-  const { trip, overview, updates, whatsappApi, tz, phase, remaining, tracking, trackingUrl, refreshTracking, renewTracking, loading, refreshing, error, refresh, reload } = useTripDetails(id);
+  const { trip, overview, updates, whatsappApi, tz, phase, remaining, tracking, trackingUrl, refreshTracking, loading, refreshing, error, refresh, reload } = useTripDetails(id);
   const f = useMemo(() => makeFormatters(tz), [tz]);
 
   const [tab, setTab] = useState<Tab>(params.tab === 'stops' ? params.tab : 'details');
@@ -96,6 +96,17 @@ export default function TripDetailsScreen() {
       .catch(() => {});
     return () => { live = false; };
   }, [tripLoaded, assignKind]);
+
+  // Back from the link's page: it may have been replaced or turned off there.
+  const linkManaged = useRef(false);
+  const refreshTrackingRef = useRef(refreshTracking);
+  useEffect(() => { refreshTrackingRef.current = refreshTracking; });
+  useFocusEffect(useCallback(() => {
+    if (linkManaged.current) {
+      linkManaged.current = false;
+      refreshTrackingRef.current();
+    }
+  }, []));
 
   if (loading && !trip) {
     return (
@@ -215,20 +226,20 @@ export default function TripDetailsScreen() {
 
   const quick = (kind: QuickKind) => setShare({ type: 'quick', kind });
 
-  // The customer tracking link: send it, open what the customer sees, or replace it.
+  // The customer tracking link: send it, or manage it (open, expiry, what it shows, history, new link).
   const trackingActions = () => {
     const url = tracking?.url;
     if (!url) return;
     const head = [trip.ref_id, trip.vehicle?.plate_number ?? trip.third_party_vehicle_plate].filter(Boolean).join(' · ');
+    // Three buttons at most — Android shows no more.
     Alert.alert('Customer tracking link', url, [
       { text: 'Send on WhatsApp', onPress: () => { shareTextToWhatsApp(`*${head}*\nTrack your truck live: ${url}`, 'Tracking link').catch(() => {}); } },
-      { text: 'Open the page', onPress: () => { Linking.openURL(url).catch(() => {}); } },
       {
-        text: 'New link…',
-        onPress: () => Alert.alert('Make a new link?', 'The current link stops working for everyone who has it.', [
-          { text: 'Keep it', style: 'cancel' },
-          { text: 'Make new link', style: 'destructive', onPress: () => { renewTracking().catch((e) => Alert.alert('Could not make a new link', getApiErrorMessage(e))); } },
-        ]),
+        text: 'Manage link…',
+        onPress: () => {
+          linkManaged.current = true;
+          router.push({ pathname: '/link-details', params: { kind: 'trip', trip: trip.id } });
+        },
       },
       { text: 'Close', style: 'cancel' },
     ]);

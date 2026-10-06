@@ -11,7 +11,6 @@ import { StopPin } from '@/components/maps/live/LiveMapBits';
 import { SAUDI_CENTER, DEFAULT_SAUDI_ZOOM } from '@/utils/saudiMapConfig';
 import { trackingService, type PublicTracking, type PublicTrackingStop } from '@/services/trackingService';
 import { useTrackingText, type TrackingText } from './trackingI18n';
-import { SheetHandle, useBottomSheet } from './bottomSheet';
 import { PublicMap } from './publicMap';
 import { AskButton, BrandMark, Centered, Chip, LangToggle, Photo, PhotoViewer, TRACK_BLUE, TruckPuck, line, isVideoUrl } from './trackingParts';
 
@@ -33,15 +32,14 @@ export default function TrackingPage() {
   // Opened from the customer's all-trucks page: its token, for the back button.
   const [params] = useSearchParams();
   const fleetToken = backToFleetToken(params.get('c'));
-  const sheet = useBottomSheet(0.46);
   // The first load counts as an open for ops ("customer opened 3 times"); refreshes don't.
   const counted = useRef(false);
   const { data, error, isLoading, dataUpdatedAt, refetch, isFetching } = useQuery({
-    queryKey: ['public-tracking', token],
+    queryKey: ['public-tracking', token, fleetToken],
     queryFn: () => {
       const view = !counted.current;
       counted.current = true;
-      return trackingService.getPublic(token, view);
+      return trackingService.getPublic(token, view, fleetToken);
     },
     retry: (n, err: any) => n < 2 && !err?.response?.status,
     refetchInterval: (q) => {
@@ -83,21 +81,23 @@ export default function TrackingPage() {
   const about = [data.trip.ref, data.vehicle.plate].filter(Boolean).join(' · ');
 
   return (
-    <div dir={text.rtl ? 'rtl' : 'ltr'} className="relative flex h-[100dvh] flex-col overflow-hidden bg-[#f6f4ef] text-slate-900 md:block">
-      <div dir="ltr" className={cn('relative shrink-0 overflow-hidden md:absolute md:inset-0', sheet.mapBox.className)} style={sheet.mapBox.style}>
+    // Phone: one scrolling page — a short map (a quarter of the screen) with the
+    // white card under it. The card is at least a screen tall, so scrolling up
+    // always slides it over the whole map, however short the details are.
+    // Wide screen: full-screen map with the card floating beside it.
+    <div dir={text.rtl ? 'rtl' : 'ltr'} className="relative flex h-[100dvh] flex-col overflow-y-auto overscroll-none bg-[#f6f4ef] text-slate-900 md:block md:overflow-hidden">
+      <div dir="ltr" className="relative h-[25dvh] min-h-[170px] shrink-0 overflow-hidden md:absolute md:inset-0 md:h-auto">
         <TrackingMap data={data} text={text} />
         <MapTopBar data={data} text={text} fleetToken={fleetToken} />
       </div>
       <section
         className={cn(
-          'relative z-10 flex-1 overflow-y-auto bg-white px-4 pt-3 pb-6 shadow-[0_-8px_30px_rgba(0,0,0,0.10)]',
-          sheet.expanded ? 'mt-0' : '-mt-5 rounded-t-3xl',
-          'md:absolute md:top-4 md:bottom-4 md:mt-0 md:w-[390px] md:flex-none md:rounded-3xl md:pt-5 md:shadow-[0_8px_30px_rgba(0,0,0,0.15)]',
+          'relative z-10 -mt-5 min-h-[100dvh] shrink-0 grow rounded-t-3xl bg-white px-4 pt-3 pb-6 shadow-[0_-8px_30px_rgba(0,0,0,0.10)]',
+          'md:absolute md:top-4 md:bottom-4 md:mt-0 md:min-h-0 md:w-[390px] md:overflow-y-auto md:rounded-3xl md:pt-5 md:shadow-[0_8px_30px_rgba(0,0,0,0.15)]',
           text.rtl ? 'md:right-4' : 'md:left-4',
         )}
       >
-        <SheetHandle handle={sheet.handle} expanded={sheet.expanded} label={sheet.expanded ? text.t.showMap : text.t.showMore} />
-        {fleetToken && sheet.expanded && <BackToFleet token={fleetToken} text={text} className="mb-3" />}
+        <div className="mb-2 flex justify-center md:hidden"><span className="h-1.5 w-11 rounded-full bg-slate-300" /></div>
         <Headline data={data} text={text} />
         <Progress data={data} text={text} />
         <ProofOfDelivery data={data} text={text} onOpen={setPhoto} />
@@ -285,7 +285,8 @@ function BackToFleet({ token, text, className }: { token: string; text: Tracking
 
 function MapTopBar({ data, text, fleetToken }: { data: PublicTracking; text: TrackingText; fleetToken: string | null }) {
   const pos = data.position;
-  const live = data.trip.phase === 'active' || data.trip.phase === 'planned';
+  // The link may hide where the truck is — then there's no live / last-seen chip either.
+  const live = (data.trip.phase === 'active' || data.trip.phase === 'planned') && data.options.show_position !== false;
   return (
     <div className="pointer-events-none absolute inset-x-3 top-3 flex items-start justify-between gap-2 md:top-4 md:right-4 md:left-auto">
       {fleetToken ? (

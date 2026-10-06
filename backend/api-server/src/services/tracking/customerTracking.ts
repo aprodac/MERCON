@@ -12,6 +12,8 @@
  * only. Per customer (Customer.tracking_*), ops choose whether the page also
  * shows the planned arrival ("on time" / "late by"), the delay reason category,
  * and the loading / delivery photos — and can switch tracking off entirely.
+ * Each link can override those, and also hide the driver, the plate or the
+ * truck's position (Links page in the operator app — LinkView).
  *
  * Nothing here invents a position — a truck that has stopped reporting is shown
  * as "last seen", and its ETA is withheld once the fix is too old to trust.
@@ -24,6 +26,7 @@ import { loadTripOverview, thinPath, type TripOverview, type TripPhase } from '.
 import { loadTripMedia, type LiveStop, type LiveTripMedia } from '../fleetLiveMap';
 import { publicImage } from './publicImages';
 import { whatsAppGroupUrl } from '@mercon/shared-types';
+import { logLinkOpen } from './linkOpens';
 
 export const TRACKING_UPDATE_KEY = 'tracking';
 export const TRACKING_CHANNEL = 'tracking_link';
@@ -45,12 +48,32 @@ const MAX_PHOTOS_PER_STOP = 12;
 
 export type TrackingEtaGap = 'no_position' | 'stale' | 'no_route' | null;
 
-/** What the customer's settings let the page show. */
+/** What the page shows: the customer's settings, with the link's own choices on top. */
 export interface TrackingOptions {
   show_deadline: boolean;
   show_delay_reason: boolean;
   show_photos: boolean;
+  /** The driver's first name and photo. */
+  show_driver: boolean;
+  /** The truck's plate and photo. */
+  show_plate: boolean;
+  /** The truck on the map and the road it drove (off: status, stops and ETA only). */
+  show_position: boolean;
 }
+
+/** A link's own view settings (trip_update_shares / customer_tracking_links). Null = follow the customer. */
+export interface LinkView {
+  show_deadline: boolean | null;
+  show_delay_reason: boolean | null;
+  show_photos: boolean | null;
+  show_driver: boolean;
+  show_plate: boolean;
+  show_position: boolean;
+}
+
+export const LINK_VIEW_SELECT = {
+  show_deadline: true, show_delay_reason: true, show_photos: true, show_driver: true, show_plate: true, show_position: true,
+} as const;
 
 export interface TrackingBrand {
   name: string;
@@ -160,11 +183,17 @@ export interface TrackingCustomerSettings {
   whatsapp_group_link?: string | null;
 }
 
-export const optionsOf = (c: TrackingCustomerSettings | null | undefined): TrackingOptions => ({
-  show_deadline: !!c?.tracking_show_deadline,
-  show_delay_reason: !!c?.tracking_show_delay_reason,
-  show_photos: c ? c.tracking_show_photos : true,
+export const optionsOf = (c: TrackingCustomerSettings | null | undefined, link?: LinkView | null): TrackingOptions => ({
+  show_deadline: link?.show_deadline ?? !!c?.tracking_show_deadline,
+  show_delay_reason: link?.show_delay_reason ?? !!c?.tracking_show_delay_reason,
+  show_photos: link?.show_photos ?? (c ? c.tracking_show_photos : true),
+  show_driver: link?.show_driver ?? true,
+  show_plate: link?.show_plate ?? true,
+  show_position: link?.show_position ?? true,
 });
+
+const optionsKey = (o: TrackingOptions) =>
+  [o.show_deadline, o.show_delay_reason, o.show_photos, o.show_driver, o.show_plate, o.show_position].map((b) => (b ? 1 : 0)).join('');
 
 // ── Pure helpers ────────────────────────────────────────────────────────────
 
@@ -220,17 +249,21 @@ export async function teamWhatsApp(db: PrismaClient, userId: string | null | und
 
 export type LinkState = 'ok' | 'expired' | 'cancelled' | 'not_found' | 'disabled';
 
-/** Whether a link may still be opened. A finished trip's link lasts TRACKING_AFTER_END_DAYS past the finish. */
+/**
+ * Whether a link may still be opened. A finished trip's link lasts
+ * TRACKING_AFTER_END_DAYS past the finish — unless ops set the expiry
+ * themselves (`expiry_custom`), which then is the only limit.
+ */
 export function trackingLinkState(
-  share: { expiresAt: Date },
+  share: { expiresAt: Date; revokedAt?: Date | null; expiry_custom?: boolean },
   trip: { status: string; actual_end: Date | null; updatedAt: Date; customer?: { tracking_enabled: boolean } | null } | null,
   now: Date,
 ): LinkState {
   if (!trip) return 'not_found';
-  if (share.expiresAt <= now) return 'expired';
+  if (share.revokedAt || share.expiresAt <= now) return 'expired';
   if (trip.customer && !trip.customer.tracking_enabled) return 'disabled';
   if (trip.status === 'Cancelled') return 'cancelled';
-  if (trip.status === 'Completed' || trip.status === 'Invoiced') {
+  if (!share.expiry_custom && (trip.status === 'Completed' || trip.status === 'Invoiced')) {
     const ended = trip.actual_end ?? trip.updatedAt;
     if (now.getTime() - ended.getTime() > TRACKING_AFTER_END_DAYS * 86_400_000) return 'expired';
   }
@@ -360,7 +393,9 @@ export function buildPublicTracking(input: {
     : null;
 
   const third = meta.is_third_party ? meta.subcontract : null;
-  const showAllRoute = phase === 'planned' || phase === 'cancelled' || (phase === 'done' && overview.path.length < 2);
+  // With the position hidden the page draws the planned road instead of where the truck is.
+  const showPos = options.show_position;
+  const showAllRoute = !showPos || phase === 'planned' || phase === 'cancelled' || (phase === 'done' && overview.path.length < 2);
 
   return {
     brand: input.brand,
@@ -376,13 +411,13 @@ export function buildPublicTracking(input: {
     },
     customer: input.customer ?? null,
     vehicle: {
-      plate: third ? third.vehiclePlate : meta.vehicle?.plate_number ?? null,
+      plate: !options.show_plate ? null : third ? third.vehiclePlate : meta.vehicle?.plate_number ?? null,
       type: (third ? third.vehicleType : null) || meta.vehicle_type || meta.vehicle?.asset_type || null,
-      photo_url: third ? null : meta.vehicle?.image_url ?? null,
+      photo_url: third || !options.show_plate ? null : meta.vehicle?.image_url ?? null,
     },
-    driver_first_name: firstName(third ? third.driverName : meta.driver?.first_name),
-    driver_photo_url: third ? null : meta.driver?.avatar_url ?? null,
-    position: pos ? {
+    driver_first_name: options.show_driver ? firstName(third ? third.driverName : meta.driver?.first_name) : null,
+    driver_photo_url: third || !options.show_driver ? null : meta.driver?.avatar_url ?? null,
+    position: pos && showPos ? {
       lat: round5(pos.lat),
       lng: round5(pos.lng),
       heading_deg: pos.heading_deg,
@@ -398,8 +433,8 @@ export function buildPublicTracking(input: {
     progress,
     stops,
     next_stop_index: phase === 'done' || phase === 'cancelled' ? null : nextIdx,
-    path: phase === 'active' || phase === 'done' ? roundCoords(thinPath(overview.path, MAX_PUBLIC_PATH_POINTS)) : [],
-    ahead: live && ahead && pos ? roundCoords(thinPath(ahead.geometry, MAX_PUBLIC_ROUTE_POINTS)) : null,
+    path: showPos && (phase === 'active' || phase === 'done') ? roundCoords(thinPath(overview.path, MAX_PUBLIC_PATH_POINTS)) : [],
+    ahead: showPos && live && ahead && pos ? roundCoords(thinPath(ahead.geometry, MAX_PUBLIC_ROUTE_POINTS)) : null,
     route: showAllRoute && all ? roundCoords(thinPath(all.geometry, MAX_PUBLIC_ROUTE_POINTS)) : null,
     generated_at: now.toISOString(),
   };
@@ -492,11 +527,14 @@ export async function buildTripTracking(
   meta: TrackingTripMeta & { customer: (TrackingCustomerSettings & { id?: string; name?: string; logo_url?: string | null }) | null },
   ctx: TrackingContext,
   now = new Date(),
+  /** The link's view settings on top of the customer's; the customer's alone when absent. */
+  view?: LinkView | null,
 ): Promise<PublicTracking | null> {
-  const cached = payloadCache.get(tripId);
+  const options = optionsOf(meta.customer, view);
+  const cacheKey = `${tripId}:${optionsKey(options)}`;
+  const cached = payloadCache.get(cacheKey);
   if (cached && now.getTime() - cached.at < PAYLOAD_TTL_MS) return cached.data;
 
-  const options = optionsOf(meta.customer);
   const [overview, media] = await Promise.all([
     loadTripOverview(db, tripId, now),
     options.show_photos || options.show_delay_reason ? loadTripMedia(db, tripId) : Promise.resolve(null),
@@ -537,7 +575,7 @@ export async function buildTripTracking(
     support_whatsapp: (await teamWhatsApp(db, meta.created_by)) ?? ctx.brand.support_whatsapp,
   };
   const data = buildPublicTracking({ overview, meta: linkedMeta, brand, timezone: ctx.timezone, options, ahead, all, media, customer, now });
-  remember(payloadCache, tripId, { at: now.getTime(), data });
+  remember(payloadCache, cacheKey, { at: now.getTime(), data });
   return data;
 }
 
@@ -550,7 +588,7 @@ async function resolveTripToken(db: PrismaClient, token: string, now: Date) {
   if (token.length < 16 || token.length > 64) return { state: 'not_found' as const };
   const share = await db.tripUpdateShare.findUnique({
     where: { token },
-    select: { id: true, tripId: true, update_key: true, expiresAt: true },
+    select: { id: true, tripId: true, update_key: true, expiresAt: true, revokedAt: true, expiry_custom: true, ...LINK_VIEW_SELECT },
   });
   if (!share || share.update_key !== TRACKING_UPDATE_KEY) return { state: 'not_found' as const };
   const meta = await db.trip.findFirst({ where: { id: share.tripId, deletedAt: null }, select: META_SELECT });
@@ -562,26 +600,58 @@ async function resolveTripToken(db: PrismaClient, token: string, now: Date) {
 export async function loadPublicTracking(
   db: PrismaClient,
   token: string,
-  opts: { now?: Date; countView?: boolean; device?: string | null } = {},
+  opts: {
+    now?: Date; countView?: boolean; device?: string | null; ip?: string | null;
+    /** Token of the customer-wide page the trip was opened from (`?c=`): its view settings apply too. */
+    via?: string | null;
+  } = {},
 ): Promise<TrackingLookup> {
   const now = opts.now ?? new Date();
   const found = await resolveTripToken(db, token, now);
   if (found.state !== 'ok') return { state: found.state };
-  if (opts.countView) recordTripLinkOpen(db, found.share.id, now, opts.device ?? null);
-  const data = await buildTripTracking(db, found.share.tripId, found.meta as unknown as TrackingTripMeta & { customer: TrackingCustomerSettings | null }, await loadTrackingContext(db), now);
+  if (opts.countView) recordTripLinkOpen(db, found.share.id, now, opts.device ?? null, opts.ip ?? null);
+  const view = await viewWithFleetLink(db, found.share, found.meta.customer, opts.via, now);
+  const data = await buildTripTracking(db, found.share.tripId, found.meta as unknown as TrackingTripMeta & { customer: TrackingCustomerSettings | null }, await loadTrackingContext(db), now, view);
   return data ? { state: 'ok', data } : { state: 'not_found' };
 }
 
+/**
+ * A trip opened from the customer-wide page shows only what both links allow —
+ * hiding the position on the all-trucks link must not be undone one tap later.
+ */
+async function viewWithFleetLink(
+  db: PrismaClient,
+  share: LinkView,
+  customer: (TrackingCustomerSettings & { id: string }) | null,
+  via: string | null | undefined,
+  now: Date,
+): Promise<LinkView> {
+  if (!via || !customer || via.length < 16 || via.length > 64) return share;
+  const fleet = await db.customerTrackingLink.findUnique({
+    where: { token: via },
+    select: { customerId: true, revokedAt: true, expiresAt: true, ...LINK_VIEW_SELECT },
+  });
+  if (!fleet || fleet.customerId !== customer.id || fleet.revokedAt || (fleet.expiresAt && fleet.expiresAt <= now)) return share;
+  const a = optionsOf(customer, share);
+  const b = optionsOf(customer, fleet);
+  return {
+    show_deadline: a.show_deadline && b.show_deadline,
+    show_delay_reason: a.show_delay_reason && b.show_delay_reason,
+    show_photos: a.show_photos && b.show_photos,
+    show_driver: a.show_driver && b.show_driver,
+    show_plate: a.show_plate && b.show_plate,
+    show_position: a.show_position && b.show_position,
+  };
+}
+
 /** Counts a page load (not a refresh) and logs it in the open history. Never holds up or fails the page. */
-function recordTripLinkOpen(db: PrismaClient, shareId: string, now: Date, device: string | null) {
+function recordTripLinkOpen(db: PrismaClient, shareId: string, now: Date, device: string | null, ip: string | null) {
   db.$executeRaw`
     UPDATE "trip_update_shares"
     SET open_count = open_count + 1, last_opened_at = ${now}, first_opened_at = COALESCE(first_opened_at, ${now})
     WHERE id = ${shareId}::uuid
   `.catch((err) => logger.warn({ err }, '[tracking] could not record a link open'));
-  db.trackingLinkOpen
-    .create({ data: { tripShareId: shareId, opened_at: now, device } })
-    .catch((err) => logger.warn({ err }, '[tracking] could not log a link open'));
+  logLinkOpen(db, { tripShareId: shareId }, now, device, ip);
 }
 
 // ── Links (ops side) ────────────────────────────────────────────────────────
@@ -642,9 +712,20 @@ export async function ensureTrackingLink(
   if (trip.customer && !trip.customer.tracking_enabled) return DISABLED_LINK;
   const autoLink = trip.customer?.tracking_auto_link ?? true;
 
-  const live = { tripId, update_key: TRACKING_UPDATE_KEY, expiresAt: { gt: now } };
+  const live = { tripId, update_key: TRACKING_UPDATE_KEY, expiresAt: { gt: now }, revokedAt: null };
+  // A new link keeps the old one's label, expiry choice and view settings.
+  let carried: Record<string, unknown> = {};
   if (opts.renew) {
-    await db.tripUpdateShare.updateMany({ where: live, data: { expiresAt: now } });
+    const prev = await db.tripUpdateShare.findFirst({
+      where: { tripId, update_key: TRACKING_UPDATE_KEY },
+      orderBy: { createdAt: 'desc' },
+      select: { label: true, expiry_custom: true, expiresAt: true, ...LINK_VIEW_SELECT },
+    });
+    if (prev) {
+      const { expiry_custom, expiresAt, ...rest } = prev;
+      carried = expiry_custom && expiresAt > now ? { ...rest, expiry_custom, expiresAt } : rest;
+    }
+    await db.tripUpdateShare.updateMany({ where: live, data: { revokedAt: now, revoked_by: opts.userId } });
   } else {
     const existing = await db.tripUpdateShare.findFirst({ where: live, orderBy: { createdAt: 'desc' }, select: LINK_SELECT });
     if (existing) return linkInfo(existing, autoLink, false);
@@ -660,6 +741,7 @@ export async function ensureTrackingLink(
       recipient: 'customer',
       shared_by: opts.userId,
       expiresAt: new Date(now.getTime() + SHARE_LINK_TTL_DAYS * 86_400_000),
+      ...carried,
     },
     select: LINK_SELECT,
   });
