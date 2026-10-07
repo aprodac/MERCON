@@ -170,7 +170,8 @@ export default function TripLiveScreen() {
         follow={following}
         onUserMove={() => setFollowing(false)}
         onViewChange={onViewChange}
-        padding={{ top: insets.top + 70, bottom: cardH + 24 }}
+        // Clear of the title, the card and the view buttons (52 wide + 14 margin) with the truck's pin beside them.
+        padding={{ top: insets.top + 70, bottom: cardH + 24, right: 100 }}
       />
       ) : null}
 

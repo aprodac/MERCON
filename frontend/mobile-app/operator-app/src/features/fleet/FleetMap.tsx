@@ -248,8 +248,8 @@ interface Props {
   routeLine?: LngLat[] | null;
   /** A place to frame (city search): its centre and radius in km. */
   focus?: { lat: number; lng: number; km: number; label?: string } | null;
-  /** Extra space kept clear at the top/bottom (overlaid controls, the card). */
-  padding?: { top: number; bottom: number };
+  /** Extra space kept clear at the top/bottom (overlaid controls, the card), and on the right when the page's control column is wider. */
+  padding?: { top: number; bottom: number; right?: number };
   onViewChange?: (v: MapView) => void;
   /** A group of trucks that sit on the same spot was tapped — show them as a list. */
   onGroupPress?: (keys: string[]) => void;
@@ -298,7 +298,7 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   // What's on screen when the camera settles — drives grouping.
   const [area, setArea] = useState<{ bbox: Bounds; zoom: number } | null>(null);
   // The right side keeps clear of the page's control column.
-  const pad = { top: padding.top, bottom: padding.bottom, left: 40, right: interactive ? 76 : 50 };
+  const pad = { top: padding.top, bottom: padding.bottom, left: 40, right: padding.right ?? (interactive ? 76 : 50) };
   // The camera as last reported — a tilted map has to be laid flat before a fit (fitFlat).
   const tiltRef = useRef({ pitch: 0, bearing: 0 });
   // The clock for "no GPS for 30 min" and the age tags; ticks so they don't go stale on an open map.
