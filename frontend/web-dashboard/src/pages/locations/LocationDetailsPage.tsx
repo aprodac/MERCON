@@ -1,3 +1,4 @@
+import { tripEnds } from '@mercon/shared-types';
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -694,7 +695,8 @@ export default function LocationDetailsPage() {
                           const t = ts.trip;
                           if (!t) return null;
                           const origin = t.stops?.[0]?.location?.code || t.stops?.[0]?.location_name || '—';
-                          const dest = t.stops?.[t.stops.length - 1]?.location?.code || t.stops?.[t.stops.length - 1]?.location_name || '—';
+                          const turn = tripEnds(t.stops, t.rate_category).to ?? t.stops?.[t.stops.length - 1];
+                          const dest = turn?.location?.code || turn?.location_name || '—';
                           return (
                             <div
                               key={ts.id}

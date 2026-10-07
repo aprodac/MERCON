@@ -1,3 +1,4 @@
+import { tripEnds } from '@mercon/shared-types';
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -158,8 +159,9 @@ export default function ImportantReminders({
         }
 
         const origin = trip.stops?.[0]?.location_name || (trip as any).pickup || 'Origin';
-        const dest = trip.stops?.[trip.stops.length - 1]?.location_name || (trip as any).dropoff || 'Destination';
-        const routeLabel = origin && dest ? `${origin} → ${dest}` : (trip as any).route || 'Route';
+        const turn = tripEnds(trip.stops as any[], (trip as any).rate_category);
+        const dest = (turn.to ?? trip.stops?.[trip.stops.length - 1])?.location_name || (trip as any).dropoff || 'Destination';
+        const routeLabel = origin && dest ? `${origin} → ${dest}${turn.round ? ' (round trip)' : ''}` : (trip as any).route || 'Route';
 
         const driverName = trip.driver
           ? `${trip.driver.first_name || ''} ${trip.driver.last_name || ''}`.trim()

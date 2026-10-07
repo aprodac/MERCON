@@ -1,4 +1,5 @@
 import React from 'react';
+import { tripEnds } from '@mercon/shared-types';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -78,8 +79,11 @@ export default function PerformanceOverviewScreen() {
               let routeLabel = t('label_unknown_route', 'Unknown route');
               if (trip.stops && trip.stops.length >= 2) {
                 const origin = trip.stops[0]?.location?.name || trip.stops[0]?.location_name || t('label_origin', 'Origin');
-                const dest = trip.stops[trip.stops.length - 1]?.location?.name || trip.stops[trip.stops.length - 1]?.location_name || t('label_destination', 'Destination');
-                routeLabel = `${origin} → ${dest}`;
+                // A round trip: its way out (Riyadh → Jeddah), not first → last stop (Riyadh → Riyadh).
+                const ends = tripEnds(trip.stops as any[], (trip as any).rate_category);
+                const turn: any = ends.to ?? trip.stops[trip.stops.length - 1];
+                const dest = turn?.location?.name || turn?.location_name || t('label_destination', 'Destination');
+                routeLabel = `${origin} → ${dest}${ends.round ? ` · ${t('label_round_trip_back', 'round trip')}` : ''}`;
               }
               const dateLabel = formatDay(trip.finished_at ?? trip.actual_end ?? trip.planned_start);
 

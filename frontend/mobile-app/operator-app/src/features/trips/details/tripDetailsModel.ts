@@ -139,6 +139,8 @@ export function makeFormatters(tz: string) {
     dateTime: (iso?: string | null) => fmt(iso, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }),
     dayTime: (iso?: string | null) => fmt(iso, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }),
     date: (iso?: string | null) => fmt(iso, { day: 'numeric', month: 'short', year: 'numeric' }),
+    /** The calendar day in the deployment's timezone, to compare two times. */
+    dayKey: (iso?: string | null) => fmt(iso, { year: 'numeric', month: '2-digit', day: '2-digit' }),
     /** A stop time: just the time when it's today, else day + time. */
     smart: (iso?: string | null) => {
       if (!iso) return '';
@@ -424,12 +426,24 @@ export async function remainingTo(from: { lat: number; lng: number }, to: { lat:
   return { km, sec: (km / FALLBACK_KMH) * 3600, to: toName, approx: true };
 }
 
-/** Where a trip ends — its last stop's position and the name customers use ("AL BAHA"). */
-export function destinationOf(t: OperatorTripDetail): { lat: number; lng: number; name: string } | null {
+/**
+ * Where the truck is heading to end this leg: the last stop, or for a round
+ * trip on its way out the turn-around point (Jeddah, not back in Riyadh).
+ */
+export function legDestinationStop(t: OperatorTripDetail): { stop: Stop; index: number } | null {
   const stops = sortedStops(t);
-  const dest = stops[stops.length - 1];
+  if (stops.length === 0) return null;
+  const legs = tripLegsOf(t);
+  const dest = legs.round && legs.currentLeg !== 2 ? legs.outbound[legs.outbound.length - 1] : stops[stops.length - 1];
+  return { stop: dest, index: stops.indexOf(dest) };
+}
+
+/** Where the truck is heading — that stop's position and the name customers use ("AL BAHA"). */
+export function destinationOf(t: OperatorTripDetail): { lat: number; lng: number; name: string } | null {
+  const target = legDestinationStop(t);
+  const dest = target?.stop;
   if (!dest || !Number.isFinite(dest.location_lat) || (!dest.location_lat && !dest.location_lng)) return null;
-  return { lat: dest.location_lat, lng: dest.location_lng, name: (dest.location?.city || stopName(dest, stops.length - 1)).toUpperCase() };
+  return { lat: dest.location_lat, lng: dest.location_lng, name: (dest.location?.city || stopName(dest, target!.index)).toUpperCase() };
 }
 
 /** Great-circle distance in km. */
@@ -460,7 +474,8 @@ export function statusTripOf(
   const driver = trip.is_third_party
     ? trip.third_party_driver_name
     : trip.driver ? `${trip.driver.first_name} ${trip.driver.last_name}`.trim() : null;
-  const lastPlanned = stops[last]?.planned_arrival || trip.planned_end || null;
+  // Due time of where the truck is heading now (a round trip's way out ends at the turn-around point).
+  const lastPlanned = legDestinationStop(trip)?.stop.planned_arrival || stops[last]?.planned_arrival || trip.planned_end || null;
   let eta: StatusTrip['eta'] = null;
   if (phase === 'active' && remaining) {
     const arrival = new Date(now + remaining.sec * 1000);

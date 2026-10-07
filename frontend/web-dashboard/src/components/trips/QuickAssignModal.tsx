@@ -1,3 +1,4 @@
+import { tripEnds } from '@mercon/shared-types';
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Truck, User, AlertCircle, CheckCircle2, X } from 'lucide-react';
@@ -103,7 +104,9 @@ export default function QuickAssignModal({ isOpen, onClose, trip, onSaved }: Qui
   const tripRef = trip.ref_id || trip.id || 'TRIP';
   const customerName = trip.customer?.name || trip.customerName || 'Customer';
   const origin = getStopLoc(trip.stops?.[0], !isUuidVal(trip.pickup) ? trip.pickup! : !isUuidVal(trip.origin_city) ? trip.origin_city! : 'Origin');
-  const dest = getStopLoc(trip.stops?.[trip.stops?.length - 1], !isUuidVal(trip.dropoff) ? trip.dropoff! : !isUuidVal(trip.destination_city) ? trip.destination_city! : 'Destination');
+  // A round trip's destination is where it turns back, not the last stop (home).
+  const ends = tripEnds(trip.stops as any[], (trip as any).rate_category);
+  const dest = getStopLoc(ends.to ?? trip.stops?.[trip.stops?.length - 1], !isUuidVal(trip.dropoff) ? trip.dropoff! : !isUuidVal(trip.destination_city) ? trip.destination_city! : 'Destination');
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>

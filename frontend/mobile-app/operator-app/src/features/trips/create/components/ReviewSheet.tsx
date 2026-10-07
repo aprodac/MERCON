@@ -4,7 +4,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator
 import { CalendarDays, CircleAlert, Clock3, FileText, Handshake, Receipt, Truck, Users } from 'lucide-react-native';
 import { Colors, Spacing, Radius } from '@mercon/mobile-shared/theme/tokens';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
-import { dropoffDayOffset, lineTypeLabel, returnLegDayOffsets, truckClassOfVehicle } from '@mercon/shared-types';
+import { addDaysToDateStr, dropoffDayOffset, lineTypeLabel, returnLegDayOffsets, truckClassOfVehicle } from '@mercon/shared-types';
 import { DriverAvatar } from '../../../drivers/components/DriverAvatar';
 import { UNASSIGNED, type CreateTripForm } from '../useCreateTrip';
 import type { OperatorDriverOption } from '../../../../lib/operator';
@@ -61,6 +61,8 @@ export function ReviewSheet({
     : [];
 
   const days = [...form.selectedDates].sort();
+  /** "Day 2 · Fri 9 Oct" — a run's day, dated from the first operating day. */
+  const runDay = (n: number) => `Day ${n + 1}${days[0] ? ` (${fmtDay(addDaysToDateStr(days[0], n))})` : ''}`;
   const marginKnown = money.billing > 0 && money.costKnown;
   const tone = !marginKnown ? 'none' : money.marginPct >= 20 ? 'good' : money.marginPct >= 5 ? 'thin' : 'low';
 
@@ -116,13 +118,18 @@ export function ReviewSheet({
               </View>
               <Text style={styles.muted}>
                 {form.isRoundTrip
-                  ? `Every run: Day 1 ${slot.pickupTime} → Day ${dropoffDayOffset(slot) + 1} ${slot.dropoffTime}`
+                  ? `Every run: ${runDay(0)} ${slot.pickupTime} → ${runDay(dropoffDayOffset(slot))} ${slot.dropoffTime}`
                   : `Every day ${slot.pickupTime} → ${slot.dropoffTime}`}
               </Text>
               {form.isRoundTrip && slot.returnPickupTime ? (
                 <Text style={styles.muted}>
-                  {`Way back: loads Day ${(returnLegDayOffsets(slot).pickup ?? 0) + 1} ${slot.returnPickupTime}`}
-                  {slot.returnDropoffTime ? ` → home Day ${(returnLegDayOffsets(slot).arrival ?? 0) + 1} ${slot.returnDropoffTime}` : ''}
+                  {`Way back: loads ${runDay(returnLegDayOffsets(slot).pickup ?? 0)} ${slot.returnPickupTime}`}
+                  {slot.returnDropoffTime ? ` → home ${runDay(returnLegDayOffsets(slot).arrival ?? 0)} ${slot.returnDropoffTime}` : ''}
+                </Text>
+              ) : null}
+              {form.runCheck.clashDates.length > 0 ? (
+                <Text style={[styles.muted, { color: Colors.danger, fontWeight: '600' }]}>
+                  {`Runs overlap on ${form.runCheck.clashDates.map((d) => fmtDay(d)).join(', ')} — same driver or truck still on the previous run.`}
                 </Text>
               ) : null}
             </>

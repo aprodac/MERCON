@@ -23,6 +23,7 @@ import {
   quotationMatchesRoute,
   quotationsForRoute,
   returnLegDayOffsets,
+  rosterClashes,
   routeLegsFromSlot,
   slotScheduleFor,
   truckClassOfVehicle,
@@ -1128,6 +1129,26 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     [customerId, slot, vehicleType, rateCategory, billingType, assignmentType, driverId, coDriverId, vehicleId, thirdPartyProviderId, thirdPartyDriverName, thirdPartyDriverPhone, thirdPartyVehiclePlate, thirdPartyCost, awbNumber, dayAssignments, isMonthly, selectedDates, charges, toUtcIso, today],
   );
 
+  /**
+   * A monthly contract's runs: how long one run takes, and the operating days
+   * whose run starts while the same driver or truck is still on an earlier one
+   * (a 32-hour round trip booked every day with one crew).
+   */
+  const runCheck = useMemo(() => {
+    if (!isMonthly || selectedDates.length === 0 || !slot.pickupTime) return { minutes: null as number | null, clashDates: [] as string[] };
+    try {
+      const rows = buildRows();
+      const first = rows[0];
+      const minutes = first?.planned_end ? Math.round((Date.parse(first.planned_end) - Date.parse(first.planned_start)) / 60000) : null;
+      const clashDates = assignmentType === 'third_party'
+        ? []
+        : [...new Set(rosterClashes(rows).map((c) => dateInZone(Date.parse(rows[c.second].planned_start), tz)))].sort();
+      return { minutes, clashDates };
+    } catch {
+      return { minutes: null, clashDates: [] };
+    }
+  }, [isMonthly, selectedDates.length, slot.pickupTime, buildRows, assignmentType, tz]);
+
   const pastTripCount = useMemo(() => {
     if (allIssues.length > 0) return 0;
     try {
@@ -1289,6 +1310,7 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     setReturnDropoff,
     returnDropoffTouched,
     isRoundTrip,
+    runCheck,
     travelMinutes,
     eta,
     etaPending: routeReady && !eta,

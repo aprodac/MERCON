@@ -2677,6 +2677,7 @@ export const getUnsettledCompletedTrips = async (req: Request, res: Response) =>
           billing_amount: true,
           planned_start: true,
           actual_end: true,
+          rate_category: true,
           is_third_party: true,
           subcontract: { select: { driverName: true, vehiclePlate: true, provider: { select: { name: true } } } },
           customer: { select: { id: true, name: true } },
@@ -2684,7 +2685,7 @@ export const getUnsettledCompletedTrips = async (req: Request, res: Response) =>
           vehicle: { select: { id: true, plate_number: true } },
           stops: {
             select: {
-              stop_type: true, stop_sequence: true, location_name: true, location: { select: { name: true } },
+              stop_type: true, stop_sequence: true, leg_index: true, location_name: true, location: { select: { name: true } },
               // Arrival → departure is how long the truck waited — the assistant's waiting-time hint.
               actual_arrival: true, actual_departure: true,
             },
