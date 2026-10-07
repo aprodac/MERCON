@@ -97,6 +97,8 @@ export interface LiveUnit {
     phase: LiveTripPhase;
     customer_id: string | null;
     customer_name: string | null;
+    /** The customer's logo (uploads path or URL), for the map's cards. */
+    customer_logo_url: string | null;
     planned_start: string | null;
     planned_end: string | null;
     stops: LiveStop[];
@@ -158,7 +160,7 @@ export interface LiveTripRow {
   planned_end: Date | null;
   updatedAt: Date;
   customerId?: string | null;
-  customer: { name: string } | null;
+  customer: { name: string; logo_url: string | null } | null;
   driver: LiveDriverRow | null;
   stops: Array<{
     id: string;
@@ -285,6 +287,7 @@ export function tripOut(t: LiveTripRow | undefined): LiveUnit['trip'] {
     phase: t.status === 'Delayed' ? 'delayed' : t.status === 'Scheduled' ? 'upcoming' : 'active',
     customer_id: t.customerId ?? null,
     customer_name: t.customer?.name ?? null,
+    customer_logo_url: t.customer?.logo_url ?? null,
     planned_start: iso(t.planned_start),
     planned_end: iso(t.planned_end),
     stops,
@@ -470,7 +473,7 @@ export async function loadLiveUnits(db: PrismaClient): Promise<LiveUnit[]> {
         planned_start: true,
         planned_end: true,
         updatedAt: true,
-        customer: { select: { name: true } },
+        customer: { select: { name: true, logo_url: true } },
         driver: { select: DRIVER_SELECT },
         stops: {
           where: { deletedAt: null },

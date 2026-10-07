@@ -1,10 +1,11 @@
 import { Check, Maximize2, Minimize2, Navigation, Phone, Route, Smartphone, Truck, TriangleAlert, X } from 'lucide-react';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
+import { resolveFileUrl } from '@/lib/documents';
 import { cn } from '@/lib/utils';
-import { formatDuration, formatKm, nextStop, punctuality, stopLabel, timeAgo, unitTitle, type EtaInfo } from '@/lib/fleetLive';
+import { formatDuration, formatKm, MOTION_LABEL, nextStop, phoneMissing, punctuality, stopLabel, timeAgo, trackerMissing, unitTitle, type EtaInfo } from '@/lib/fleetLive';
 import { fleetLiveService, type LiveGpsFix, type LiveMediaItem, type LiveUnit } from '@/services/fleetLiveService';
 import { MediaViewer, StopMediaStrip } from './TripMedia';
 import { TONE, unitTone } from './liveMapStyle';
@@ -28,13 +29,6 @@ interface Props {
   onTogglePov: () => void;
 }
 
-const MOTION_LABEL: Record<LiveUnit['motion'], string> = {
-  moving: 'Moving',
-  idle: 'Stopped',
-  stale: 'Offline',
-  no_signal: 'No signal',
-};
-
 export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare, onShowRoute, expanded, onToggleExpand, pov, onTogglePov }: Props) {
   const tone = TONE[unitTone(unit)];
   const stop = nextStop(unit);
@@ -55,9 +49,11 @@ export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare
 
   const header = (
     <div className="flex items-start gap-3">
-      <div className={cn('flex size-10 shrink-0 items-center justify-center rounded-xl', tone.soft)}>
-        {unit.vehicle ? <Truck className={cn('size-5', tone.text)} /> : <Smartphone className={cn('size-5', tone.text)} />}
-      </div>
+      <Photo src={unit.vehicle?.image_url} className="size-10 rounded-xl">
+        <div className={cn('flex size-10 shrink-0 items-center justify-center rounded-xl', tone.soft)}>
+          {unit.vehicle ? <Truck className={cn('size-5', tone.text)} /> : <Smartphone className={cn('size-5', tone.text)} />}
+        </div>
+      </Photo>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate font-mono text-[15px] font-semibold tracking-tight text-foreground">{unitTitle(unit)}</span>
@@ -126,7 +122,7 @@ export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare
             <Navigation className="size-3.5 shrink-0 text-blue-600 dark:text-blue-400" />
             <span className="min-w-0 flex-1 truncate font-medium text-foreground">{stopLabel(stop)}</span>
             {eta?.arrival && <span className="shrink-0 font-semibold tabular-nums text-foreground">{eta.approx ? '≈ ' : ''}{formatTime(eta.arrival)}</span>}
-            {p && <span className={cn('shrink-0 font-medium', p.tone === 'good' ? 'text-emerald-600' : 'text-rose-600')}>{p.label}</span>}
+            {p && <span className={cn('shrink-0 font-medium', p.late ? 'text-rose-600' : 'text-emerald-600')}>{p.label}</span>}
           </div>
         )}
         <div className="mt-2.5">{actions}</div>
@@ -159,8 +155,8 @@ export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare
 
         {/* GPS feeds */}
         <div className="grid grid-cols-2 gap-2">
-          <FeedTile icon={Truck} label="Truck tracker" fix={unit.vehicle_gps} missing={!unit.vehicle ? 'No truck' : !unit.vehicle.has_tracker ? 'No tracker' : 'No fix yet'} />
-          <FeedTile icon={Smartphone} label="Driver app" fix={unit.driver_gps} missing={!unit.driver ? 'No driver' : !unit.trip || unit.trip.phase === 'upcoming' ? 'Off trip' : 'Not sending'} />
+          <FeedTile icon={Truck} label="Truck tracker" fix={unit.vehicle_gps} missing={trackerMissing(unit)} />
+          <FeedTile icon={Smartphone} label="Driver app" fix={unit.driver_gps} missing={phoneMissing(unit)} />
         </div>
         {unit.feeds_gap_m != null && unit.feeds_gap_m > 1000 && (
           <p className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-300">
@@ -179,7 +175,12 @@ export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare
                 {tone.label}
               </span>
             </div>
-            {unit.trip.customer_name && <p className="mt-0.5 truncate text-xs text-muted-foreground">{unit.trip.customer_name}</p>}
+            {unit.trip.customer_name && (
+              <div className="mt-1 flex items-center gap-1.5">
+                <Photo src={unit.trip.customer_logo_url} className="size-5 rounded-md bg-white" contain />
+                <p className="truncate text-xs text-muted-foreground">{unit.trip.customer_name}</p>
+              </div>
+            )}
             <ol className="mt-3 space-y-0">
               {unit.trip.stops.map((s, i) => {
                 const done = s.actual_arrival != null;
@@ -284,13 +285,29 @@ function FeedTile({ icon: Icon, label, fix, missing }: { icon: typeof Truck; lab
   );
 }
 
+/** A stored photo (truck, driver, customer logo); `children` — or nothing — when there's none or it fails to load. */
+function Photo({ src, className, contain, children }: { src: string | null | undefined; className: string; contain?: boolean; children?: ReactNode }) {
+  const [broken, setBroken] = useState<string | null>(null);
+  const url = resolveFileUrl(src);
+  if (!url || broken === url) return <>{children}</>;
+  return (
+    <img
+      src={url}
+      alt=""
+      onError={() => setBroken(url)}
+      className={cn('shrink-0 border border-black/[0.06] dark:border-white/10', contain ? 'object-contain' : 'object-cover', className)}
+    />
+  );
+}
+
 function Initials({ name, src }: { name: string; src: string | null }) {
-  if (src) return <img src={src} alt="" className="size-9 shrink-0 rounded-full object-cover" />;
   const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('');
   return (
-    <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-violet-600/12 text-xs font-semibold text-violet-700 dark:text-violet-300">
-      {initials || '?'}
-    </span>
+    <Photo src={src} className="size-9 rounded-full">
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-violet-600/12 text-xs font-semibold text-violet-700 dark:text-violet-300">
+        {initials || '?'}
+      </span>
+    </Photo>
   );
 }
 
@@ -330,7 +347,7 @@ export function EtaStrip({ eta, formatTime }: { eta: EtaInfo; formatTime: (d: Da
       <Metric
         value={eta.durationSeconds != null ? formatDuration(eta.durationSeconds) : '—'}
         label={p?.label ?? (eta.stopLooksWrong ? 'stop location looks wrong' : 'drive time')}
-        tone={p?.tone}
+        tone={p ? (p.late ? 'bad' : 'good') : undefined}
       />
       {eta.distanceKm != null && <Metric value={`${eta.approx ? '≈ ' : ''}${formatKm(eta.distanceKm)}`} label="by road" />}
     </div>

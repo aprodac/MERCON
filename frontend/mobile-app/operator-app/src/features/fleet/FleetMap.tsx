@@ -42,24 +42,13 @@
  * preview on Home. Falls back to a plain panel on builds without MapLibre.
  */
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, View, Text, Image, StyleSheet, TurboModuleRegistry, useWindowDimensions } from 'react-native';
+import { Animated, Easing, View, Text, Image, StyleSheet, useWindowDimensions } from 'react-native';
 import { MapPin } from 'lucide-react-native';
 import Supercluster from 'supercluster';
 import type { LiveUnit, TripHalt } from '../../lib/operator';
-import { feedsApart, isDelayed, isFree, isLongStop, isSilent, lateMin, lateText, located, minText, shortAgo, stoppedMin, tripProgress, unitPriority } from './fleetModel';
-import { quietOfflineTileErrors } from '../../lib/mapLogs';
+import { bearingBetween, feedsApart, isDelayed, isFree, isLongStop, isSilent, lateMin, lateText, located, minText, shortAgo, stoppedMin, tripProgress, unitPriority } from './fleetModel';
 import { MAP_BG, MAP_STYLES, loadMapStyle, readyMapStyle, type MapTheme, type StyleJson } from './mapStyle';
-
-const hasNativeMap = (() => {
-  try {
-    return !!TurboModuleRegistry.get('MLRNNetworkModule');
-  } catch {
-    return false;
-  }
-})();
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const ML: typeof import('@maplibre/maplibre-react-native') | null = hasNativeMap ? require('@maplibre/maplibre-react-native') : null;
-quietOfflineTileErrors(ML);
+import { ML } from '../../lib/maplibre';
 
 export { MAP_STYLES, type MapTheme };
 
@@ -209,14 +198,6 @@ function circleOf(a: { lat: number; lng: number; km: number }): GeoJSON.Feature 
   return { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [pts] } };
 }
 
-/** Compass bearing from a to b, degrees clockwise from north. */
-function bearingBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
-  const toRad = (x: number) => (x * Math.PI) / 180;
-  const y = Math.sin(toRad(b.lng - a.lng)) * Math.cos(toRad(b.lat));
-  const x = Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) - Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(toRad(b.lng - a.lng));
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
-}
-
 /** The camera state the page shows controls for. */
 export interface MapView { zoom: number; pitch: number; bearing: number; center?: LngLat }
 export type FocusMode = 'none' | 'driver' | 'overview';
@@ -248,8 +229,8 @@ interface Props {
   routeLine?: LngLat[] | null;
   /** A place to frame (city search): its centre and radius in km. */
   focus?: { lat: number; lng: number; km: number; label?: string } | null;
-  /** Extra space kept clear at the top/bottom (overlaid controls, the card). */
-  padding?: { top: number; bottom: number };
+  /** Extra space kept clear at the top/bottom (overlaid controls, the card), and on the right when the page's control column is wider. */
+  padding?: { top: number; bottom: number; right?: number };
   onViewChange?: (v: MapView) => void;
   /** A group of trucks that sit on the same spot was tapped — show them as a list. */
   onGroupPress?: (keys: string[]) => void;
@@ -298,7 +279,7 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   // What's on screen when the camera settles — drives grouping.
   const [area, setArea] = useState<{ bbox: Bounds; zoom: number } | null>(null);
   // The right side keeps clear of the page's control column.
-  const pad = { top: padding.top, bottom: padding.bottom, left: 40, right: interactive ? 76 : 50 };
+  const pad = { top: padding.top, bottom: padding.bottom, left: 40, right: padding.right ?? (interactive ? 76 : 50) };
   // The camera as last reported — a tilted map has to be laid flat before a fit (fitFlat).
   const tiltRef = useRef({ pitch: 0, bearing: 0 });
   // The clock for "no GPS for 30 min" and the age tags; ticks so they don't go stale on an open map.

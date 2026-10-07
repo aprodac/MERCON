@@ -82,6 +82,7 @@ function RootNavigator() {
         <Stack.Screen name="documents" options={{ animation: 'none' }} />
         <Stack.Screen name="notifications" options={{ animation: 'none' }} />
         <Stack.Screen name="fleet-map" />
+        <Stack.Screen name="trip-live" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="needs-action" />
         <Stack.Screen name="driver-details" />
         <Stack.Screen name="driver-edit" />

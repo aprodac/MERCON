@@ -295,6 +295,8 @@ export interface LiveUnit {
     /** Absent from servers older than the live map's customer link (2026-10). */
     customer_id?: string | null;
     customer_name: string | null;
+    /** The customer's logo; absent from servers older than 2026-10-07. */
+    customer_logo_url?: string | null;
     planned_start: string | null;
     planned_end: string | null;
     stops: { id: string; sequence: number; type: string; name: string | null; address: string | null; lat: number | null; lng: number | null; planned_arrival: string | null; actual_arrival: string | null; actual_departure: string | null }[];

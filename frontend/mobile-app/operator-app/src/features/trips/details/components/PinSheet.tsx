@@ -7,7 +7,7 @@
  * easier with a thumb than dragging a small marker.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, TurboModuleRegistry } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { getStringAsync } from '../../../../lib/clipboard';
 import { Clipboard as ClipboardIcon, MapPin, Search } from 'lucide-react-native';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
@@ -17,16 +17,7 @@ import { operatorService } from '../../../../lib/operator';
 import type { Stop } from '../tripDetailsModel';
 import { MAP_STYLE_URL } from './TripMap';
 import { ACTION, INK, MUTED } from './parts';
-
-const hasNativeMap = (() => {
-  try {
-    return !!TurboModuleRegistry.get('MLRNNetworkModule');
-  } catch {
-    return false;
-  }
-})();
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const ML: typeof import('@maplibre/maplibre-react-native') | null = hasNativeMap ? require('@maplibre/maplibre-react-native') : null;
+import { ML } from '../../../../lib/maplibre';
 
 /** Riyadh — where the map opens when the stop has no pin at all. */
 const DEFAULT_CENTER: [number, number] = [46.6753, 24.7136];
