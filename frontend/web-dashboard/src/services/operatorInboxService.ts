@@ -81,6 +81,8 @@ export const operatorInboxService = {
     recipient: ShareRecipient;
     recipient_phone?: string | null;
     channel: ShareChannel;
+    /** 2–4 photos as one combined picture with the message under it (company WhatsApp only). */
+    combine?: boolean;
   }): Promise<ShareResult> {
     const res = await api.post<ApiResponse<ShareResult>>('/operator-inbox/driver-updates/share', body);
     return res.data.data;

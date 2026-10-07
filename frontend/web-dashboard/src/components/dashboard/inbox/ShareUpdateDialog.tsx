@@ -62,6 +62,10 @@ export function ShareUpdateDialog({ update, apiAvailable, onClose }: Props) {
   const [recipient, setRecipient] = useState<ShareRecipient>(update.customer?.group_name || !customerPhone ? 'customer_group' : 'customer_contact');
   const [phoneInput, setPhoneInput] = useState('');
   const [asImages, setAsImages] = useState(false);
+  // WhatsApp has no albums: 2–4 photos only arrive together with the message under them as one picture.
+  const [asOnePicture, setAsOnePicture] = useState(true);
+  const chosenItems = update.items.filter((i) => chosen.has(i.id));
+  const canCombine = chosenItems.length >= 2 && chosenItems.length <= 4 && chosenItems.every((i) => i.kind !== 'video');
   const [result, setResult] = useState<{ text: string; url: string } | null>(null);
 
   const current = options.find((o) => o.id === recipient)!;
@@ -78,6 +82,7 @@ export function ShareUpdateDialog({ update, apiAvailable, onClose }: Props) {
         recipient,
         recipient_phone: phone,
         channel: asImages && canSendImages ? 'whatsapp_api' : 'link',
+        combine: asImages && canSendImages && canCombine && asOnePicture,
       }),
   });
 
@@ -220,6 +225,19 @@ export function ShareUpdateDialog({ update, apiAvailable, onClose }: Props) {
                   <span className="font-medium">Send as real images</span>
                   <span className="block text-[11px] text-muted-foreground">
                     Through the WhatsApp Business API, straight to {phone}. Otherwise the message carries a link to the photos.
+                  </span>
+                </span>
+              </label>
+            )}
+            {canSendImages && asImages && canCombine && (
+              <label className="flex items-start gap-2.5 rounded-xl border p-3 text-sm cursor-pointer">
+                <input type="checkbox" className="mt-1" checked={asOnePicture} onChange={(e) => setAsOnePicture(e.target.checked)} />
+                <span>
+                  <span className="font-medium">As one picture</span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    {asOnePicture
+                      ? `The ${chosenItems.length} photos together in one picture, the message under it.`
+                      : 'Separate photos, the message under the last one.'}
                   </span>
                 </span>
               </label>

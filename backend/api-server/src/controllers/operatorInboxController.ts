@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../db';
 import { logger } from '../utils/logger';
 import { whatsappService } from '../services/whatsappService';
+import { MAX_COLLAGE_PHOTOS, writeCollage } from '../services/shareCollage';
 import {
   SHARE_LINK_TTL_DAYS, buildShareMessage, loadDocumentExpiries, loadDriverUpdates, loadTripDriverUpdates,
   newShareToken, updateHeadline,
@@ -63,7 +64,39 @@ export const shareDriverUpdateBody = z.object({
   channel: z.enum(['link', 'whatsapp_api']),
   /** The message as the operator edited it; without it the standard one is used. WhatsApp caps captions at 1024 characters. */
   caption: z.string().trim().max(1024).optional().nullable(),
+  /** Send 2–4 photos as one combined picture (one image + the message under it). */
+  combine: z.boolean().optional(),
 });
+
+export const driverUpdateCollageBody = z.object({
+  trip_id: z.string().uuid(),
+  update_key: z.string().min(1).max(120),
+  media_ids: z.array(z.string().uuid()).min(2).max(MAX_COLLAGE_PHOTOS),
+});
+
+/**
+ * POST /operator-inbox/driver-updates/collage
+ *
+ * The chosen photos as one picture, for the phone's share menu: WhatsApp then
+ * gets one image with the message as its caption, instead of the text on the
+ * first photo (Android) or as a separate message (iPhone).
+ */
+export const driverUpdateCollage = async (req: Request, res: Response) => {
+  const body = req.body as z.infer<typeof driverUpdateCollageBody>;
+  try {
+    const update = (await loadTripDriverUpdates(prisma, body.trip_id)).find((u) => u.key === body.update_key);
+    if (!update) return res.status(404).json({ success: false, error: { message: 'That update no longer exists' } });
+    const chosen = body.media_ids.map((id) => update.items.find((i) => i.id === id)).filter((i): i is NonNullable<typeof i> => !!i);
+    if (chosen.length !== body.media_ids.length || chosen.some((i) => i.kind === 'video')) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Only photos of this update can be combined' } });
+    }
+    const { url } = await writeCollage(chosen.map((i) => i.url));
+    res.status(201).json({ success: true, data: { url } });
+  } catch (error: any) {
+    logger.error({ err: error }, 'driver update collage failed');
+    res.status(502).json({ success: false, error: { message: error?.message || 'Could not combine the photos' } });
+  }
+};
 
 /**
  * POST /operator-inbox/driver-updates/share
@@ -98,10 +131,19 @@ export const shareDriverUpdate = async (req: Request, res: Response) => {
     const text = body.caption || buildShareMessage(update, chosen, shareUrl);
 
     if (body.channel === 'whatsapp_api') {
-      // Images first, the summary as the first caption — the order a customer reads them in.
-      for (const [i, item] of chosen.entries()) {
-        const mediaId = await whatsappService.uploadMedia(item.url, item.mime || (item.kind === 'video' ? 'video/mp4' : 'image/jpeg'));
-        await whatsappService.sendMediaMessage(phone, mediaId, item.kind === 'video' ? 'video' : 'image', i === 0 ? text : '');
+      const photosOnly = chosen.every((i) => i.kind !== 'video');
+      if (body.combine && photosOnly && chosen.length >= 2 && chosen.length <= MAX_COLLAGE_PHOTOS) {
+        // One combined picture with the message under it — the photos always arrive together.
+        const collage = await writeCollage(chosen.map((i) => i.url));
+        const mediaId = await whatsappService.uploadMedia(collage.filePath, 'image/jpeg');
+        await whatsappService.sendMediaMessage(phone, mediaId, 'image', text);
+      } else {
+        // Photos first, the message on the LAST one, so it sits under all of them
+        // (it was on the first, which read as one photo + text, then the rest apart).
+        for (const [i, item] of chosen.entries()) {
+          const mediaId = await whatsappService.uploadMedia(item.url, item.mime || (item.kind === 'video' ? 'video/mp4' : 'image/jpeg'));
+          await whatsappService.sendMediaMessage(phone, mediaId, item.kind === 'video' ? 'video' : 'image', i === chosen.length - 1 ? text : '');
+        }
       }
     }
 
