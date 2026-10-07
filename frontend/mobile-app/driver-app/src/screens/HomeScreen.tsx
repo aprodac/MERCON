@@ -11,7 +11,7 @@ import {
   MapPin, Globe, Clock, ChevronRight, ChevronDown, Building2, Navigation,
   Play, CheckCircle2, Wallet, MoreVertical, ArrowRight, ArrowLeft, Route, House, Camera, Settings, RotateCcw, Check,
 } from 'lucide-react-native';
-import { getTimelineProgress } from '@mercon/shared-types';
+import { getTimelineProgress, tripEnds } from '@mercon/shared-types';
 import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
 import { Badge } from '@mercon/mobile-shared/components/Badge';
 import { DelayReportModal } from '../components/DelayReportModal';
@@ -750,10 +750,13 @@ const HomeScreen = () => {
             {remainingScheduled.map((st) => {
               const sortedStStops = [...(st.stops ?? [])].sort((a, b) => a.stop_sequence - b.stop_sequence);
               const p = sortedStStops.find((s) => s.stop_type === 'Pickup') ?? sortedStStops[0];
-              const d = [...sortedStStops].reverse().find((s) => s.stop_type === 'Dropoff') ?? sortedStStops[sortedStStops.length - 1];
+              // A round trip lists where it goes (Jeddah) and says it comes back — not Riyadh → Riyadh.
+              const stEnds = tripEnds(sortedStStops as any[], (st as any).rate_category);
+              const d = (stEnds.round ? (stEnds.to as typeof sortedStStops[number] | null) : null)
+                ?? [...sortedStStops].reverse().find((s) => s.stop_type === 'Dropoff') ?? sortedStStops[sortedStStops.length - 1];
               const quoNameParts = (st as any).quotation?.name ? (st as any).quotation.name.split(/\s*(?:→|->|–|-)\s*/).map((s: string) => s.trim()).filter(Boolean) : [];
               const originLabel = stopLabel(p) || (st.stops?.length ? null : quoNameParts[0]) || st.origin || 'Pickup';
-              const destLabel = stopLabel(d) || (st.stops?.length ? null : quoNameParts[1]) || st.destination || 'Delivery';
+              const destLabel = `${stopLabel(d) || (st.stops?.length ? null : quoNameParts[1]) || st.destination || 'Delivery'}${stEnds.round ? ` · ${t('label_round_trip_back', 'round trip')}` : ''}`;
               const tripRef = st.ref_id
                 ? (st.ref_id.startsWith('TRP-') ? st.ref_id : `TRP-${st.ref_id}`)
                 : `TRP-${st.id.slice(0, 8)}`;

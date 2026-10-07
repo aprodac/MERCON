@@ -28,6 +28,8 @@ export interface OperatorTrip {
   id: string;
   ref_id: string | null;
   status: string;
+  /** e.g. ROUND_TRIP — a round trip shows its way out and "back to …". */
+  rate_category?: string | null;
   planned_start?: string | null;
   planned_end?: string | null;
   actual_start?: string | null;
@@ -272,6 +274,13 @@ export interface DriverUpdate {
   sent_ids: string[];
   unsent_count: number;
 }
+
+/**
+ * A photo set still waits to be sent while none of it has gone out. Usually
+ * one of a set's photos (most have three) reaches the customer; the others
+ * stay marked "not sent" on the trip without being asked for again.
+ */
+export const needsSending = (u: Pick<DriverUpdate, 'items' | 'sent_ids'>): boolean => u.items.length > 0 && u.sent_ids.length === 0;
 
 export interface ShareResult {
   share_url: string;
@@ -1403,6 +1412,8 @@ export const operatorService = {
     recipient: ShareRecipient;
     recipient_phone?: string | null;
     channel: 'link' | 'whatsapp_api';
+    /** The message as the operator edited it (sent with the photos from the company WhatsApp). */
+    caption?: string | null;
   }): Promise<ShareResult> {
     const { data } = await api.post('/operator-inbox/driver-updates/share', body);
     return data.data as ShareResult;

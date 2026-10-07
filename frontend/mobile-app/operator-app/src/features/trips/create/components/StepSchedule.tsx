@@ -8,6 +8,7 @@ import type { CreateTripForm } from '../useCreateTrip';
 import { Chip, ErrorText, Section, ValueTile, fmtDay, tap } from './ui';
 import { WhenSheet, type WhenValue } from './WhenSheet';
 import { RouteTiming } from './RouteTiming';
+import { runLength } from './StepAssign';
 
 type PickerTarget = 'pickup' | 'dropoff' | 'returnPickup' | 'returnDropoff' | null;
 
@@ -32,7 +33,9 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
   const round = form.isRoundTrip;
   const dropDay = dropoffDayOffset(slot);
   const retDays = returnLegDayOffsets(slot);
-  const dayLabel = (day: number) => `Day ${day + 1}`;
+  // Monthly: "Day 2 · Fri 9 Oct" from the first operating day picked; Day 1 is each operating day.
+  const firstDay = [...form.selectedDates].sort()[0];
+  const dayLabel = (day: number) => `Day ${day + 1}${firstDay ? ` · ${fmtDay(addDaysToDateStr(firstDay, day))}` : ''}`;
   const outboundArrival: WhenValue = { date: slot.dropoffDate || slot.date || form.today, time: slot.dropoffTime, day: dropDay };
   const returnLoad: WhenValue | null = slot.returnPickupTime
     ? { date: slot.returnPickupDate || outboundArrival.date, time: slot.returnPickupTime, day: retDays.pickup ?? dropDay }
@@ -44,6 +47,9 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
   /** Minutes from pickup to the return loading, so the route timing starts the way back there. */
   const returnLoadAt = round && returnLoad && slot.pickupTime ? (returnLoad.day ?? 0) * 1440 + toMin(returnLoad.time) - toMin(slot.pickupTime) : null;
   const returnTo = (slot.returnDestination || '').trim() || slot.origin;
+  /** One run, pickup to back home (or to the drop-off without a way back): minutes. */
+  const lastEvent = returnHome ?? (slot.dropoffTime ? outboundArrival : null);
+  const runMinutes = slot.pickupTime && lastEvent ? (lastEvent.day ?? 0) * 1440 + toMin(lastEvent.time) - toMin(slot.pickupTime) : null;
   const returnFrom = (slot.returnOrigin || '').trim() || slot.destination;
 
   function wayBack() {
@@ -65,6 +71,12 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
           />
         </View>
         <ErrorText>{err('returnPickup') || err('returnDropoff')}</ErrorText>
+        {runMinutes && runMinutes > 0 ? (
+          <Text style={[styles.hint, runMinutes >= 1440 && form.isMonthly && { color: Colors.danger, fontWeight: '600' }]}>
+            {`Whole run ${runLength(runMinutes)}.`}
+            {runMinutes >= 1440 && form.isMonthly ? ' Longer than a day: on back-to-back days one driver and truck are still on the road when the next run starts. Rotate crews on step 3, or leave days between runs.' : ''}
+          </Text>
+        ) : null}
         {!returnLoad ? (
           <Text style={styles.hint}>When does the truck load for the way back? It can be the next day — set the day and time.</Text>
         ) : (

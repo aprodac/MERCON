@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDriverUpdates, buildShareMessage, daysUntil, latestPerSlot } from '../services/operatorInbox';
+import { buildDriverUpdates, buildShareMessage, daysUntil, latestPerSlot, needsSending, routeOf } from '../services/operatorInbox';
 
 const NOW = Date.parse('2026-09-26T10:00:00Z');
 const ago = (s: number) => new Date(NOW - s * 1000);
@@ -90,4 +90,20 @@ test('document expiries', async (t) => {
     assert.equal(daysUntil(new Date('2026-09-26T00:00:00Z'), now), 0);
     assert.equal(daysUntil(new Date('2026-09-23T12:00:00Z'), now), -3);
   });
+});
+
+test('round trip route reads its way out, not first → last stop', () => {
+  const st = (id: string, seq: number, name: string, leg: number) => ({
+    id, stop_sequence: seq, stop_type: seq % 2 ? 'Pickup' : 'Dropoff', location_name: name, location_address: null, leg_index: leg,
+    actual_arrival: null, delay_reason: null, delay_note: null, delay_logged_at: null,
+  });
+  assert.equal(routeOf([st('a', 1, 'Riyadh', 0), st('b', 2, 'Jeddah', 0), st('c', 3, 'Jeddah', 1), st('d', 4, 'Riyadh', 1)]), 'Riyadh → Jeddah · round trip');
+  assert.equal(routeOf([st('a', 1, 'Riyadh', 0), st('b', 2, 'Jeddah', 0)]), 'Riyadh → Jeddah');
+});
+
+test('a photo set stops waiting once one of its photos was sent', () => {
+  const items = [{ id: 'x' }, { id: 'y' }, { id: 'z' }] as never[];
+  assert.equal(needsSending({ items, sent_ids: [] }), true);
+  assert.equal(needsSending({ items, sent_ids: ['x'] }), false);
+  assert.equal(needsSending({ items: [], sent_ids: [] }), false);
 });

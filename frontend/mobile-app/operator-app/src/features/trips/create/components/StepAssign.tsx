@@ -286,6 +286,17 @@ export function StepAssign({ form, showErrors }: { form: CreateTripForm; showErr
         </>
       )}
 
+      {own && form.runCheck.clashDates.length > 0 ? (
+        <Card tone="warning">
+          <Text style={styles.warnText}>
+            Runs overlap on {form.runCheck.clashDates.map((d) => fmtDay(d)).join(', ')}
+          </Text>
+          <Text style={styles.warnNote}>
+            {form.runCheck.minutes ? `Each run takes ${runLength(form.runCheck.minutes)}, so the` : 'The'} same driver or truck is still on the previous run when the next one starts. Rotate drivers and trucks, or leave days between runs.
+          </Text>
+        </Card>
+      ) : null}
+
       {payoutIssue && own ? (
         <Card tone="warning">
           <Text style={styles.warnText}>{payoutIssue}. Set it on step 1, in the price card.</Text>
@@ -530,9 +541,10 @@ function DayTiles({ form, onPick }: { form: CreateTripForm; onPick?: (date: stri
       <View style={styles.tiles}>
         {dates.map((date) => {
           const { d, later, changed } = whoFor(date);
+          const clash = form.runCheck.clashDates.includes(date);
           const [dow, day] = fmtDay(date).replace(',', '').split(' ');
           return (
-            <TouchableOpacity key={date} disabled={!onPick} onPress={() => onPick?.(date)} activeOpacity={0.7} style={[styles.tile, changed && styles.tileChanged]}>
+            <TouchableOpacity key={date} disabled={!onPick} onPress={() => onPick?.(date)} activeOpacity={0.7} style={[styles.tile, changed && styles.tileChanged, clash && styles.tileClash]}>
               <Text style={styles.tileDate}>
                 {dow} {day}
               </Text>
@@ -546,6 +558,14 @@ function DayTiles({ form, onPick }: { form: CreateTripForm; onPick?: (date: stri
       </View>
     </View>
   );
+}
+
+/** 1915 → "1 d 7 h 55 min". */
+export function runLength(m: number): string {
+  const d = Math.floor(m / 1440);
+  const h = Math.floor((m % 1440) / 60);
+  const min = m % 60;
+  return [d ? `${d} d` : '', h ? `${h} h` : '', min ? `${min} min` : ''].filter(Boolean).join(' ') || '0 min';
 }
 
 const styles = StyleSheet.create({
@@ -610,6 +630,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray100,
   },
   tileChanged: { borderColor: Colors.primary, backgroundColor: Colors.primaryLight },
+  tileClash: { borderColor: Colors.danger, backgroundColor: '#FEF3F2' },
   tileDate: { fontSize: 11, fontWeight: '600', color: Colors.gray600 },
   tileName: { fontSize: 11, color: Colors.charcoal, maxWidth: '90%' },
 });

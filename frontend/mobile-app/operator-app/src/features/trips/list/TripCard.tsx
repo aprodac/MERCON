@@ -3,13 +3,14 @@
  *   customer (logo, name, trip no. · time — finished: started → delivered)   status
  *   route panel   ○ from
  *                 ● to                                     +N stops
+ *                 ↺ round trip · back to … (· leg 1 / 2 while running)
  *   delay reason bar (only when the driver gave one)
  *   driver · plate · call
  * Names wrap instead of truncating. Long-press for quick actions.
  */
 import React, { memo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native';
-import { Phone, Truck, AlertCircle } from 'lucide-react-native';
+import { Phone, Truck, AlertCircle, RotateCcw } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import type { OperatorTrip } from '../../../lib/operator';
@@ -77,18 +78,29 @@ function TripCardBase({ trip: t, f, now, showDay, onPress, onLongPress }: Props)
       </View>
 
       {/* Route panel */}
-      <View style={s.route}>
-        <View style={s.rail}>
-          <View style={[s.ring, { borderColor: '#16A34A' }]} />
-          <View style={s.railLine} />
-          <View style={[s.pin, { backgroundColor: ps.dot }]} />
+      <View style={s.routeBox}>
+        <View style={s.route}>
+          <View style={s.rail}>
+            <View style={[s.ring, { borderColor: '#16A34A' }]} />
+            <View style={s.railLine} />
+            <View style={[s.pin, { backgroundColor: ps.dot }]} />
+          </View>
+          <View style={s.places}>
+            <Text style={s.place} numberOfLines={2}>{niceName(route.from)}</Text>
+            <Text style={s.place} numberOfLines={2}>{niceName(route.to)}</Text>
+          </View>
+          {route.via > 0 ? (
+            <View style={s.via}><Text style={s.viaText}>{`+${route.via} ${route.via === 1 ? 'stop' : 'stops'}`}</Text></View>
+          ) : null}
         </View>
-        <View style={s.places}>
-          <Text style={s.place} numberOfLines={2}>{niceName(route.from)}</Text>
-          <Text style={s.place} numberOfLines={2}>{niceName(route.to)}</Text>
-        </View>
-        {route.via > 0 ? (
-          <View style={s.via}><Text style={s.viaText}>{`+${route.via} ${route.via === 1 ? 'stop' : 'stops'}`}</Text></View>
+        {route.back ? (
+          <View style={s.backRow}>
+            <RotateCcw size={12} color={MUTED} strokeWidth={2.4} />
+            <Text style={s.backText} numberOfLines={1}>
+              {`Round trip · back to ${niceName(route.back)}`}
+              {route.leg && open ? <Text style={s.legText}>{route.leg === 1 ? '  ·  Leg 1 going' : '  ·  Leg 2 returning'}</Text> : null}
+            </Text>
+          </View>
         ) : null}
       </View>
 
@@ -146,12 +158,16 @@ const s = StyleSheet.create({
   dot: { width: 6, height: 6, borderRadius: 3 },
   statusText: { fontSize: 12, fontWeight: '700' },
 
-  route: { flexDirection: 'row', alignItems: 'stretch', gap: 12, backgroundColor: '#F6F6F8', borderRadius: 14, paddingVertical: 12, paddingHorizontal: 12 },
+  routeBox: { backgroundColor: '#F6F6F8', borderRadius: 14, paddingVertical: 12, paddingHorizontal: 12, gap: 8 },
+  route: { flexDirection: 'row', alignItems: 'stretch', gap: 12 },
   rail: { alignItems: 'center', paddingVertical: 5 },
   ring: { width: 10, height: 10, borderRadius: 5, borderWidth: 2, backgroundColor: Colors.white },
   railLine: { flex: 1, width: 2, backgroundColor: '#D4D4D8', marginVertical: 3, minHeight: 12 },
   pin: { width: 10, height: 10, borderRadius: 5 },
   places: { flex: 1, justifyContent: 'space-between', gap: 10 },
+  backRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#E9E9EC' },
+  backText: { flex: 1, fontSize: 12, fontWeight: '600', color: MUTED },
+  legText: { color: '#1D4ED8', fontWeight: '700' },
   place: { fontSize: 15, fontWeight: '600', color: '#3E3C3D', lineHeight: 20 },
   via: { alignSelf: 'center', backgroundColor: Colors.white, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: '#E4E4E7' },
   viaText: { fontSize: 11, fontWeight: '700', color: MUTED },

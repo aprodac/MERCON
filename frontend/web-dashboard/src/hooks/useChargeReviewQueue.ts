@@ -1,3 +1,4 @@
+import { splitLegs } from '@mercon/shared-types';
 import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { tripService, ChargeReviewTrip, NewSubCharge, CustomerChargeHabit } from '@/services/tripService';
@@ -26,9 +27,13 @@ function readSnoozed(): Record<string, number> {
 
 export function routeLabel(trip: ChargeReviewTrip): string {
   const name = (s: ChargeReviewTrip['stops'][number] | undefined) => s?.location?.name || s?.location_name || '';
-  const from = name(trip.stops.find((s) => s.stop_type === 'Pickup') || trip.stops[0]);
-  const to = name([...trip.stops].reverse().find((s) => s.stop_type === 'Dropoff') || trip.stops[trip.stops.length - 1]);
-  return from && to ? `${from} → ${to}` : from || to || 'Route not set';
+  // A round trip reads as its way out plus "round trip" — not Riyadh → Riyadh.
+  const legs = splitLegs(trip.stops, trip.rate_category);
+  const stops = legs.round ? legs.outbound : trip.stops;
+  const from = name(stops.find((s) => s.stop_type === 'Pickup') || stops[0]);
+  const to = name([...stops].reverse().find((s) => s.stop_type === 'Dropoff') || stops[stops.length - 1]);
+  const route = from && to ? `${from} → ${to}` : from || to || 'Route not set';
+  return legs.round ? `${route} · round trip` : route;
 }
 
 export function driverLabel(trip: ChargeReviewTrip): string {

@@ -5,7 +5,7 @@ import { Check, CheckCheck, Clock3, Image as ImageIcon, ImageOff, MapPin, Messag
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import type { DriverUpdate, LiveMediaItem, OperatorTripDetail, OperatorTripDocument, TripPhase } from '../../../../lib/operator';
-import { ON_TIME_GRACE_MIN, TONE, delayText, mapsLink, minutesLate, sendStatus, sortedStops, stopName, updateTitle, type Formatters, type Stop } from '../tripDetailsModel';
+import { ON_TIME_GRACE_MIN, TONE, delayText, mapsLink, minutesLate, sendStatus, sortedStops, stopName, tripLegsOf, updateTitle, type Formatters, type Stop } from '../tripDetailsModel';
 import { Card, Chip, INK, MUTED, WA, WA_INK, WA_LIGHT, tap } from './parts';
 import { isAppScreenshot, pendingTimeCheck } from './TripTimesSheet';
 
@@ -34,6 +34,16 @@ export const needsPin = (st: Stop) =>
 
 export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, onCheckTimes, onSetPin, focusStopId, onStopLayout }: Props) {
   const stops = sortedStops(trip);
+  // Round trip: a heading over each leg — "Leg 1 · Riyadh → Jeddah", "Leg 2 · Jeddah → Riyadh".
+  const legs = tripLegsOf(trip);
+  const legTitle = (part: Stop[], n: 1 | 2) =>
+    part.length ? `Leg ${n} · ${n === 1 ? 'going' : 'returning'} · ${stopName(part[0], stops.indexOf(part[0]))} → ${stopName(part[part.length - 1], stops.indexOf(part[part.length - 1]))}` : null;
+  const legStart = legs.round
+    ? new Map<string, { title: string | null; current: boolean }>([
+        [legs.outbound[0]?.id, { title: legTitle(legs.outbound, 1), current: phase === 'active' && legs.currentLeg === 1 }],
+        [legs.ret[0]?.id, { title: legTitle(legs.ret, 2), current: phase === 'active' && legs.currentLeg === 2 }],
+      ])
+    : null;
   const nextIdx = phase === 'active' ? stops.findIndex((s) => !s.actual_arrival) : -1;
   const docs = trip.documents ?? [];
 
@@ -75,14 +85,21 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
         const pinNeeded = (phase === 'planned' || phase === 'active') && !st.actual_arrival && needsPin(st);
         const bubbleBg = phase === 'cancelled' ? '#D6D3D1' : done ? TONE.green.dot : isNext ? TONE.blue.dot : phase === 'planned' ? '#F5F2FD' : Colors.white;
         const bubbleBorder = done || isNext || phase === 'cancelled' ? 'transparent' : phase === 'planned' ? '#B7A6EC' : '#B8BCC8';
-        const leg = (st.leg_index ?? 0) === 1 ? ' · return' : '';
+        const leg = legs.round && legs.ret.includes(st) ? ' · return' : '';
+        const heading = legStart?.get(st.id);
         const times = st.actual_arrival
           ? `arrived ${f.smart(st.actual_arrival)}${st.actual_departure ? ` · left ${f.time(st.actual_departure)}` : ''}`
           : st.planned_arrival ? `due ${f.smart(st.planned_arrival)}` : 'no time planned';
 
         return (
+          <React.Fragment key={st.id}>
+          {heading?.title ? (
+            <View style={[s.legHead, i > 0 && s.legHeadGap]}>
+              <Text style={[s.legHeadText, heading.current && { color: TONE.blue.fg }]}>{heading.title}</Text>
+              {heading.current ? <Chip label="Now" tone="blue" /> : null}
+            </View>
+          ) : null}
           <View
-            key={st.id}
             style={[s.row, isNext && s.rowNext, st.id === focusStopId && s.rowFocus]}
             onLayout={onStopLayout ? (e) => onStopLayout(st.id, e.nativeEvent.layout.y) : undefined}
           >
@@ -137,6 +154,7 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
               </View>
             </View>
           </View>
+          </React.Fragment>
         );
       })}
     </Card>
@@ -149,7 +167,8 @@ const isVideo = (m: LiveMediaItem) => m.kind === 'video' || !!m.mime?.startsWith
 /** One photo set at a stop: the pictures themselves, each marked sent or not, and whether the customer has them. */
 function PhotoSet({ u, onOpen, onSend }: { u: DriverUpdate; onOpen: (index: number) => void; onSend: () => void }) {
   const status = sendStatus(u);
-  const sent = status.state === 'sent';
+  // One photo sent is enough: the set is done, the unsent photos keep their "not sent" mark.
+  const sent = status.state !== 'unsent';
   const shown = u.items.slice(0, THUMBS);
   const extra = u.items.length - shown.length;
   return (
@@ -179,9 +198,9 @@ function PhotoSet({ u, onOpen, onSend }: { u: DriverUpdate; onOpen: (index: numb
         {sent ? <CheckCheck size={14} color={WA} strokeWidth={2.5} /> : <Clock3 size={14} color="#B45309" strokeWidth={2.4} />}
         <Text style={[s.setStatus, { color: sent ? WA_INK : '#8A5200' }]} numberOfLines={2}>{status.text}</Text>
         <TouchableOpacity style={[s.setSend, sent && s.setSendAgain]} onPress={() => { tap(); onSend(); }} hitSlop={6}
-          accessibilityLabel={sent ? 'Send again on WhatsApp' : 'Send on WhatsApp'}>
+          accessibilityLabel={status.state === 'partial' ? 'Send more on WhatsApp' : sent ? 'Send again on WhatsApp' : 'Send on WhatsApp'}>
           <MessageCircle size={13} color={sent ? WA_INK : Colors.white} strokeWidth={2.4} />
-          <Text style={[s.setSendText, sent && { color: WA_INK }]}>{sent ? 'Again' : 'Send'}</Text>
+          <Text style={[s.setSendText, sent && { color: WA_INK }]}>{status.state === 'partial' ? 'More' : sent ? 'Again' : 'Send'}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -190,6 +209,9 @@ function PhotoSet({ u, onOpen, onSend }: { u: DriverUpdate; onOpen: (index: numb
 
 const s = StyleSheet.create({
   muted: { fontSize: 12, color: MUTED, marginTop: 2 },
+  legHead: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: 2 },
+  legHeadGap: { marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#ECECEF' },
+  legHeadText: { flex: 1, fontSize: 12, fontWeight: '800', color: MUTED, letterSpacing: 0.2 },
   row: { flexDirection: 'row', gap: 12, paddingTop: 8, marginHorizontal: -6, paddingHorizontal: 6, borderRadius: 14 },
   rowNext: { backgroundColor: '#F3F6FD' },
   rowFocus: { backgroundColor: '#FFF4E5' },

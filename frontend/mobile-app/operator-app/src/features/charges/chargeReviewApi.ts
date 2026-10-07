@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@mercon/mobile-shared/lib/api';
 import { safeSecureStore } from '@mercon/mobile-shared/lib/secure-store';
+import { splitLegs } from '../trips/tripLegs';
 import { normalizeAssistantConfig, type AssistantConfig, type ChargeRuleLike, type ChargeReviewTripLike, type CustomerChargeHabit } from '@mercon/shared-types';
 
 export interface ChargeReviewTrip extends ChargeReviewTripLike {
@@ -22,8 +23,9 @@ export interface ChargeReviewTrip extends ChargeReviewTripLike {
   driver: { first_name: string; last_name: string | null; avatar_url: string | null } | null;
   vehicle: { plate_number: string } | null;
   subcontract: { driverName: string | null; vehiclePlate: string | null; provider: { name: string } | null } | null;
-  stops: (ChargeReviewTripLike['stops'][number] & { stop_sequence: number })[];
+  stops: (ChargeReviewTripLike['stops'][number] & { stop_sequence: number; leg_index?: number | null })[];
   charges: { id: string; charge_type: string; amount: number | string }[];
+  rate_category?: string | null;
 }
 
 export interface NewSubCharge {
@@ -42,9 +44,13 @@ const SNOOZE_KEY = 'mercon_charge_review_snoozed_v1';
 export const tripRef = (t: ChargeReviewTrip) => t.ref_id || `Trip ${t.id.slice(0, 8)}`;
 export const routeLabel = (t: ChargeReviewTrip) => {
   const name = (s?: ChargeReviewTrip['stops'][number]) => s?.location?.name || s?.location_name || '';
-  const from = name(t.stops.find((s) => s.stop_type === 'Pickup') || t.stops[0]);
-  const to = name([...t.stops].reverse().find((s) => s.stop_type === 'Dropoff') || t.stops[t.stops.length - 1]);
-  return from && to ? `${from} → ${to}` : from || to || 'Route not set';
+  // A round trip reads as its way out ("Riyadh → Jeddah · round trip"), not first → last stop.
+  const legs = splitLegs(t.stops, t.rate_category);
+  const stops = legs.round ? legs.outbound : t.stops;
+  const from = name(stops.find((s) => s.stop_type === 'Pickup') || stops[0]);
+  const to = name([...stops].reverse().find((s) => s.stop_type === 'Dropoff') || stops[stops.length - 1]);
+  const route = from && to ? `${from} → ${to}` : from || to || 'Route not set';
+  return legs.round ? `${route} · round trip` : route;
 };
 export const driverLabel = (t: ChargeReviewTrip) =>
   t.is_third_party

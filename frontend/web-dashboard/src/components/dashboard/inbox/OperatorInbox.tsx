@@ -13,7 +13,7 @@ import { resolveFileUrl } from '@/lib/documents';
 import { whatsAppLink } from '@/lib/share';
 import { MediaViewer } from '@/components/maps/live/TripMedia';
 import { fleetLiveService, type LiveMediaItem, type LiveMediaStage, type LiveUnit } from '@/services/fleetLiveService';
-import { operatorInboxService, type DriverUpdate, type ExpiryItem } from '@/services/operatorInboxService';
+import { needsSending, operatorInboxService, type DriverUpdate, type ExpiryItem } from '@/services/operatorInboxService';
 import type { Trip } from '@/services/tripService';
 import { driverPhoneService, type AttentionItem, type AttentionKind } from '@/services/driverPhoneService';
 import DriverPhoneSheet from '@/components/drivers/phone/DriverPhoneSheet';
@@ -70,7 +70,7 @@ export default function OperatorInbox({ trips, onFocusTrip }: Props) {
   const liveQ = useQuery({ queryKey: ['fleet-live-map'], queryFn: fleetLiveService.getLiveMap, refetchInterval: 15_000 });
 
   const updates = updatesQ.data?.updates ?? [];
-  const toSend = updates.filter((u) => u.unsent_count > 0).length;
+  const toSend = updates.filter(needsSending).length;
   const expiries = expiriesQ.data ?? [];
   const urgentDocs = expiries.filter((e) => e.days <= 7).length;
   const alerts = useMemo(() => buildAlerts(liveQ.data?.units ?? [], trips), [liveQ.data, trips]);
@@ -129,8 +129,8 @@ function DriverUpdatesList({
   const [sharing, setSharing] = useState<DriverUpdate | null>(null);
   const [viewer, setViewer] = useState<{ items: LiveMediaItem[]; index: number; title: string } | null>(null);
 
-  const pending = updates.filter((u) => u.unsent_count > 0);
-  const sent = updates.filter((u) => u.unsent_count === 0);
+  const pending = updates.filter(needsSending);
+  const sent = updates.filter((u) => !needsSending(u));
   const list = showSent ? updates : pending;
 
   if (loading) return <ListNote>Loading driver updates…</ListNote>;

@@ -61,6 +61,8 @@ export const shareDriverUpdateBody = z.object({
   recipient: z.enum(['customer_contact', 'customer_group', 'internal', 'other']),
   recipient_phone: z.string().trim().max(32).optional().nullable(),
   channel: z.enum(['link', 'whatsapp_api']),
+  /** The message as the operator edited it; without it the standard one is used. WhatsApp caps captions at 1024 characters. */
+  caption: z.string().trim().max(1024).optional().nullable(),
 });
 
 /**
@@ -93,7 +95,7 @@ export const shareDriverUpdate = async (req: Request, res: Response) => {
 
     const token = newShareToken();
     const shareUrl = `${trackingBaseUrl(req)}/s/${token}`;
-    const text = buildShareMessage(update, chosen, shareUrl);
+    const text = body.caption || buildShareMessage(update, chosen, shareUrl);
 
     if (body.channel === 'whatsapp_api') {
       // Images first, the summary as the first caption — the order a customer reads them in.
