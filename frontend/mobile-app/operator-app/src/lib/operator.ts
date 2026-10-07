@@ -595,6 +595,8 @@ export interface OperatorLocation {
   city?: string | null;
   lat?: number | null;
   lng?: number | null;
+  /** EXACT = pinned on the gate; APPROXIMATE = a guess such as the city centre. */
+  coordinate_precision?: 'EXACT' | 'APPROXIMATE' | 'UNKNOWN' | string | null;
 }
 
 export interface QuotationLookupMatch {

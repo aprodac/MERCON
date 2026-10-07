@@ -121,6 +121,12 @@ const num = (v?: string | number | null) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+/** Clears a pickup / drop-off's own pin (address + precision), for when the place itself changes. */
+const NO_TRIP_PIN = {
+  origin: { originAddress: undefined, originPrecision: undefined },
+  destination: { destinationAddress: undefined, destinationPrecision: undefined },
+} as const;
+
 /** The route stored on a quotation, as slot fields. */
 function routeFromQuotation(q: OperatorQuotation): Partial<TripSlotDraft> {
   const stops = [...(q.stops || [])].sort((a: any, b: any) => (a.sequence ?? a.stop_sequence ?? 0) - (b.sequence ?? b.stop_sequence ?? 0));
@@ -144,11 +150,13 @@ function routeFromQuotation(q: OperatorQuotation): Partial<TripSlotDraft> {
     originLocationId: origin.locationId ?? null,
     originLat: origin.lat ?? null,
     originLng: origin.lng ?? null,
+    ...NO_TRIP_PIN.origin,
     destination: dest.name,
     destinationName: dest.name,
     destinationLocationId: dest.locationId ?? null,
     destinationLat: dest.lat ?? null,
     destinationLng: dest.lng ?? null,
+    ...NO_TRIP_PIN.destination,
     intermediateLocations: mids.map((m) => m.name),
     intermediateLocationIds: mids.map((m) => m.locationId ?? null),
     intermediateStopFees: mids.map(() => ''),
@@ -565,6 +573,7 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
       [`${which}LocationId`]: loc.locationId ?? null,
       [`${which}Lat`]: loc.lat ?? null,
       [`${which}Lng`]: loc.lng ?? null,
+      ...NO_TRIP_PIN[which],
     }));
   }, []);
 
@@ -627,11 +636,13 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
       originLocationId: r.origin.locationId ?? null,
       originLat: r.origin.lat ?? null,
       originLng: r.origin.lng ?? null,
+      ...NO_TRIP_PIN.origin,
       destination: r.destination.name,
       destinationName: r.destination.name,
       destinationLocationId: r.destination.locationId ?? null,
       destinationLat: r.destination.lat ?? null,
       destinationLng: r.destination.lng ?? null,
+      ...NO_TRIP_PIN.destination,
       intermediateLocations: r.stops.map((m) => m.name),
       intermediateLocationIds: r.stops.map((m) => m.locationId ?? null),
       intermediateStopFees: r.stops.map(() => ''),
@@ -670,16 +681,34 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     [customerId],
   );
 
-  /** Pins a saved place that had none; the route's pickup / drop-off use it at once. */
-  const pinSavedLocation = useCallback(async (locationId: string, pin: { lat: number; lng: number; address: string | null; exact: boolean }) => {
-    await operatorService.pinLocation(locationId, pin);
-    setLocations((prev) => prev.map((l) => (l.id === locationId ? { ...l, lat: pin.lat, lng: pin.lng } : l)));
-    setSlot((s) => ({
-      ...s,
-      ...(s.originLocationId === locationId ? { originLat: pin.lat, originLng: pin.lng } : {}),
-      ...(s.destinationLocationId === locationId ? { destinationLat: pin.lat, destinationLng: pin.lng } : {}),
-    }));
-  }, []);
+  /**
+   * The exact spot of this trip's pickup / drop-off — e.g. the customer's warehouse
+   * in Riyadh while the quotation only says "Riyadh". The place stays the same
+   * (so the quotation still fits); the stop gets the pin. A place with no pin at
+   * all gets this one too. An exact pin also becomes the customer place's pin
+   * when the trip is created, unless that place is already pinned exactly.
+   */
+  const setEndpointPin = useCallback(
+    async (which: 'origin' | 'destination', pin: { lat: number; lng: number; address: string | null; exact: boolean }) => {
+      const locationId = which === 'origin' ? slot.originLocationId : slot.destinationLocationId;
+      const place = locationId ? locations.find((l) => l.id === locationId) : undefined;
+      if (place && (place.lat == null || place.lng == null)) {
+        await operatorService.pinLocation(place.id, pin);
+        setLocations((prev) =>
+          prev.map((l) => (l.id === place.id ? { ...l, lat: pin.lat, lng: pin.lng, coordinate_precision: pin.exact ? 'EXACT' : 'APPROXIMATE' } : l)),
+        );
+      }
+      setSlot((s) => ({
+        ...s,
+        [`${which}Lat`]: pin.lat,
+        [`${which}Lng`]: pin.lng,
+        [`${which}Address`]: pin.address || undefined,
+        // A search pick is approximate; a pasted link or a hand-placed pin is exact (owner rule 2026-10-03).
+        [`${which}Precision`]: pin.exact ? 'EXACT' : 'APPROXIMATE',
+      }));
+    },
+    [slot.originLocationId, slot.destinationLocationId, locations],
+  );
 
   const updateSlot = useCallback((patch: Partial<TripSlotDraft>) => setSlot((s) => ({ ...s, ...patch })), []);
 
@@ -1131,7 +1160,7 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     setReturnEndpoint,
     createLocation,
     createPinnedLocation,
-    pinSavedLocation,
+    setEndpointPin,
     setStopFee,
     routeComplete,
     charges,

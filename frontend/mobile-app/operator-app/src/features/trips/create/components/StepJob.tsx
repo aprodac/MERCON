@@ -22,10 +22,13 @@ type LocationTarget =
 
 type Sheet = 'customer' | 'quotes' | 'lineType' | 'class' | 'billing' | 'charge' | null;
 
-/** What the pin sheet is for: a new place typed in the picker, or a pickup / drop-off without a pin. */
+/** What the pin sheet is for: a new place typed in the picker, or the exact spot of this trip's pickup / drop-off. */
 type PinTarget =
   | { kind: 'new'; name: string; target: LocationTarget }
-  | { kind: 'endpoint'; which: 'origin' | 'destination'; name: string; locationId: string | null };
+  | { kind: 'endpoint'; which: 'origin' | 'destination'; name: string; start: { lat: number; lng: number } | null };
+
+/** How well a pickup / drop-off is pinned: not at all, roughly (e.g. the city centre), or on the gate. */
+export type PinState = 'none' | 'approx' | 'exact';
 
 export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors: boolean }) {
   const [sheet, setSheet] = useState<Sheet>(null);
@@ -73,10 +76,8 @@ export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors
     if (!t) return;
     if (t.kind === 'new') {
       placeTo(t.target, await form.createPinnedLocation(t.name, pin));
-    } else if (t.locationId) {
-      await form.pinSavedLocation(t.locationId, pin);
     } else {
-      form.setEndpoint(t.which, await form.createPinnedLocation(t.name, pin));
+      await form.setEndpointPin(t.which, pin);
     }
     setPinTarget(null);
   };
@@ -86,13 +87,26 @@ export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors
     if (t?.kind === 'new') placeTo(t.target, { name: t.name, locationId: null });
     setPinTarget(null);
   };
-  const endpointPin = (which: 'origin' | 'destination') => {
-    const name = which === 'origin' ? form.slot.origin : form.slot.destination;
-    const lat = which === 'origin' ? form.slot.originLat : form.slot.destinationLat;
-    const lng = which === 'origin' ? form.slot.originLng : form.slot.destinationLng;
-    if (!name?.trim() || hasPin(lat, lng)) return undefined;
-    const locationId = (which === 'origin' ? form.slot.originLocationId : form.slot.destinationLocationId) ?? null;
-    return () => setPinTarget({ kind: 'endpoint', which, name, locationId });
+  /**
+   * A pickup / drop-off can always be pinned for this trip — the quotation may only
+   * say "Riyadh" while the truck loads at the customer's warehouse there.
+   */
+  const endpointPin = (which: 'origin' | 'destination'): EndpointPin | undefined => {
+    const { slot } = form;
+    const name = which === 'origin' ? slot.origin : slot.destination;
+    if (!name?.trim()) return undefined;
+    const lat = which === 'origin' ? slot.originLat : slot.destinationLat;
+    const lng = which === 'origin' ? slot.originLng : slot.destinationLng;
+    const locationId = which === 'origin' ? slot.originLocationId : slot.destinationLocationId;
+    const pinned = hasPin(lat, lng);
+    const precision =
+      (which === 'origin' ? slot.originPrecision : slot.destinationPrecision) ||
+      form.locations.find((l) => l.id === locationId)?.coordinate_precision;
+    return {
+      state: !pinned ? 'none' : precision === 'EXACT' ? 'exact' : 'approx',
+      address: (which === 'origin' ? slot.originAddress : slot.destinationAddress) || undefined,
+      open: () => setPinTarget({ kind: 'endpoint', which, name, start: pinned ? { lat: Number(lat), lng: Number(lng) } : null }),
+    };
   };
 
   const applyCard = (q: OperatorQuotation) => {
@@ -375,7 +389,8 @@ export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors
       />
       <PinPickerSheet
         visible={pinTarget !== null}
-        title={`Pin · ${niceName(pinTarget?.name)}`}
+        title={pinTarget?.kind === 'endpoint' ? `Exact location · ${niceName(pinTarget.name)}` : `Pin · ${niceName(pinTarget?.name)}`}
+        start={pinTarget?.kind === 'endpoint' ? pinTarget.start : null}
         initialQuery={pinTarget?.kind === 'new' ? pinTarget.name : ''}
         saveLabel={pinTarget?.kind === 'new' ? 'Save place' : 'Save pin'}
         onSave={savePin}
@@ -459,8 +474,8 @@ function RouteTimeline({
   form: CreateTripForm;
   err: (f: string) => string | undefined;
   onPick: (t: LocationTarget) => void;
-  /** Opens "set pin" for a pickup / drop-off that has none (undefined when it has one). */
-  onPin: (which: 'origin' | 'destination') => (() => void) | undefined;
+  /** The pin chip of a pickup / drop-off (undefined until it has a place). */
+  onPin: (which: 'origin' | 'destination') => EndpointPin | undefined;
 }) {
   const { slot } = form;
   const fees = slot.intermediateStopFees || [];
@@ -535,8 +550,8 @@ function Stop({
   /** A stop's fee, billed on top of the rate. */
   fee?: string;
   onFee?: (v: string) => void;
-  /** Shown as "Set pin" when the place has no map pin. */
-  onPin?: () => void;
+  /** The pickup / drop-off's pin chip: "Set pin", "Set exact" or "Exact". */
+  onPin?: EndpointPin;
 }) {
   const color = dot === 'start' ? Colors.success : dot === 'end' ? Colors.primary : Colors.gray400;
   return (
@@ -548,16 +563,18 @@ function Stop({
         onPress={onPress}
         style={[tl.box, muted && tl.boxMuted, error && { borderColor: Colors.danger }]}
       >
-        <Text style={[tl.text, !value && tl.placeholder, muted && { color: Colors.gray600 }]} numberOfLines={1}>
-          {value || placeholder}
-        </Text>
+        <View style={{ flex: 1 }}>
+          <Text style={[tl.text, !value && tl.placeholder, muted && { color: Colors.gray600 }]} numberOfLines={1}>
+            {value || placeholder}
+          </Text>
+          {onPin?.address ? (
+            <Text style={tl.address} numberOfLines={1}>
+              {onPin.address}
+            </Text>
+          ) : null}
+        </View>
         {tag ? <Text style={tl.tag}>{tag}</Text> : null}
-        {onPin ? (
-          <TouchableOpacity onPress={onPin} hitSlop={6} style={tl.pin}>
-            <MapPin size={12} color={Colors.warning} />
-            <Text style={tl.pinText}>Set pin</Text>
-          </TouchableOpacity>
-        ) : null}
+        {onPin ? <PinChip pin={onPin} /> : null}
         {onFee ? (
           <View style={tl.fee}>
             <Text style={tl.feePrefix}>SAR</Text>
@@ -578,6 +595,31 @@ function Stop({
         ) : null}
       </TouchableOpacity>
     </View>
+  );
+}
+
+/** What the route shows for a pickup / drop-off's pin, and what tapping it opens. */
+interface EndpointPin {
+  state: PinState;
+  /** The spot's address, when this trip has its own pin (pasted link / search). */
+  address?: string;
+  open: () => void;
+}
+
+function PinChip({ pin }: { pin: EndpointPin }) {
+  const exact = pin.state === 'exact';
+  const label = pin.state === 'none' ? 'Set pin' : exact ? 'Exact' : 'Set exact';
+  return (
+    <TouchableOpacity
+      onPress={pin.open}
+      hitSlop={6}
+      style={[tl.pin, exact && tl.pinExact]}
+      accessibilityRole="button"
+      accessibilityLabel={exact ? 'Exact location set — change it' : 'Set the exact location'}
+    >
+      {exact ? <CheckCircle2 size={12} color={Colors.success} /> : <MapPin size={12} color={Colors.warning} />}
+      <Text style={[tl.pinText, exact && { color: Colors.success }]}>{label}</Text>
+    </TouchableOpacity>
   );
 }
 
@@ -870,12 +912,14 @@ const tl = StyleSheet.create({
     backgroundColor: Colors.gray100,
   },
   boxMuted: { backgroundColor: Colors.white, borderColor: Colors.gray200, borderStyle: 'dashed' },
-  text: { flex: 1, fontSize: 14, color: Colors.charcoal, fontWeight: '500' },
+  text: { fontSize: 14, color: Colors.charcoal, fontWeight: '500' },
   placeholder: { color: Colors.gray400, fontWeight: '400' },
   tag: { fontSize: 11, color: Colors.gray500 },
   legLabel: { fontSize: 11, fontWeight: '700', color: Colors.gray500, marginTop: Spacing.md, marginBottom: 2 },
   pin: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 999, backgroundColor: Colors.warningLight },
   pinText: { fontSize: 11, fontWeight: '700', color: Colors.warning },
+  pinExact: { backgroundColor: Colors.successLight },
+  address: { fontSize: 11, color: Colors.gray500, marginTop: 1 },
   fee: { flexDirection: 'row', alignItems: 'center', gap: 3, width: 82, height: 30, paddingHorizontal: 7, borderRadius: 8, backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.gray200 },
   feePrefix: { fontSize: 10, color: Colors.gray500, fontWeight: '600' },
   feeInput: { flex: 1, fontSize: 13, color: Colors.charcoal, paddingVertical: 0 },

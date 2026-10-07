@@ -103,6 +103,20 @@ export interface TripSlotRoute {
   returnIntermediateLocationIds?: (string | null)[];
 }
 
+/**
+ * A round trip's return leg that starts / ends at the drop-off / pickup itself
+ * is the same spot — when the trip has its own pin there (e.g. the customer's
+ * warehouse), the return stop gets it too instead of the place's general pin.
+ */
+function sameSpotAs(slot: TripSlotRoute, which: 'origin' | 'destination'): { lat?: number; lng?: number; address?: string; coordinate_precision?: string } {
+  const lat = which === 'origin' ? slot.originLat : slot.destinationLat;
+  const lng = which === 'origin' ? slot.originLng : slot.destinationLng;
+  const precision = which === 'origin' ? slot.originPrecision : slot.destinationPrecision;
+  if (lat == null || lng == null || !precision) return {};
+  const address = which === 'origin' ? slot.originAddress : slot.destinationAddress;
+  return { lat, lng, coordinate_precision: precision, ...(address ? { address } : {}) };
+}
+
 /** The slot's route as trip stops (outbound, plus the return leg for a round trip). */
 export function buildStopsFromSlot(slot: TripSlotRoute, isRound: boolean): BuiltTripStop[] {
   const originStr = (slot.origin || '').trim();
@@ -113,6 +127,8 @@ export function buildStopsFromSlot(slot: TripSlotRoute, isRound: boolean): Built
 
   const returnStart = (slot.returnOrigin || '').trim() || destStr;
   const returnEnd = (slot.returnDestination || '').trim() || originStr;
+  const retStartSpot = slot.returnOriginLat == null && returnStart === destStr ? sameSpotAs(slot, 'destination') : {};
+  const retEndSpot = slot.returnDestinationLat == null && returnEnd === originStr ? sameSpotAs(slot, 'origin') : {};
 
   return buildTripStops({
     origin: {
@@ -142,8 +158,9 @@ export function buildStopsFromSlot(slot: TripSlotRoute, isRound: boolean): Built
       ? {
           name: returnStart,
           location_id: safeUuid(slot.returnOriginLocationId || (returnStart === destStr ? slot.destinationLocationId : null)),
-          lat: slot.returnOriginLat ?? null,
-          lng: slot.returnOriginLng ?? null,
+          ...retStartSpot,
+          lat: slot.returnOriginLat ?? retStartSpot.lat ?? null,
+          lng: slot.returnOriginLng ?? retStartSpot.lng ?? null,
         }
       : undefined,
     returnIntermediates: isRound
@@ -156,8 +173,9 @@ export function buildStopsFromSlot(slot: TripSlotRoute, isRound: boolean): Built
       ? {
           name: returnEnd,
           location_id: safeUuid(slot.returnDestinationLocationId || (returnEnd === originStr ? slot.originLocationId : null)),
-          lat: slot.returnDestinationLat ?? null,
-          lng: slot.returnDestinationLng ?? null,
+          ...retEndSpot,
+          lat: slot.returnDestinationLat ?? retEndSpot.lat ?? null,
+          lng: slot.returnDestinationLng ?? retEndSpot.lng ?? null,
         }
       : undefined,
   });
