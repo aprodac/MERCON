@@ -10,7 +10,7 @@
  */
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { safeSecureStore as SecureStore } from './secure-store';
-import { TOKEN_KEY, SESSION_KEY, PUSH_TOKEN_KEY, setAuthToken, ensureAuthToken } from './api';
+import { TOKEN_KEY, SESSION_KEY, PUSH_TOKEN_KEY, setAuthToken, ensureAuthToken, setSessionExpiredHandler } from './api';
 import { queryClient } from './query-client';
 
 export type Role = 'Driver' | 'Operator' | 'Admin';
@@ -112,6 +112,13 @@ export function AuthProvider({ children, signIn: signInStrategy, allowedRoles, o
     // 5. Reset auth session state
     setSession(null);
   };
+
+  // An expired/revoked token (401 from the API) signs out the same way as the
+  // Logout button; the auth guard then shows the login screen once.
+  useEffect(() => {
+    setSessionExpiredHandler(signOut);
+    return () => setSessionExpiredHandler(null);
+  });
 
   return (
     <AuthContext.Provider
