@@ -6,14 +6,17 @@
  *                 name, then the stop after (with the delivery time there).
  *   EtaStrip      CarPlay's arrival strip: arrival · drive time (or on time /
  *                 late) · km by road.
- *   UnitPanel     the web's details panel: the truck and what it's doing, the
- *                 driver with Call, Share ETA; expanded, both GPS feeds, the
- *                 trip with every stop (arrived / due) and its breaks.
+ *   UnitPanel     the web's details panel: the truck (its photo) and what it's
+ *                 doing, the driver (photo) with Call, Share ETA; expanded,
+ *                 both GPS feeds, the trip (customer logo) with every stop
+ *                 (arrived / due) and its breaks. A missing or broken photo
+ *                 falls back to the icon / initials.
  *
  * Glass light or dark with the map, like the web's GLASS.
  */
-import React from 'react';
-import { Linking, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useState } from 'react';
+import { Image, Linking, Platform, StyleSheet, Text, TouchableOpacity, View, type ImageStyle, type StyleProp } from 'react-native';
+import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import { Check, ChevronDown, ChevronUp, MessageCircle, Navigation, Phone, Smartphone, TriangleAlert, Truck } from 'lucide-react-native';
 import type { LiveGpsFix, LiveUnit, TripHalt } from '../../lib/operator';
 import { initialsOf, niceName } from '../trips/create/components/ui';
@@ -118,9 +121,11 @@ export function UnitPanel({ unit, now, f, theme, expanded, onToggle, onShare, ha
     <View>
       {/* Truck and what it's doing */}
       <View style={x.head}>
-        <View style={[x.toneTile, { backgroundColor: tone.color + '1A' }]}>
-          {unit.vehicle ? <Truck size={20} color={tone.color} /> : <Smartphone size={20} color={tone.color} />}
-        </View>
+        <Photo src={unit.vehicle?.image_url} style={[x.toneTile, { borderColor: g.border }]}>
+          <View style={[x.toneTile, { backgroundColor: tone.color + '1A' }]}>
+            {unit.vehicle ? <Truck size={20} color={tone.color} /> : <Smartphone size={20} color={tone.color} />}
+          </View>
+        </Photo>
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={x.titleRow}>
             <Text style={[x.plate, { color: g.fg }]} numberOfLines={1}>{unit.vehicle?.plate_number ?? unit.driver?.name ?? 'Truck'}</Text>
@@ -139,11 +144,13 @@ export function UnitPanel({ unit, now, f, theme, expanded, onToggle, onShare, ha
       {/* Driver */}
       {unit.driver ? (
         <View style={[x.driver, { backgroundColor: g.subtle }]}>
-          <View style={[x.initials, { backgroundColor: 'rgba(124,58,237,0.12)' }]}>
-            <Text style={[x.initialsText, { color: theme === 'dark' ? '#C4B5FD' : '#6D28D9' }]}>
-              {initialsOf(unit.driver.name)}
-            </Text>
-          </View>
+          <Photo src={unit.driver.avatar_url} style={[x.initials, { borderColor: g.border }]}>
+            <View style={[x.initials, { backgroundColor: 'rgba(124,58,237,0.12)' }]}>
+              <Text style={[x.initialsText, { color: theme === 'dark' ? '#C4B5FD' : '#6D28D9' }]}>
+                {initialsOf(unit.driver.name)}
+              </Text>
+            </View>
+          </Photo>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={[x.driverName, { color: g.fg }]} numberOfLines={1}>{niceName(unit.driver.name)}</Text>
             <Text style={[x.driverPhone, { color: g.muted }]} numberOfLines={1}>{unit.driver.phone ?? 'No phone on file'}</Text>
@@ -178,7 +185,12 @@ export function UnitPanel({ unit, now, f, theme, expanded, onToggle, onShare, ha
                   <Text style={[x.chipText, { color: tone.color }]}>{tone.label}</Text>
                 </View>
               </View>
-              {t.customer_name ? <Text style={[x.sub, { color: g.muted, marginTop: 2 }]} numberOfLines={1}>{niceName(t.customer_name)}</Text> : null}
+              {t.customer_name ? (
+                <View style={x.customer}>
+                  <Photo src={t.customer_logo_url} style={[x.logo, { borderColor: g.border }]} contain />
+                  <Text style={[x.sub, { color: g.muted, flexShrink: 1, marginTop: 0 }]} numberOfLines={1}>{niceName(t.customer_name)}</Text>
+                </View>
+              ) : null}
               <View style={{ marginTop: 12 }}>
                 {t.stops.map((s, i) => (
                   <StopRow key={s.id} s={s} index={i} isNext={i === t.next_stop_index} last={i === t.stops.length - 1} f={f} g={g} theme={theme} />
@@ -218,6 +230,14 @@ export function UnitPanel({ unit, now, f, theme, expanded, onToggle, onShare, ha
       </View>
     </View>
   );
+}
+
+/** A stored photo (truck, driver, customer logo); `children` — or nothing — when there's none or it fails to load. */
+function Photo({ src, style, contain, children }: { src: string | null | undefined; style: StyleProp<ImageStyle>; contain?: boolean; children?: React.ReactNode }) {
+  const url = resolveMediaUrl(src);
+  const [broken, setBroken] = useState<string | null>(null);
+  if (!url || broken === url) return <>{children}</>;
+  return <Image source={{ uri: url }} style={[x.photo, style]} resizeMode={contain ? 'contain' : 'cover'} onError={() => setBroken(url)} accessibilityIgnoresInvertColors />;
 }
 
 /** Web's stop timeline: done (grey tick), next (blue), still to come (outline) — arrived / due time. */
@@ -296,6 +316,9 @@ const x = StyleSheet.create({
   driverName: { fontSize: 14, fontWeight: '600' },
   driverPhone: { fontSize: 12, marginTop: 1 },
   call: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(5,150,105,0.1)' },
+  photo: { borderWidth: 1, backgroundColor: '#FFFFFF' },
+  customer: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  logo: { width: 20, height: 20, borderRadius: 6 },
   feeds: { flexDirection: 'row', gap: 8 },
   feed: { flex: 1, borderWidth: 1, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8, gap: 3 },
   feedHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
