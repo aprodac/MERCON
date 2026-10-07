@@ -1076,6 +1076,70 @@ export function dateInZone(ms: number, tz: string): string {
   return new Date(ms + (FALLBACK_TZ_OFFSET_MIN[tz] ?? 180) * 60000).toISOString().slice(0, 10);
 }
 
+/** One planned moment of a trip: where the truck is and when. */
+export interface RunEvent {
+  at: string;
+  place: string;
+  kind: 'pickup' | 'stop' | 'drop' | 'returnLoad' | 'returnStop' | 'home';
+}
+
+const UUIDISH = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
+
+/**
+ * A trip row's stops in order with their planned times — the whole run, way
+ * back included (pickup → drop-off → return loading → home). Stops without a
+ * time are left out.
+ */
+export function runEvents(row: Pick<TripImportRow, 'stops'>): RunEvent[] {
+  const stops = [...(row.stops || [])].sort((a, b) => a.stop_sequence - b.stop_sequence);
+  const out = stops.filter((s) => s.leg_index === 0);
+  const back = stops.filter((s) => s.leg_index === 1);
+  const kindOf = (s: BuiltTripStop): RunEvent['kind'] => {
+    if (s.leg_index === 1) return s === back[0] ? 'returnLoad' : s === back[back.length - 1] ? 'home' : 'returnStop';
+    return s === out[0] ? 'pickup' : s === out[out.length - 1] ? 'drop' : 'stop';
+  };
+  return stops
+    .filter((s) => s.planned_arrival)
+    .map((s, i) => ({
+      at: new Date(s.planned_arrival as string | Date).toISOString(),
+      place: s.location_name && !UUIDISH.test(s.location_name) ? s.location_name : `Stop ${i + 1}`,
+      kind: kindOf(s),
+    }));
+}
+
+/** Two runs that overlap: the same driver or truck is still on the first when the second starts. */
+export interface RosterClash {
+  /** Indexes into the rows passed in. */
+  first: number;
+  second: number;
+  driver: boolean;
+  truck: boolean;
+}
+
+const realId = (id?: string) => Boolean(id && id !== 'unassigned');
+
+/**
+ * Runs whose crew or truck can't be in two places: a round trip that takes
+ * 32 hours, booked every day with one driver and one truck, overlaps the next
+ * day's run.
+ */
+export function rosterClashes(rows: Pick<TripImportRow, 'planned_start' | 'planned_end' | 'driver_id' | 'vehicle_id'>[]): RosterClash[] {
+  const order = rows.map((_, i) => i).sort((a, b) => Date.parse(rows[a].planned_start) - Date.parse(rows[b].planned_start));
+  const out: RosterClash[] = [];
+  order.forEach((a, k) => {
+    const end = rows[a].planned_end ? Date.parse(rows[a].planned_end as string) : NaN;
+    if (isNaN(end)) return;
+    for (const b of order.slice(k + 1)) {
+      const start = Date.parse(rows[b].planned_start);
+      if (isNaN(start) || start >= end) break;
+      const driver = realId(rows[a].driver_id) && rows[a].driver_id === rows[b].driver_id;
+      const truck = realId(rows[a].vehicle_id) && rows[a].vehicle_id === rows[b].vehicle_id;
+      if (driver || truck) out.push({ first: a, second: b, driver, truck });
+    }
+  });
+  return out;
+}
+
 /** How many rows start before `now`. */
 export function countPastTrips(rows: Pick<TripImportRow, 'planned_start'>[], now: number = Date.now()): number {
   return rows.filter((r) => {

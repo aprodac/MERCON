@@ -221,6 +221,7 @@ export const TripStep1UnifiedWorkspace: React.FC<TripStep1UnifiedWorkspaceProps>
             {contractSlots.map((slot) => (
               <RouteWorkspace
                 part="schedule"
+                firstOperatingDay={[...selectedDates].sort()[0]}
                 highlightSchedule={nextSection === 'when'}
                 lastLaneTime={lastLaneTime}
                 key={`when-${slot.id}`}

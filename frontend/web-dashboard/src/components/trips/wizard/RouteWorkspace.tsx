@@ -12,7 +12,7 @@ import { isDateTimeInPast } from '@/utils/pastDateTripUtils';
 import { useDeploymentTimezone } from '@/lib/datetime';
 import { dutyShiftMinutes } from '@/services/travelTimeService';
 import { cn, isUuid } from '@/lib/utils';
-import { daysBetween, dropoffDayOffset, formatQuotationRef, returnLegDayOffsets, STOP_ROLE_COLORS } from '@mercon/shared-types';
+import { addDaysToDateStr, daysBetween, dropoffDayOffset, formatQuotationRef, returnLegDayOffsets, STOP_ROLE_COLORS } from '@mercon/shared-types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { locationService, type Location } from '@/services/locationService';
 import PinChip, { isExactPin } from '@/components/locations/PinChip';
@@ -50,6 +50,15 @@ interface RouteWorkspaceProps {
   highlightSchedule?: boolean;
   /** The pickup time used last time on this lane, offered as a one-click fill. */
   lastLaneTime?: { date: string; time: string; label: string } | null;
+  /** Monthly: the first operating day picked on step 2 — the run's days are then shown as real dates. */
+  firstOperatingDay?: string;
+}
+
+/** "Fri 9 Oct" for a YYYY-MM-DD (calendar date — no timezone involved). */
+function shortDate(date: string): string {
+  const [y, m, d] = date.split('-').map(Number);
+  if (!y || !m || !d) return date;
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-GB', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' });
 }
 
 /** Any fixed date: a monthly trip's return is timed from it to count whole days. */
@@ -57,17 +66,18 @@ const DAY_ANCHOR = '2000-01-01';
 const DAY_CHOICES = 5;
 
 /** "Day 1 / Day 2 …" — which day of each monthly run an event falls on (0 = the pickup day). */
-function DaySelect({ value, onChange, label }: { value: number; onChange: (day: number) => void; label: string }) {
+function DaySelect({ value, onChange, label, baseDate }: { value: number; onChange: (day: number) => void; label: string; baseDate?: string }) {
   const count = Math.max(DAY_CHOICES, value + 1);
+  const dateOf = (d: number) => (baseDate ? shortDate(addDaysToDateStr(baseDate, d)) : '');
   return (
     <Select value={String(value)} onValueChange={(v) => onChange(Number(v))}>
-      <SelectTrigger aria-label={label} className="h-9 w-[84px] shrink-0 rounded-xl border-slate-200 bg-white shadow-2xs text-xs font-semibold">
+      <SelectTrigger aria-label={label} className="h-9 w-auto min-w-[84px] shrink-0 rounded-xl border-slate-200 bg-white shadow-2xs text-xs font-semibold">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
         {Array.from({ length: count }, (_, d) => (
           <SelectItem key={d} value={String(d)} className="text-xs">
-            Day {d + 1}
+            Day {d + 1}{baseDate ? ` · ${dateOf(d)}` : ''}
           </SelectItem>
         ))}
       </SelectContent>
@@ -101,6 +111,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
   part = 'all',
   highlightSchedule = false,
   lastLaneTime = null,
+  firstOperatingDay,
 }) => {
   const showRoute = part !== 'schedule';
   const showSchedule = part !== 'route';
@@ -220,6 +231,38 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
     isMonthly ? { ...slot, returnPickupDate: '', returnDropoffDate: '' } : { ...slot, dropoffDay: undefined, returnPickupDay: undefined, returnDropoffDay: undefined },
   );
   const returnFrom = (slot.returnOrigin || slot.destination || '').trim();
+  const returnToName = ((!slot.returnDestination || isUuid(slot.returnDestination)) ? slot.origin : slot.returnDestination || '').trim();
+
+  // The whole run on one line — which day each step falls on, as a date when one is known.
+  const runPlan = React.useMemo(() => {
+    if (!slot.pickupTime) return null;
+    const toMin = (t: string) => {
+      const [h, m] = String(t).slice(0, 5).split(':').map(Number);
+      return h * 60 + m;
+    };
+    const base: string | undefined = isMonthly ? firstOperatingDay : slot.date;
+    const when = (day: number, time: string) => `${base ? shortDate(addDaysToDateStr(base, day)) : `Day ${day + 1}`} ${String(time).slice(0, 5)}`;
+    const name = (n?: string) => (n && !isUuid(n) ? n.split(',')[0].trim() : '');
+    // Same day count the saved trips use (useTripSubmission → slotScheduleFor → buildTripRows).
+    const dropDay = slot.dropoffTime ? dropoffDayOffset(isMonthly ? slot : { ...slot, dropoffDay: undefined }) : 0;
+    const events: { label: string; when: string; at: number }[] = [
+      { label: `Pickup ${name(slot.origin)}`.trim(), when: when(0, slot.pickupTime), at: toMin(slot.pickupTime) },
+    ];
+    if (slot.dropoffTime) events.push({ label: `${isRoundTrip ? 'Drop' : 'Arrive'} ${name(slot.destination)}`.trim(), when: when(dropDay, slot.dropoffTime), at: dropDay * 1440 + toMin(slot.dropoffTime) });
+    if (isRoundTrip && slot.returnPickupTime && returnDays.pickup != null) {
+      events.push({ label: `Load ${name(returnFrom)}`.trim(), when: when(returnDays.pickup, slot.returnPickupTime), at: returnDays.pickup * 1440 + toMin(slot.returnPickupTime) });
+      if (slot.returnDropoffTime && returnDays.arrival != null) {
+        events.push({ label: `Back ${name(returnToName)}`.trim(), when: when(returnDays.arrival, slot.returnDropoffTime), at: returnDays.arrival * 1440 + toMin(slot.returnDropoffTime) });
+      }
+    }
+    if (events.length < 2) return null;
+    const total = events[events.length - 1].at - events[0].at;
+    const d = Math.floor(total / 1440);
+    const h = Math.floor((total % 1440) / 60);
+    const m = total % 60;
+    const totalText = total > 0 ? [d ? `${d} d` : '', h ? `${h} h` : '', m ? `${m} min` : ''].filter(Boolean).join(' ') : null;
+    return { events, total: total > 0 ? total : null, totalText, overADay: total >= 1440, dated: Boolean(base), base };
+  }, [slot, isMonthly, isRoundTrip, firstOperatingDay, returnDays.pickup, returnDays.arrival, returnFrom, returnToName]);
   const returnTo = ((!slot.returnDestination || isUuid(slot.returnDestination)) ? slot.origin : slot.returnDestination || '').trim();
 
   const pickupDateObj = React.useMemo(() => {
@@ -841,6 +884,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                   {isRoundTrip && (
                     <DaySelect
                       label="Outbound arrival day"
+                      baseDate={firstOperatingDay}
                       value={dropoffDayOffset(slot)}
                       onChange={(d) => handleUpdateTripSlot(slot.id, { dropoffDay: d, dropoffManual: true })}
                     />
@@ -901,6 +945,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                     <div className="flex gap-1.5">
                       <DaySelect
                         label="Return loading day"
+                      baseDate={firstOperatingDay}
                         value={returnDays.pickup ?? dropoffDayOffset(slot)}
                         onChange={(d) => handleUpdateTripSlot(slot.id, { returnPickupDay: d })}
                       />
@@ -980,6 +1025,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                     <div className="flex gap-1.5">
                       <DaySelect
                         label="Arrival home day"
+                      baseDate={firstOperatingDay}
                         value={returnDays.arrival ?? returnDays.pickup ?? dropoffDayOffset(slot)}
                         onChange={(d) => handleUpdateTripSlot(slot.id, { returnDropoffDay: d, returnDropoffManual: true })}
                       />
@@ -1024,6 +1070,35 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
               )}
               {isMonthly && (
                 <p className="text-[11px] text-slate-400">Day 1 is each operating day; Day 2 is the next day.</p>
+              )}
+            </div>
+          )}
+
+          {runPlan && (
+            <div className={cn('rounded-xl border px-3 py-2.5 space-y-1.5', runPlan.overADay && isMonthly ? 'border-rose-200 bg-rose-50/60 dark:border-rose-900 dark:bg-rose-950/30' : 'border-slate-200 bg-slate-50/70 dark:border-slate-700 dark:bg-slate-800/40')}>
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  {isMonthly ? (runPlan.dated ? `Each run · e.g. ${shortDate(runPlan.base!)}` : 'Each run') : 'This trip'}
+                </span>
+                {runPlan.total != null && <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">{runPlan.totalText}</span>}
+              </div>
+              <ol className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
+                {runPlan.events.map((e, i) => (
+                  <li key={e.label} className="flex items-center gap-1.5">
+                    {i > 0 && <span className="text-slate-300 dark:text-slate-600">→</span>}
+                    <span className="rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1">
+                      <span className="font-bold text-slate-800 dark:text-slate-100">{e.when}</span>
+                      <span className="text-slate-500 dark:text-slate-400"> · {e.label}</span>
+                    </span>
+                  </li>
+                ))}
+              </ol>
+              {isMonthly && !runPlan.dated && <p className="text-[11px] text-slate-400">Day 1 is each operating day you pick on step 2. Real dates show once days are picked.</p>}
+              {isMonthly && runPlan.overADay && (
+                <p className="flex items-start gap-1.5 text-[11px] font-semibold text-rose-700 dark:text-rose-300">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-px" />
+                  Longer than a day: booked on back-to-back days, one driver and truck are still on the road when the next run starts. Rotate crews or leave days between runs on step 2.
+                </p>
               )}
             </div>
           )}
