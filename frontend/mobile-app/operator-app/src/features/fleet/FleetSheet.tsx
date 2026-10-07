@@ -354,7 +354,7 @@ function TimeSplitLine({ split }: { split: TripTimeSplit }) {
 }
 
 /** Each break on the way: when, and how long (the one going on now says so). */
-export function BreakList({ halts, f }: { halts: TripHalt[]; f: Time }) {
+function BreakList({ halts, f }: { halts: TripHalt[]; f: Time }) {
   return (
     <View style={s.breaks}>
       <Text style={s.breaksHead}>Breaks on the way</Text>
@@ -390,7 +390,7 @@ function MotionLine({ unit: u, now, stoppedFor }: { unit: LiveUnit; now: number;
 }
 
 /** Stops as a progress bar: done (ink), next (red), still to come (grey), and "1 of 3 done". */
-export function StopProgress({ stops, nextId }: { stops: NonNullable<LiveUnit['trip']>['stops']; nextId: string | null }) {
+function StopProgress({ stops, nextId }: { stops: NonNullable<LiveUnit['trip']>['stops']; nextId: string | null }) {
   const done = stops.filter((x) => x.actual_arrival).length;
   return (
     <View style={{ gap: 4 }}>
@@ -429,7 +429,7 @@ function StartCard({ plannedStart, now, f }: { plannedStart: string | null; now:
 }
 
 /** Every stop in order: done (ink), next (red), still to come (outline) — planned vs actual arrival. */
-export function StopTimeline({ stops, nextId, f, media, onOpenMedia }: {
+function StopTimeline({ stops, nextId, f, media, onOpenMedia }: {
   stops: NonNullable<LiveUnit['trip']>['stops']; nextId: string | null; f: Time; media: LiveTripMedia | null; onOpenMedia?: OpenMedia;
 }) {
   const byStop = new Map((media?.stops ?? []).map((m) => [m.stop_id, m]));
