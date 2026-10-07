@@ -4,7 +4,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator
 import { CalendarDays, CircleAlert, Clock3, FileText, Handshake, Receipt, Truck, Users } from 'lucide-react-native';
 import { Colors, Spacing, Radius } from '@mercon/mobile-shared/theme/tokens';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
-import { lineTypeLabel, truckClassOfVehicle } from '@mercon/shared-types';
+import { dropoffDayOffset, lineTypeLabel, returnLegDayOffsets, truckClassOfVehicle } from '@mercon/shared-types';
 import { DriverAvatar } from '../../../drivers/components/DriverAvatar';
 import { UNASSIGNED, type CreateTripForm } from '../useCreateTrip';
 import type { OperatorDriverOption } from '../../../../lib/operator';
@@ -115,8 +115,16 @@ export function ReviewSheet({
                 ) : null}
               </View>
               <Text style={styles.muted}>
-                Every day {slot.pickupTime} → {slot.dropoffTime}
+                {form.isRoundTrip
+                  ? `Every run: Day 1 ${slot.pickupTime} → Day ${dropoffDayOffset(slot) + 1} ${slot.dropoffTime}`
+                  : `Every day ${slot.pickupTime} → ${slot.dropoffTime}`}
               </Text>
+              {form.isRoundTrip && slot.returnPickupTime ? (
+                <Text style={styles.muted}>
+                  {`Way back: loads Day ${(returnLegDayOffsets(slot).pickup ?? 0) + 1} ${slot.returnPickupTime}`}
+                  {slot.returnDropoffTime ? ` → home Day ${(returnLegDayOffsets(slot).arrival ?? 0) + 1} ${slot.returnDropoffTime}` : ''}
+                </Text>
+              ) : null}
             </>
           ) : (
             <View style={styles.when}>
@@ -137,6 +145,12 @@ export function ReviewSheet({
               </View>
             </View>
           )}
+          {!form.isMonthly && form.isRoundTrip && slot.returnPickupTime ? (
+            <Text style={styles.muted}>
+              {`Way back: loads ${fmtDay(slot.returnPickupDate || slot.dropoffDate || slot.date)} ${slot.returnPickupTime}`}
+              {slot.returnDropoffTime ? ` → home ${fmtDay(slot.returnDropoffDate || slot.returnPickupDate || slot.date)} ${slot.returnDropoffTime}` : ''}
+            </Text>
+          ) : null}
         </Block>
 
         {/* Who */}

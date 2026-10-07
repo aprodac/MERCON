@@ -44,6 +44,7 @@
     "test:file-links": "node -r ts-node/register --test src/tests/fileLinks.test.ts",
     "test:operator-inbox": "node -r ts-node/register --test src/tests/operatorInbox.test.ts",
     "test:trip-overview": "node -r ts-node/register --test src/tests/tripOverview.test.ts",
+    "test:round-trip-schedule": "node -r ts-node/register --test src/tests/roundTripSchedule.test.ts",
     "test:location-pin": "node -r ts-node/register --test src/tests/locationPin.test.ts src/tests/tripStopPin.test.ts",
     "test:asset-release": "node -r ts-node/register --test src/tests/assetRelease.test.ts",
     "test:saudi-plate": "node -r ts-node/register --test src/tests/saudiPlate.test.ts",
