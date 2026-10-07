@@ -319,9 +319,10 @@ export function sendStatus(u: DriverUpdate): { state: SendState; text: string } 
   const state: SendState = u.unsent_count === 0 && u.items.length > 0 ? 'sent' : u.sent_ids.length > 0 ? 'partial' : 'unsent';
   if (state === 'unsent' || !last) return { state: 'unsent', text: 'Not sent to the customer yet' };
   const to = `to ${recipientLabel(last.recipient)}${last.shared_by ? ` by ${niceName(last.shared_by)}` : ''} · ${ago(last.shared_at)}`;
+  // Usually one photo of a set is sent; the others are kept and marked not sent, not asked for again.
   return state === 'sent'
     ? { state, text: `Sent ${to}` }
-    : { state, text: `${u.unsent_count} new not sent · last sent ${to}` };
+    : { state, text: `${u.sent_ids.length} of ${u.items.length} sent ${to} · ${u.unsent_count} not sent` };
 }
 
 // ── WhatsApp texts ────────────────────────────────────────────────────────────

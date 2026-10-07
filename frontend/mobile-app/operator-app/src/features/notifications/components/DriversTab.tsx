@@ -12,7 +12,7 @@ import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Image, StyleS
 import { CheckCheck, ImageOff, MessageCircle, Play, TriangleAlert, Camera } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
-import type { DriverUpdate, LiveMediaItem } from '../../../lib/operator';
+import { needsSending, type DriverUpdate, type LiveMediaItem } from '../../../lib/operator';
 import { STAGE_TITLE, durationText } from '../../dashboard/actions/actionModel';
 import { niceName } from '../../trips/create/components/ui';
 import { EmptyState, SectionLabel, SkeletonCard, INK, LINE, MUTED, p, tap } from './parts';
@@ -43,7 +43,8 @@ export function DriversTab({ updates, loading, now, refreshing, onRefresh, onSen
 }) {
   const { toSend, sent } = useMemo(() => {
     const newest = [...updates].sort((a, b) => new Date(b.latest_at).getTime() - new Date(a.latest_at).getTime());
-    return { toSend: newest.filter((u) => u.unsent_count > 0), sent: newest.filter((u) => u.unsent_count === 0) };
+    // One photo sent is enough — a set with any photo sent moves to Sent (the rest show as not sent on the trip).
+    return { toSend: newest.filter(needsSending), sent: newest.filter((u) => !needsSending(u)) };
   }, [updates]);
 
   const ago = (iso: string) => {

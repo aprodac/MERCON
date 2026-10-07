@@ -102,10 +102,10 @@ export function MediaViewer({ items, startIndex, title, onClose, onSend, status,
 
         {status ? (
           <View style={s.status}>
-            {status.state === 'sent'
+            {status.state !== 'unsent'
               ? <CheckCheck size={15} color="#4ADE80" strokeWidth={2.6} />
               : <Clock3 size={15} color="#FBBF24" strokeWidth={2.4} />}
-            <Text style={[s.statusText, { color: status.state === 'sent' ? '#BBF7D0' : '#FDE68A' }]} numberOfLines={2}>{status.text}</Text>
+            <Text style={[s.statusText, { color: status.state !== 'unsent' ? '#BBF7D0' : '#FDE68A' }]} numberOfLines={2}>{status.text}</Text>
           </View>
         ) : null}
 
@@ -119,12 +119,12 @@ export function MediaViewer({ items, startIndex, title, onClose, onSend, status,
             ) : null}
             {onSend ? (
               <TouchableOpacity
-                style={[s.btn, { flex: 1 }, status?.state === 'sent' ? s.ghost : { backgroundColor: WA }]}
+                style={[s.btn, { flex: 1 }, status && status.state !== 'unsent' ? s.ghost : { backgroundColor: WA }]}
                 activeOpacity={0.85}
                 onPress={onSend}
               >
                 <MessageCircle size={18} color={Colors.white} strokeWidth={2.3} />
-                <Text style={s.sendText}>{status?.state === 'sent' ? 'Send again' : 'Send on WhatsApp'}</Text>
+                <Text style={s.sendText}>{status?.state === 'sent' ? 'Send again' : status?.state === 'partial' ? 'Send more' : 'Send on WhatsApp'}</Text>
               </TouchableOpacity>
             ) : null}
           </View>

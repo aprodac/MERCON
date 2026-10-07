@@ -167,7 +167,8 @@ const isVideo = (m: LiveMediaItem) => m.kind === 'video' || !!m.mime?.startsWith
 /** One photo set at a stop: the pictures themselves, each marked sent or not, and whether the customer has them. */
 function PhotoSet({ u, onOpen, onSend }: { u: DriverUpdate; onOpen: (index: number) => void; onSend: () => void }) {
   const status = sendStatus(u);
-  const sent = status.state === 'sent';
+  // One photo sent is enough: the set is done, the unsent photos keep their "not sent" mark.
+  const sent = status.state !== 'unsent';
   const shown = u.items.slice(0, THUMBS);
   const extra = u.items.length - shown.length;
   return (
@@ -197,9 +198,9 @@ function PhotoSet({ u, onOpen, onSend }: { u: DriverUpdate; onOpen: (index: numb
         {sent ? <CheckCheck size={14} color={WA} strokeWidth={2.5} /> : <Clock3 size={14} color="#B45309" strokeWidth={2.4} />}
         <Text style={[s.setStatus, { color: sent ? WA_INK : '#8A5200' }]} numberOfLines={2}>{status.text}</Text>
         <TouchableOpacity style={[s.setSend, sent && s.setSendAgain]} onPress={() => { tap(); onSend(); }} hitSlop={6}
-          accessibilityLabel={sent ? 'Send again on WhatsApp' : 'Send on WhatsApp'}>
+          accessibilityLabel={status.state === 'partial' ? 'Send more on WhatsApp' : sent ? 'Send again on WhatsApp' : 'Send on WhatsApp'}>
           <MessageCircle size={13} color={sent ? WA_INK : Colors.white} strokeWidth={2.4} />
-          <Text style={[s.setSendText, sent && { color: WA_INK }]}>{sent ? 'Again' : 'Send'}</Text>
+          <Text style={[s.setSendText, sent && { color: WA_INK }]}>{status.state === 'partial' ? 'More' : sent ? 'Again' : 'Send'}</Text>
         </TouchableOpacity>
       </View>
     </View>

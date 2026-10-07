@@ -29,7 +29,7 @@ import { DriversTab } from '../components/DriversTab';
 import { MediaViewer } from '../../trips/details/components/MediaViewer';
 import { ago, sendStatus, updateTitle } from '../../trips/details/tripDetailsModel';
 import { niceName } from '../../trips/create/components/ui';
-import type { DriverUpdate } from '../../../lib/operator';
+import { needsSending, type DriverUpdate } from '../../../lib/operator';
 import { BG, INK, LINE, MUTED, tap } from '../components/parts';
 
 type Tab = 'drivers' | 'todo' | 'activity';
@@ -81,7 +81,7 @@ export default function NotificationsScreen() {
   };
 
   const urgent = inbox.counts.now;
-  const toSend = inbox.updates.filter((u) => u.unsent_count > 0).length;
+  const toSend = inbox.updates.filter(needsSending).length;
   const tabs: { value: Tab; label: string; count: number; hot: boolean }[] = [
     { value: 'drivers', label: 'From drivers', count: toSend, hot: false },
     { value: 'todo', label: 'To do', count: inbox.items.length, hot: urgent > 0 },

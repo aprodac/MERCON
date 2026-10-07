@@ -75,7 +75,7 @@ interface TripRowForUpdates {
   } | null;
   vehicle: { plate_number: string } | null;
   driver: { first_name: string; last_name: string; phone_primary: string | null } | null;
-  stops: Array<TripMediaStopRow & { stop_type: string; location_name: string | null; location_address: string | null }>;
+  stops: Array<TripMediaStopRow & { stop_type: string; location_name: string | null; location_address: string | null; leg_index?: number | null }>;
 }
 
 interface ShareRow {
@@ -93,13 +93,25 @@ function stopName(s: { location_name: string | null; location_address: string | 
   return s.location_name || s.location_address || `Stop ${s.stop_sequence}`;
 }
 
-function routeOf(stops: TripRowForUpdates['stops']): string {
+/** "Riyadh → Jeddah"; a round trip is its way out plus "round trip" — not "Riyadh → Riyadh". */
+export function routeOf(stops: TripRowForUpdates['stops']): string {
   const ordered = [...stops].sort((a, b) => a.stop_sequence - b.stop_sequence);
   if (ordered.length === 0) return '';
-  const first = stopName(ordered[0]);
-  const last = stopName(ordered[ordered.length - 1]);
-  return ordered.length === 1 ? first : `${first} → ${last}`;
+  const out = ordered.filter((s) => (s.leg_index ?? 0) === 0);
+  const round = out.length > 0 && out.length < ordered.length;
+  const legOut = round ? out : ordered;
+  const first = stopName(legOut[0]);
+  const last = stopName(legOut[legOut.length - 1]);
+  if (legOut.length === 1) return first;
+  return round ? `${first} → ${last} · round trip` : `${first} → ${last}`;
 }
+
+/**
+ * A photo set still waits to be sent while none of it has gone out. Usually
+ * one photo of a set reaches the customer; the rest are kept (and shown as
+ * not sent on the trip) without asking again.
+ */
+export const needsSending = (u: Pick<DriverUpdate, 'items' | 'sent_ids'>): boolean => u.items.length > 0 && u.sent_ids.length === 0;
 
 /**
  * Turns trips + their recent uploads + the share log into one row per batch
@@ -179,8 +191,8 @@ export function buildDriverUpdates(
 
   return out
     .sort((a, b) => {
-      const au = a.unsent_count > 0 ? 1 : 0;
-      const bu = b.unsent_count > 0 ? 1 : 0;
+      const au = needsSending(a) ? 1 : 0;
+      const bu = needsSending(b) ? 1 : 0;
       return bu - au || b.latest_at.localeCompare(a.latest_at);
     })
     .slice(0, MAX_UPDATES);
@@ -271,7 +283,7 @@ async function loadUpdatesWhere(
         stops: {
           where: { deletedAt: null },
           select: {
-            id: true, stop_sequence: true, stop_type: true, location_name: true, location_address: true,
+            id: true, stop_sequence: true, stop_type: true, location_name: true, location_address: true, leg_index: true,
             actual_arrival: true, delay_reason: true, delay_note: true, delay_logged_at: true,
           },
         },
