@@ -26,7 +26,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Box, ChevronDown, Compass, LocateFixed, Map as MapIcon, Moon, Navigation, Route, Sun, type LucideIcon } from 'lucide-react-native';
 import { FleetMap, type FleetMapHandle, type FocusMode, type MapView } from './FleetMap';
 import { TripShareFlow } from './FleetShare';
-import { EtaStrip, GLASS as PANEL, NextStopCard, UnitPanel } from './TripLivePanels';
+import { EtaStrip, GLASS as PANEL, NextStopCard, UnitPanel } from './LivePanels';
 import { located, stoppedMin } from './fleetModel';
 import type { MapTheme } from './mapStyle';
 import { useFleetPrefs, type FleetPrefs } from './useFleetMapState';
