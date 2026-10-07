@@ -1,53 +1,43 @@
 /**
  * The bottom sheet on the Fleet map, and the rows shared with its list view.
  *
- *   UnitSheet   the picked truck. Peek shows who, where to, the ETA and the
- *               actions; drag up (or "Stops & GPS") for the stop timeline and
- *               both GPS feeds, with what the driver sent from each stop
- *               (photos, POD, delay videos and the delay reason; tap to view).
- *               Call and Open trip are the main buttons, with "Show route"
- *               to frame the whole trip. The trip's next step (Arrived at
- *               pickup, Confirm delivery…) and Cancel trip sit in the
- *               expanded part, out of reach of a stray tap (FleetActions.tsx
- *               confirms both). With no road route the ETA is an estimate
- *               (≈); a next stop too far to be real says so instead.
- *               How long the truck has stood still shows on its status
- *               line; under the trip, the time so far split into driving
- *               and breaks, and expanded, each break on the way (when,
- *               how long; from the driver app's GPS — API tripHalts.ts).
- *               Swipe sideways — or the ‹ › arrows — for the
- *               next / previous truck in the current filter; drag down to
- *               shrink, then to close.
+ *   UnitSheet   the picked truck, in the web live map's look (LivePanels.tsx
+ *               pieces, light or dark glass with the map): the truck photo
+ *               and what it's doing, the driver with Call, the next stop
+ *               with its arrival (≈ without a road route) and on time /
+ *               late, the delivery time at the last stop and the trip so
+ *               far (driving, breaks). Share ETA, Open trip, Route (frame
+ *               the whole trip) and Full screen (the trip's live view).
+ *               Drag up (or "Stops & GPS") for both GPS feeds, the trip
+ *               with every stop and what the driver sent from it (photos,
+ *               POD, delay videos and the reason; tap to view) and its
+ *               breaks; the trip's next step (Arrived at pickup, Confirm
+ *               delivery…) and Cancel trip sit there too, out of reach of a
+ *               stray tap (FleetActions.tsx confirms both). Swipe sideways
+ *               — or the ‹ › arrows — for the next / previous truck in the
+ *               current filter; drag down to shrink, then to close.
  *   GroupSheet  trucks parked on the same spot (a map group that never parts);
  *               tap one to pick it.
  * Both report their height so the map can keep its trucks clear of them.
  */
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Animated, Image, LayoutAnimation, Linking, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions,
+  ActivityIndicator, Animated, LayoutAnimation, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions,
 } from 'react-native';
-import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
-import { Check, ChevronDown, Route, ChevronLeft, ChevronRight, ChevronUp, MessageCircle, Phone, Play, Smartphone, Truck, X, ZoomIn } from 'lucide-react-native';
-import type { LiveTripMedia, LiveUnit, TripHalt, TripMediaItem, TripTimeSplit } from '../../lib/operator';
-import type { ViewerItem } from '../trips/details/components/MediaViewer';
+import { Check, ChevronDown, Route, ChevronLeft, ChevronRight, ChevronUp, Maximize2, X, ZoomIn } from 'lucide-react-native';
+import type { LiveTripMedia, LiveUnit, TripHalt, TripTimeSplit } from '../../lib/operator';
 import { niceName } from '../trips/create/components/ui';
 import type { makeTime } from '../trips/list/tripListModel';
 import { SILENT_COLOR, STATE_STYLE, TONE, unitState, unitTone, type UnitTone } from './FleetMap';
-import { agoText, formatDuration, formatKm, isSilent, located, MOTION_LABEL, nextStop, phoneMissing, punctuality, stoppedMin, trackerMissing, type EtaInfo } from './fleetModel';
+import { ArrivalRow, DriverRow, GLASS, PanelIconButton, ShareEtaButton, UnitDetails, UnitHead, type Glass, type OpenMedia } from './LivePanels';
+import type { MapTheme } from './mapStyle';
+import { agoText, formatDuration, formatKm, isSilent, located, nextStop, type EtaInfo } from './fleetModel';
 
 const INK = '#3E3C3D';
 const MUTED = '#6B6B76';
 const LINE = '#E9E9EC';
 const BRAND = '#FA634E';
-const BRAND_LIGHT = '#FFF0EB';
 
-/** The dot beside what the truck is doing (the words are the shared MOTION_LABEL, as on the web). */
-const MOTION_COLOR: Record<NonNullable<LiveUnit['motion']>, string> = {
-  moving: '#16A34A',
-  idle: INK,
-  stale: '#9898A4',
-  no_signal: '#9898A4',
-};
 
 /** How far a finger has to travel before a swipe or drag counts. */
 const SWIPE_PX = 70;
@@ -55,16 +45,6 @@ const DRAG_PX = 50;
 
 type Time = ReturnType<typeof makeTime>;
 
-/** Opens the full-screen viewer on one stop's uploads. */
-export type OpenMedia = (items: ViewerItem[], index: number, title: string) => void;
-
-/** Order under a stop: the sequence a driver works through. */
-const STAGE_ORDER: TripMediaItem['stage'][] = ['arrived', 'loaded', 'stop', 'delivered', 'delay', 'other'];
-const STAGE_LABEL: Record<TripMediaItem['stage'], string> = {
-  arrived: 'Arrived', loaded: 'Loaded', stop: 'At stop', delivered: 'Delivered', delay: 'Delay', other: 'Photo',
-};
-/** "VehicleBreakdown" → "Vehicle breakdown". */
-const humanize = (v: string) => v.replace(/[_-]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().replace(/^./, (c) => c.toUpperCase());
 
 export function StateChip({ unit, now }: { unit: LiveUnit; now: number }) {
   const st = unitState(unit, now);
@@ -131,10 +111,12 @@ export function SheetFrame({ children, onHeight, panHandlers, style }: {
 }
 
 export function UnitSheet({
-  unit: u, eta, routeLoading, now, f, expanded, onExpand, position, onPrev, onNext, onClose, onOpen, onHeight, media, onOpenMedia,
-  nextStep, onCancelTrip, busy, onShare, finalEta, onShowRoute, routeShown, halts, timeSplit,
+  unit: u, eta, routeLoading, now, f, theme, expanded, onExpand, position, onPrev, onNext, onClose, onOpen, onHeight, media, onOpenMedia,
+  nextStep, onCancelTrip, busy, onShare, finalEta, onShowRoute, routeShown, onFullScreen, halts, timeSplit, stoppedFor,
 }: {
   unit: LiveUnit; eta: EtaInfo | null; routeLoading: boolean; now: number; f: Time;
+  /** The map's light / dark — the sheet's glass follows it, as on the web. */
+  theme: MapTheme;
   expanded: boolean; onExpand: (v: boolean) => void;
   /** Where this truck sits in the swipe order, e.g. 4 of 26. */
   position: { index: number; total: number };
@@ -155,16 +137,17 @@ export function UnitSheet({
   /** Where the truck stood still on this trip, and the time so far split into driving and breaks. */
   halts?: TripHalt[] | null;
   timeSplit?: TripTimeSplit | null;
+  /** Minutes it has stood still (shown with "Stopped"). */
+  stoppedFor?: number | null;
   /** Frame the whole trip on the map (a toggle — routeShown says it's on). */
   onShowRoute?: (() => void) | null;
   routeShown?: boolean;
+  /** The trip full screen: its live view (2D / 3D / Drive / Route). */
+  onFullScreen?: (() => void) | null;
 }) {
   const { width } = useWindowDimensions();
+  const g = GLASS[theme];
   const t = u.trip;
-  const next = nextStop(u);
-  const phone = u.driver?.phone ?? null;
-  const p = punctuality(eta?.lateByMin ?? null);
-  const done = t ? t.stops.filter((x) => x.actual_arrival).length : 0;
 
   // Follows the finger: sideways to change truck, up/down to resize or close.
   const [tx] = useState(() => new Animated.Value(0));
@@ -225,95 +208,47 @@ export function UnitSheet({
   }));
 
   return (
-    <SheetFrame onHeight={onHeight} panHandlers={pan.panHandlers} style={{ transform: [{ translateX: tx }, { translateY: ty }] }}>
-      <View style={s.cardTop}>
-        <View style={{ flex: 1, gap: 2 }}>
-          <Text style={s.plate}>{u.vehicle?.plate_number ?? 'No truck'}</Text>
-          <Text style={s.driver}>{u.driver ? niceName(u.driver.name) : 'No driver'}</Text>
-          <MotionLine unit={u} now={now} stoppedFor={stoppedMin(u, now) ?? (halts?.length && halts[halts.length - 1].ongoing ? halts[halts.length - 1].minutes : null)} />
-        </View>
-        <StateChip unit={u} now={now} />
-        <TouchableOpacity onPress={onClose} hitSlop={8} style={s.close} accessibilityLabel="Close"><X size={16} color={MUTED} /></TouchableOpacity>
-      </View>
+    <SheetFrame onHeight={onHeight} panHandlers={pan.panHandlers} style={{ backgroundColor: g.bg, borderColor: g.border, transform: [{ translateX: tx }, { translateY: ty }] }}>
+      <UnitHead
+        unit={u}
+        now={now}
+        theme={theme}
+        stoppedFor={stoppedFor ?? null}
+        right={
+          <TouchableOpacity onPress={onClose} hitSlop={8} style={[s.close, { backgroundColor: g.subtle }]} accessibilityLabel="Close">
+            <X size={16} color={g.muted} />
+          </TouchableOpacity>
+        }
+      />
+      <DriverRow unit={u} theme={theme} />
 
-      {t ? (
-        <Text style={s.line}>
-          {[t.ref_id, niceName(t.customer_name)].filter(Boolean).join(' · ')}
-          {t.stops.length ? `  ·  ${done} of ${t.stops.length} stops done` : ''}
-        </Text>
-      ) : <Text style={s.line}>Free — no trip right now</Text>}
-      {t && timeSplit && timeSplit.total_min >= 1 ? <TimeSplitLine split={timeSplit} /> : null}
-
-      {eta ? (
-        <View style={s.etaCard}>
-          <View style={s.etaHead}>
-            <View style={{ flex: 1 }}>
-              <Text style={s.etaLabel} numberOfLines={1}>Arrives {niceName(next?.name) || `stop ${next?.sequence ?? ''}`}</Text>
-              {eta.stopLooksWrong ? (
-                <Text style={s.etaWrong}>Stop location looks wrong — fix it on the trip</Text>
-              ) : (
-                <Text style={s.etaTime}>{eta.arrival ? `${eta.approx ? '≈ ' : ''}${f.time(eta.arrival.toISOString())}` : '—'}</Text>
-              )}
-            </View>
-            {p ? (
-              <View style={[s.pill, { backgroundColor: !p.late ? '#E8F5EE' : BRAND_LIGHT }]}>
-                <Text style={[s.pillText, { color: !p.late ? '#1F7A45' : BRAND }]}>{p.label}</Text>
-              </View>
-            ) : null}
-          </View>
-          <Text style={s.etaSub}>
-            {[
-              eta.durationSeconds != null ? `in ${eta.approx ? 'about ' : ''}${formatDuration(eta.durationSeconds)}` : null,
-              eta.distanceKm != null ? `${eta.approx ? '≈ ' : ''}${formatKm(eta.distanceKm)} by road` : null,
-            ].filter(Boolean).join('  ·  ')}
-          </Text>
-          {t && t.stops.length > 1 ? <StopProgress stops={t.stops} nextId={next?.id ?? null} /> : null}
-          {finalEta ? <Text style={s.etaFinal}>Delivery at {niceName(finalEta.place)} around <Text style={{ fontWeight: '700', color: INK }}>{finalEta.time}</Text></Text> : null}
-        </View>
-      ) : t && t.phase === 'upcoming' ? (
-        <StartCard plannedStart={t.planned_start} now={now} f={f} />
+      {!t ? (
+        <Text style={[s.line, { color: g.muted }]}>Free — no trip right now</Text>
+      ) : eta ? (
+        <ArrivalRow unit={u} eta={eta} f={f} theme={theme} final={finalEta} estimateNote={eta.approx && !routeLoading} />
+      ) : t.phase === 'upcoming' ? (
+        <StartCard plannedStart={t.planned_start} now={now} f={f} g={g} />
       ) : null}
-      {eta?.approx && !routeLoading ? <Text style={s.note}>Estimate — the road route couldn’t be loaded.</Text> : null}
+      {t && timeSplit && timeSplit.total_min >= 1 ? <TimeSplitLine split={timeSplit} g={g} /> : null}
 
       {expanded ? (
-        <>
-          <View style={s.feeds}>
-            <Feed icon={Truck} label="Tracker" iso={u.vehicle_gps?.recorded_at} missing={trackerMissing(u)} now={now} />
-            <Feed icon={Smartphone} label="Phone" iso={u.driver_gps?.recorded_at} missing={phoneMissing(u)} now={now} />
-          </View>
-          {u.feeds_gap_m != null && u.feeds_gap_m > 1000 ? <Text style={[s.note, { color: BRAND, fontWeight: '600' }]}>Tracker and phone are {formatKm(u.feeds_gap_m / 1000)} apart</Text> : null}
-          {t && t.stops.length ? <StopTimeline stops={t.stops} nextId={next?.id ?? null} f={f} media={media ?? null} onOpenMedia={onOpenMedia} /> : null}
-          {t && halts?.some((h) => h.kind === 'break') ? <BreakList halts={halts.filter((h) => h.kind === 'break')} f={f} /> : null}
-        </>
+        <UnitDetails unit={u} now={now} f={f} theme={theme} halts={halts ?? null} media={media} onOpenMedia={onOpenMedia} onOpenTrip={t ? () => onOpen(t.id) : null} />
       ) : null}
 
       <View style={s.actions}>
-        {phone ? (
-          <TouchableOpacity style={s.iconBtn} onPress={() => Linking.openURL(`tel:${phone}`).catch(() => {})} accessibilityLabel="Call driver">
-            <Phone size={17} color="#3F3F46" strokeWidth={2.2} />
-          </TouchableOpacity>
-        ) : null}
-        {t && onShare ? (
-          <TouchableOpacity style={s.iconBtn} onPress={onShare} accessibilityLabel="Send on WhatsApp">
-            <MessageCircle size={17} color="#3F3F46" strokeWidth={2.2} />
-          </TouchableOpacity>
-        ) : null}
+        {t && onShare ? <ShareEtaButton onPress={onShare} /> : null}
         {t ? (
-          <TouchableOpacity style={s.open} onPress={() => onOpen(t.id)} activeOpacity={0.85}>
-            <Text style={s.openText}>Open trip</Text>
-            <ChevronRight size={16} color="#FFFFFF" />
+          <TouchableOpacity style={[s.open, { backgroundColor: theme === 'dark' ? '#F4F4F5' : '#18181B' }]} onPress={() => onOpen(t.id)} activeOpacity={0.85} accessibilityLabel="Open trip">
+            <Text style={[s.openText, { color: theme === 'dark' ? '#18181B' : '#FFFFFF' }]}>Open trip</Text>
+            <ChevronRight size={15} color={theme === 'dark' ? '#18181B' : '#FFFFFF'} />
           </TouchableOpacity>
         ) : <View style={{ flex: 1 }} />}
-        {t && onShowRoute ? (
-          <TouchableOpacity style={[s.tripBtn, routeShown && s.tripBtnOn]} onPress={onShowRoute} accessibilityLabel={routeShown ? 'Back to the truck' : 'Show the whole route'}>
-            <Route size={15} color={routeShown ? '#FFFFFF' : INK} />
-            <Text style={[s.tripBtnText, routeShown && { color: '#FFFFFF' }]}>Route</Text>
-          </TouchableOpacity>
-        ) : null}
+        {t && onShowRoute ? <PanelIconButton icon={Route} label={routeShown ? 'Back to the truck' : 'Show the whole route'} onPress={onShowRoute} theme={theme} on={routeShown} /> : null}
+        {t && onFullScreen ? <PanelIconButton icon={Maximize2} label="Full screen" onPress={onFullScreen} theme={theme} /> : null}
       </View>
       {expanded && t && nextStep ? (
-        <TouchableOpacity style={[s.step, busy && { opacity: 0.6 }]} onPress={nextStep.onPress} disabled={busy} activeOpacity={0.85} accessibilityLabel={nextStep.label}>
-          {busy ? <ActivityIndicator size="small" color={INK} /> : <Text style={s.stepText} numberOfLines={1}>Update status: {nextStep.label}</Text>}
+        <TouchableOpacity style={[s.step, { borderColor: g.border }, busy && { opacity: 0.6 }]} onPress={nextStep.onPress} disabled={busy} activeOpacity={0.85} accessibilityLabel={nextStep.label}>
+          {busy ? <ActivityIndicator size="small" color={g.fg} /> : <Text style={[s.stepText, { color: g.fg }]} numberOfLines={1}>Update status: {nextStep.label}</Text>}
         </TouchableOpacity>
       ) : null}
       {expanded && t && onCancelTrip ? (
@@ -324,17 +259,17 @@ export function UnitSheet({
 
       <View style={s.footer}>
         <TouchableOpacity style={s.more} onPress={() => toggle(!expanded)} hitSlop={6} accessibilityLabel={expanded ? 'Show less' : 'Show stops and GPS'}>
-          {expanded ? <ChevronDown size={15} color={MUTED} /> : <ChevronUp size={15} color={MUTED} />}
-          <Text style={s.moreText}>{expanded ? 'Less' : t ? 'Stops & GPS' : 'GPS'}</Text>
+          {expanded ? <ChevronDown size={15} color={g.muted} /> : <ChevronUp size={15} color={g.muted} />}
+          <Text style={[s.moreText, { color: g.muted }]}>{expanded ? 'Less' : t ? 'Stops & GPS' : 'GPS'}</Text>
         </TouchableOpacity>
         {position.total > 1 ? (
           <View style={s.pager}>
             <TouchableOpacity onPress={() => onPrev && slide(-1, onPrev)} disabled={!onPrev} hitSlop={8} style={s.pageBtn} accessibilityLabel="Previous truck">
-              <ChevronLeft size={17} color={onPrev ? INK : '#C4C4CC'} />
+              <ChevronLeft size={17} color={onPrev ? g.fg : g.border} />
             </TouchableOpacity>
-            <Text style={s.pageText}>{position.index + 1} of {position.total}</Text>
+            <Text style={[s.pageText, { color: g.muted }]}>{position.index + 1} of {position.total}</Text>
             <TouchableOpacity onPress={() => onNext && slide(1, onNext)} disabled={!onNext} hitSlop={8} style={s.pageBtn} accessibilityLabel="Next truck">
-              <ChevronRight size={17} color={onNext ? INK : '#C4C4CC'} />
+              <ChevronRight size={17} color={onNext ? g.fg : g.border} />
             </TouchableOpacity>
           </View>
         ) : null}
@@ -343,181 +278,30 @@ export function UnitSheet({
   );
 }
 
-/** "Driving 6 h 10 min · 2 breaks 1 h 5 min · at stops 2 h" — the trip so far. */
-function TimeSplitLine({ split }: { split: TripTimeSplit }) {
+/** "Driving 9 h 12 min · 2 breaks 1 h 44 min" — the trip so far (API tripHalts.ts). */
+function TimeSplitLine({ split, g }: { split: TripTimeSplit; g: Glass }) {
   const parts = [
     `Driving ${formatDuration(split.driving_min * 60)}`,
     split.breaks ? `${split.breaks} ${split.breaks === 1 ? 'break' : 'breaks'} ${formatDuration(split.breaks_min * 60)}` : 'no breaks',
     split.at_stops_min ? `at stops ${formatDuration(split.at_stops_min * 60)}` : null,
   ].filter(Boolean);
-  return <Text style={s.line} numberOfLines={2}>{parts.join('  ·  ')}</Text>;
-}
-
-/** Each break on the way: when, and how long (the one going on now says so). */
-function BreakList({ halts, f }: { halts: TripHalt[]; f: Time }) {
-  return (
-    <View style={s.breaks}>
-      <Text style={s.breaksHead}>Breaks on the way</Text>
-      {halts.map((h) => (
-        <View key={h.from} style={s.breakRow}>
-          <View style={[s.breakDot, h.ongoing && { backgroundColor: '#D97706' }]} />
-          <View style={{ flex: 1 }}>
-            <Text style={s.breakTime}>{f.time(h.from)} – {h.ongoing ? 'now' : f.time(h.to)}</Text>
-            {h.place ? <Text style={s.breakPlace} numberOfLines={1}>{h.place}</Text> : null}
-          </View>
-          <Text style={[s.breakMin, h.ongoing && { color: '#D97706' }]}>{formatDuration(h.minutes * 60)}{h.ongoing ? ' so far' : ''}</Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-/** "● Moving · 72 km/h · GPS 1 min ago" */
-function MotionLine({ unit: u, now, stoppedFor }: { unit: LiveUnit; now: number; stoppedFor?: number | null }) {
-  const m = u.motion ? { label: MOTION_LABEL[u.motion], color: MOTION_COLOR[u.motion] } : null;
-  const parts = [
-    // "Stopped 25 min", not just "Stopped".
-    u.motion === 'idle' && stoppedFor != null && stoppedFor >= 1 ? `${m?.label} ${formatDuration(stoppedFor * 60)}` : m?.label,
-    u.motion === 'moving' && u.position?.speed_kph != null ? `${Math.round(u.position.speed_kph)} km/h` : null,
-    u.position ? `GPS ${agoText(u.position.recorded_at, now)}` : 'No GPS yet',
-  ].filter(Boolean);
-  return (
-    <View style={s.motion}>
-      {m ? <View style={[s.motionDot, { backgroundColor: m.color }]} /> : null}
-      <Text style={s.motionText} numberOfLines={1}>{parts.join(' · ')}</Text>
-    </View>
-  );
-}
-
-/** Stops as a progress bar: done (ink), next (red), still to come (grey), and "1 of 3 done". */
-function StopProgress({ stops, nextId }: { stops: NonNullable<LiveUnit['trip']>['stops']; nextId: string | null }) {
-  const done = stops.filter((x) => x.actual_arrival).length;
-  return (
-    <View style={{ gap: 4 }}>
-      <View style={s.progress}>
-        {stops.map((x, i) => {
-          const isDone = !!x.actual_arrival;
-          const isNext = x.id === nextId;
-          return (
-            <React.Fragment key={x.id}>
-              {i > 0 ? <View style={[s.progressLine, isDone || isNext ? { backgroundColor: INK } : null]} /> : null}
-              <View style={[s.progressDot, isDone && { backgroundColor: INK, borderColor: INK }, isNext && { backgroundColor: BRAND, borderColor: BRAND }]} />
-            </React.Fragment>
-          );
-        })}
-      </View>
-      <Text style={s.progressText}>{done} of {stops.length} stops done</Text>
-    </View>
-  );
+  return <Text style={[s.line, { color: g.muted }]} numberOfLines={2}>{parts.join('  ·  ')}</Text>;
 }
 
 /** A trip that hasn't started: when it's due, or how late it is. */
-function StartCard({ plannedStart, now, f }: { plannedStart: string | null; now: number; f: Time }) {
-  if (!plannedStart) return <Text style={s.line}>Scheduled — no start time set</Text>;
+function StartCard({ plannedStart, now, f, g }: { plannedStart: string | null; now: number; f: Time; g: Glass }) {
+  if (!plannedStart) return <Text style={[s.line, { color: g.muted }]}>Scheduled — no start time set</Text>;
   const min = Math.round((new Date(plannedStart).getTime() - now) / 60000);
   const late = min < -5;
   const sameDay = f.dayKey(plannedStart) === f.dayKey(now);
   return (
-    <View style={[s.etaCard, late && { backgroundColor: BRAND_LIGHT }]}>
-      <Text style={s.etaLabel}>{late ? 'Should have started' : 'Starts'}</Text>
-      <Text style={[s.etaTime, late && { color: BRAND }]}>{sameDay ? f.time(plannedStart) : `${f.day(plannedStart)} ${f.time(plannedStart)}`}</Text>
-      <Text style={[s.etaSub, late && { color: BRAND, fontWeight: '600' }]}>
+    <View style={[s.startCard, { backgroundColor: late ? 'rgba(225,29,72,0.08)' : g.subtle }]}>
+      <Text style={[s.startLabel, { color: g.muted }]}>{late ? 'Should have started' : 'Starts'}</Text>
+      <Text style={[s.startTime, { color: late ? g.bad : g.fg }]}>{sameDay ? f.time(plannedStart) : `${f.day(plannedStart)} ${f.time(plannedStart)}`}</Text>
+      <Text style={[s.startSub, { color: late ? g.bad : g.muted }]}>
         {late ? `${formatDuration(-min * 60)} ago` : min <= 1 ? 'due now' : `in ${formatDuration(min * 60)}`}
       </Text>
     </View>
-  );
-}
-
-/** Every stop in order: done (ink), next (red), still to come (outline) — planned vs actual arrival. */
-function StopTimeline({ stops, nextId, f, media, onOpenMedia }: {
-  stops: NonNullable<LiveUnit['trip']>['stops']; nextId: string | null; f: Time; media: LiveTripMedia | null; onOpenMedia?: OpenMedia;
-}) {
-  const byStop = new Map((media?.stops ?? []).map((m) => [m.stop_id, m]));
-  const unplaced = media?.unplaced ?? [];
-  return (
-    <ScrollView style={{ maxHeight: 260 }} nestedScrollEnabled>
-      {stops.map((st, i) => {
-        const done = !!st.actual_arrival;
-        const isNext = st.id === nextId;
-        const late = done && st.planned_arrival
-          ? Math.round((new Date(st.actual_arrival!).getTime() - new Date(st.planned_arrival).getTime()) / 60000)
-          : null;
-        return (
-          <View key={st.id} style={s.stopRow}>
-            <View style={{ alignItems: 'center' }}>
-              <View style={[s.stopDot, done && s.stopDotDone, isNext && s.stopDotNext]}>
-                <Text style={[s.stopNum, (done || isNext) && { color: '#FFFFFF' }]}>{i + 1}</Text>
-              </View>
-              {i < stops.length - 1 ? <View style={[s.stopRail, done && { backgroundColor: INK }]} /> : null}
-            </View>
-            <View style={{ flex: 1, paddingBottom: 10 }}>
-              <Text style={[s.stopName, isNext && { color: BRAND }]} numberOfLines={1}>{niceName(st.name) || st.address || `Stop ${st.sequence}`}</Text>
-              <Text style={s.stopMeta}>
-                {niceName(st.type)}
-                {st.planned_arrival ? `  ·  plan ${f.time(st.planned_arrival)}` : ''}
-                {done ? `  ·  arrived ${f.time(st.actual_arrival)}` : ''}
-                {late != null && late > 5 ? <Text style={{ color: BRAND, fontWeight: '600' }}>{`  (${formatDuration(late * 60)} late)`}</Text> : null}
-              </Text>
-              <StopMedia
-                stop={byStop.get(st.id) ?? null}
-                title={niceName(st.name) || `Stop ${i + 1}`}
-                f={f}
-                onOpenMedia={onOpenMedia}
-              />
-            </View>
-          </View>
-        );
-      })}
-      {unplaced.length ? (
-        <View style={{ paddingLeft: 32, paddingBottom: 6 }}>
-          <Text style={s.stopMeta}>Other uploads</Text>
-          <Thumbs items={unplaced} title="Other uploads" f={f} onOpenMedia={onOpenMedia} />
-        </View>
-      ) : null}
-    </ScrollView>
-  );
-}
-
-/** The delay the driver reported, then thumbnails in the order the driver works through a stop. */
-function StopMedia({ stop, title, f, onOpenMedia }: { stop: LiveTripMedia['stops'][number] | null; title: string; f: Time; onOpenMedia?: OpenMedia }) {
-  if (!stop || (!stop.delay && !stop.media.length)) return null;
-  const items = [...stop.media].sort((a, b) => STAGE_ORDER.indexOf(a.stage) - STAGE_ORDER.indexOf(b.stage) || a.captured_at.localeCompare(b.captured_at));
-  return (
-    <View style={{ gap: 4, marginTop: 4 }}>
-      {stop.delay?.reason || stop.delay?.note ? (
-        <Text style={s.delayText} numberOfLines={2}>
-          Delay: {[stop.delay.reason ? humanize(stop.delay.reason) : null, stop.delay.note].filter(Boolean).join(' — ')}
-          {stop.delay.logged_at ? `  ·  ${f.time(stop.delay.logged_at)}` : ''}
-        </Text>
-      ) : null}
-      {items.length ? <Thumbs items={items} title={title} f={f} onOpenMedia={onOpenMedia} /> : null}
-    </View>
-  );
-}
-
-function Thumbs({ items, title, f, onOpenMedia }: { items: TripMediaItem[]; title: string; f: Time; onOpenMedia?: OpenMedia }) {
-  const viewer: ViewerItem[] = items.map((m) => ({
-    id: m.id,
-    url: m.url,
-    kind: m.kind === 'video' ? 'video' : 'photo',
-    caption: `${m.kind === 'pod' ? 'POD' : STAGE_LABEL[m.stage]} · ${f.time(m.captured_at)}`,
-  }));
-  return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-      {items.map((m, i) => {
-        const uri = resolveMediaUrl(m.url);
-        return (
-          <TouchableOpacity key={m.id} onPress={() => onOpenMedia?.(viewer, i, title)} activeOpacity={0.8} accessibilityLabel={`Open ${viewer[i].caption}`}>
-            <View style={s.thumb}>
-              {m.kind === 'video' || !uri ? (
-                <View style={[s.thumbFill, s.thumbVideo]}><Play size={13} color="#FFFFFF" fill="#FFFFFF" /></View>
-              ) : <Image source={{ uri }} style={s.thumbFill} />}
-            </View>
-            <Text style={s.thumbLabel} numberOfLines={1}>{m.kind === 'pod' ? 'POD' : STAGE_LABEL[m.stage]}</Text>
-          </TouchableOpacity>
-        );
-      })}
-    </ScrollView>
   );
 }
 
@@ -609,21 +393,13 @@ export function NotLiveSheet({ units, now, onPick, onClose, onHeight }: {
   );
 }
 
-function Feed({ icon: Icon, label, iso, missing, now }: { icon: typeof Truck; label: string; iso?: string | null; missing: string; now: number }) {
-  const fresh = iso ? now - new Date(iso).getTime() < 30 * 60_000 : false;
-  return (
-    <View style={s.feed}>
-      <Icon size={14} color={MUTED} />
-      <Text style={s.feedLabel}>{label}</Text>
-      <View style={[s.feedDot, { backgroundColor: iso ? (fresh ? INK : BRAND) : '#D4D4D8' }]} />
-      <Text style={s.feedVal} numberOfLines={1}>{iso ? agoText(iso, now) : missing}</Text>
-    </View>
-  );
-}
-
 const shadow = { shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 4 };
 
 const s = StyleSheet.create({
+  startCard: { borderRadius: 12, padding: 10, marginTop: 10, gap: 2 },
+  startLabel: { fontSize: 12, fontWeight: '600' },
+  startTime: { fontSize: 22, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  startSub: { fontSize: 12 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   state: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
   stateText: { fontSize: 12, fontWeight: '600' },
@@ -650,48 +426,13 @@ const s = StyleSheet.create({
   quietPlate: { flex: 1, fontSize: 14, fontWeight: '600', color: INK, fontFamily: 'monospace' },
   quietMeta: { fontSize: 12, color: MUTED },
   plate: { fontSize: 19, fontWeight: '800', color: INK, letterSpacing: 0.3 },
-  driver: { fontSize: 14, fontWeight: '500', color: '#3F3F46' },
-  motion: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 1 },
-  motionDot: { width: 7, height: 7, borderRadius: 4 },
-  motionText: { fontSize: 12, color: MUTED },
   close: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#F1F1F3', alignItems: 'center', justifyContent: 'center' },
   line: { fontSize: 13, color: MUTED, lineHeight: 19 },
-  breaks: { gap: 6, paddingTop: 4 },
-  breaksHead: { fontSize: 12, fontWeight: '700', color: MUTED, textTransform: 'uppercase', letterSpacing: 0.4 },
-  breakRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  breakDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#9898A4' },
-  breakTime: { fontSize: 13, color: INK, fontVariant: ['tabular-nums'] },
-  breakPlace: { fontSize: 12, color: MUTED },
-  breakMin: { fontSize: 13, fontWeight: '700', color: INK, fontVariant: ['tabular-nums'] },
-  eta: { flexDirection: 'row', gap: 8 },
-  etaCard: { backgroundColor: '#F6F6F7', borderRadius: 14, padding: 12, gap: 6 },
-  etaHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  etaLabel: { fontSize: 12, fontWeight: '600', color: MUTED },
-  etaTime: { fontSize: 28, fontWeight: '800', color: INK, fontVariant: ['tabular-nums'], letterSpacing: -0.5 },
-  etaSub: { fontSize: 13, color: '#3F3F46' },
-  etaFinal: { fontSize: 12, color: MUTED },
-  pill: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
-  pillText: { fontSize: 12, fontWeight: '700' },
-  progress: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
-  progressDot: { width: 10, height: 10, borderRadius: 5, borderWidth: 2, borderColor: '#C4C4CC', backgroundColor: '#FFFFFF' },
-  progressLine: { flex: 1, height: 2, backgroundColor: '#DCDCE0' },
-  progressText: { fontSize: 11, color: MUTED },
-  note: { fontSize: 11, color: MUTED },
-  feeds: { flexDirection: 'row', gap: 8 },
-  feed: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: LINE, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 7 },
-  feedLabel: { fontSize: 12, fontWeight: '600', color: '#3F3F46' },
-  feedDot: { width: 7, height: 7, borderRadius: 4 },
-  feedVal: { flex: 1, fontSize: 12, color: MUTED },
   actions: { flexDirection: 'row', gap: 8, marginTop: 2 },
-  iconBtn: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#F1F1F3', alignItems: 'center', justifyContent: 'center' },
   open: { flex: 1, height: 44, borderRadius: 12, backgroundColor: INK, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
   openText: { fontSize: 14, fontWeight: '600', color: '#FFFFFF' },
-  tripBtn: { height: 44, borderRadius: 12, borderWidth: 1, borderColor: LINE, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 2, paddingHorizontal: 12 },
-  tripBtnText: { fontSize: 14, fontWeight: '600', color: INK },
-  tripBtnOn: { backgroundColor: INK, borderColor: INK },
   step: { height: 42, marginTop: 8, borderRadius: 12, borderWidth: 1, borderColor: LINE, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
   stepText: { fontSize: 14, fontWeight: '600', color: INK },
-  etaWrong: { marginTop: 4, fontSize: 15, fontWeight: '700', color: BRAND },
   cancel: { alignSelf: 'flex-start', paddingVertical: 4 },
   cancelText: { fontSize: 13, fontWeight: '600', color: '#D92D20' },
 
@@ -702,17 +443,4 @@ const s = StyleSheet.create({
   pageBtn: { width: 30, height: 28, alignItems: 'center', justifyContent: 'center' },
   pageText: { fontSize: 12, fontWeight: '600', color: MUTED, fontVariant: ['tabular-nums'] },
 
-  stopRow: { flexDirection: 'row', gap: 10 },
-  stopDot: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#A1A1AA', alignItems: 'center', justifyContent: 'center' },
-  stopDotDone: { backgroundColor: INK, borderColor: INK },
-  stopDotNext: { backgroundColor: BRAND, borderColor: BRAND },
-  stopNum: { fontSize: 10, fontWeight: '800', color: '#3F3F46' },
-  stopRail: { width: 2, flex: 1, minHeight: 10, backgroundColor: '#E4E4E7', marginVertical: 2 },
-  stopName: { fontSize: 13, fontWeight: '600', color: INK },
-  stopMeta: { fontSize: 12, color: MUTED, marginTop: 1 },
-  delayText: { fontSize: 12, color: BRAND, fontWeight: '600' },
-  thumb: { width: 52, height: 52, borderRadius: 10, overflow: 'hidden', backgroundColor: '#F1F1F3' },
-  thumbFill: { width: '100%', height: '100%' },
-  thumbVideo: { backgroundColor: INK, alignItems: 'center', justifyContent: 'center' },
-  thumbLabel: { fontSize: 10, color: MUTED, textAlign: 'center', marginTop: 2, width: 52 },
 });

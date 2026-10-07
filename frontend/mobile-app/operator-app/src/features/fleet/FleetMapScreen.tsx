@@ -44,7 +44,8 @@
  *             the card's Route frames the whole trip (tap again to go back).
  *             It follows the truck as it moves; dragging the map stops that
  *             and shows Recenter. Zoomed in, trucks carry their plates.
- *   Controls  zoom ±, All trucks, and Map (2D / 3D, light / dark, map key).
+ *   Controls  zoom ±, All trucks, Full (the map alone: no title bar, search
+ *             or filters), and Map (2D / 3D, light / dark, map key).
  * Live feed refreshes every 15 s here (the web map's rate), 30 s on Home.
  *   Actions   the truck sheet moves its trip to the next step or cancels it;
  *             a trip without a truck (Scheduled row, or a "no truck"
@@ -58,7 +59,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import {
-  AlertTriangle, Compass, Info, Layers, List, LocateFixed, Map as MapIcon, MapPin, Maximize, MessageCircle, Minus, Plus, Search, X, type LucideIcon,
+  AlertTriangle, Compass, Info, Layers, List, LocateFixed, Map as MapIcon, MapPin, Maximize, Maximize2, MessageCircle, Minimize2, Minus, Plus, Search, X, type LucideIcon,
 } from 'lucide-react-native';
 import { Toast } from '@mercon/mobile-shared/components/Toast';
 import { operatorService, type LiveUnit } from '../../lib/operator';
@@ -78,7 +79,7 @@ import { MediaViewer, type ViewerItem } from '../trips/details/components/MediaV
 import { niceName } from '../trips/create/components/ui';
 import { BulkStatusSheet, TripShareFlow } from './FleetShare';
 import {
-  agoText, haversineKm, isFree, isSilent, located, matchesFilter, matchesQuery, placeFromQuery, unitPriority, type FleetFilter,
+  agoText, haversineKm, isFree, isSilent, located, matchesFilter, matchesQuery, onTrip, placeFromQuery, stoppedMin, unitPriority, type FleetFilter,
 } from './fleetModel';
 import { useLiveFleet } from './useLiveFleet';
 import { useTripRoute } from './useTripRoute';
@@ -219,6 +220,9 @@ export default function FleetMapScreen() {
   const [group, setGroup] = useState<string[] | null>(null);
   const groupUnits = useMemo(() => (group ? all.filter((u) => group.includes(u.key)).sort((a, b) => unitPriority(b) - unitPriority(a)) : []), [all, group]);
   const [expanded, setExpanded] = useState(false);
+  // Full screen: the map without the title bar, search and filters.
+  const [full, setFull] = useState(false);
+  const immersive = full && view === 'map';
   // The "N not live" list (trucks with an old position, or none).
   const [notLive, setNotLive] = useState(false);
   const [sheetH, setSheetH] = useState(0);
@@ -412,6 +416,9 @@ export default function FleetMapScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F6F6F7' }} edges={['top']}>
+      {/* Full screen: the map alone — no title bar, search or filters (the Full button brings them back). */}
+      {!immersive ? (
+      <>
       <AppTopBar
         title="Fleet map"
         onBack={() => router.back()}
@@ -487,6 +494,8 @@ export default function FleetMapScreen() {
           ) : <Text style={s.near}>{`Couldn't find "${laneQuery.text}". Try a city name, like Jeddah or Dammam.`}</Text>
         ) : null}
       </View>
+      </>
+      ) : null}
 
       {view === 'list' && listTab === 'attention' ? (
         <AttentionList items={attention} now={now} onIntent={fleetIntent} onOpenTrip={showTrip} />
@@ -596,6 +605,8 @@ export default function FleetMapScreen() {
             <View style={s.ctlGroup}>
               <Ctl icon={Maximize} caption="All" label="Show all trucks" onPress={() => { pick(null); setFocusMode('none'); mapRef.current?.fitAll(); }} />
               <View style={s.ctlRule} />
+              <Ctl icon={full ? Minimize2 : Maximize2} caption={full ? 'Exit' : 'Full'} label={full ? 'Exit full screen' : 'Full screen map'} on={full} onPress={() => setFull(!full)} />
+              <View style={s.ctlRule} />
               <Ctl icon={Layers} caption="Map" label="Map options" on={mapMenu} onPress={() => { setMapMenu(!mapMenu); setLegend(false); }} />
               {turned ? (
                 <>
@@ -644,6 +655,9 @@ export default function FleetMapScreen() {
               onClose={() => pick(null)}
               onOpen={(id) => router.push({ pathname: '/trip-details', params: { id } })}
               onHeight={setSheetH}
+              theme={theme}
+              stoppedFor={stoppedMin(unit, now) ?? (tripRoute.halts?.at(-1)?.ongoing ? tripRoute.halts.at(-1)!.minutes : null)}
+              onFullScreen={unit.trip && unit.position && onTrip(unit) ? () => router.push({ pathname: '/trip-live', params: { id: unit.trip!.id } }) : null}
               media={mediaQ.data ?? null}
               onOpenMedia={(items, index, title) => setViewer({ items, index, title })}
               nextStep={unit.trip && tripActions.nextLabel(unit.trip.status) ? {
