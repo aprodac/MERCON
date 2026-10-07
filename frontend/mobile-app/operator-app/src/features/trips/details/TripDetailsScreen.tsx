@@ -1,7 +1,9 @@
 /**
  * Route: /trip-details?id= — one trip for an operator.
  *
- * Map on top (MapLibre), then who / where / status, then three tabs:
+ * Map on top (MapLibre; a running trip opens full screen in the live view,
+ * /trip-live, others in a plain full-screen map), then who / where / status,
+ * then three tabs:
  *   Updates — WhatsApp first: quick sends and the driver's photos, each with Send.
  *   Stops   — every stop with times, lateness, delays and screenshots to check.
  *   Details — pre-trip checks or trip summary, truck & driver, financials, paperwork.
@@ -150,6 +152,7 @@ export default function TripDetailsScreen() {
   const next = nextActionFor(trip.status);
   const position = overview?.unit?.position ? { lat: overview.unit.position.lat, lng: overview.unit.position.lng } : null;
   const gps = overview?.unit?.position;
+  const liveView = phase === 'active' && !!gps;
 
   // ── Actions ────────────────────────────────────────────────────────────────
   const advance = () => {
@@ -315,9 +318,17 @@ export default function TripDetailsScreen() {
                 </Text>
               </View>
             ) : <View />}
-            <TouchableOpacity style={s.mapBtn} onPress={() => setFullMap(true)} accessibilityLabel="Open full-screen map">
-              <Maximize2 size={16} color={INK} strokeWidth={2.3} />
-            </TouchableOpacity>
+            {liveView ? (
+              // A running trip with a truck on GPS: the live map (2D / 3D / Drive / Route, ETA).
+              <TouchableOpacity style={s.liveBtn} onPress={() => router.push({ pathname: '/trip-live', params: { id: trip.id } })} accessibilityLabel="Open the live map" activeOpacity={0.85}>
+                <Navigation size={14} color={Colors.white} strokeWidth={2.4} />
+                <Text style={s.liveBtnText}>Live view</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={s.mapBtn} onPress={() => setFullMap(true)} accessibilityLabel="Open full-screen map">
+                <Maximize2 size={16} color={INK} strokeWidth={2.3} />
+              </TouchableOpacity>
+            )}
           </View>
           <View style={s.sheetTop}>
             <TripHeader trip={trip} phase={phase} f={f}>
@@ -486,6 +497,8 @@ const s = StyleSheet.create({
   gpsChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7, ...shadow },
   gpsDot: { width: 8, height: 8, borderRadius: 4 },
   gpsText: { fontSize: 12, fontWeight: '700', color: INK },
+  liveBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 38, borderRadius: 19, paddingHorizontal: 14, backgroundColor: INK, ...shadow },
+  liveBtnText: { fontSize: 13, fontWeight: '700', color: Colors.white },
   mapBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.96)', alignItems: 'center', justifyContent: 'center', ...shadow },
   // The map has a rounded bottom edge; the header card sits just below it.
   sheetTop: { marginTop: 14, paddingHorizontal: 16 },

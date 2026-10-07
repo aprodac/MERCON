@@ -55,7 +55,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import {
   AlertTriangle, Compass, Info, Layers, List, LocateFixed, Map as MapIcon, MapPin, Maximize, MessageCircle, Minus, Plus, Search, X, type LucideIcon,
@@ -80,8 +80,9 @@ import { niceName } from '../trips/create/components/ui';
 import type { QuickKind } from '../trips/details/tripDetailsModel';
 import { BulkStatusSheet, ShareKindSheet, TripShareFromMap } from './FleetShare';
 import {
-  agoText, computeEta, haversineKm, isDelayed, isFree, isSilent, located, matchesFilter, matchesQuery, nextStop, onTrip, placeFromQuery, truckDriveSeconds, unitPriority, type FleetFilter,
+  agoText, haversineKm, isDelayed, isFree, isSilent, located, matchesFilter, matchesQuery, placeFromQuery, unitPriority, type FleetFilter,
 } from './fleetModel';
+import { useTripRoute } from './useTripRoute';
 
 const INK = '#3E3C3D';
 const MUTED = '#6B6B76';
@@ -402,44 +403,9 @@ export default function FleetMapScreen() {
   };
   const turned = Math.abs(camera.bearing) > 1 || camera.pitch > 1;
 
-  // The selected truck's road ahead: the server's one route for this trip (the web live map shows
-  // the same), trimmed to what's left at each new GPS fix. The last answer stays up while the next loads.
-  const next = unit ? nextStop(unit) : null;
-  const target = next && next.lat != null && next.lng != null ? { lat: next.lat, lng: next.lng } : null;
-  const aheadQ = useQuery({
-    queryKey: ['fleet', 'route-ahead', unit?.trip?.id, next?.id, unit?.position?.recorded_at],
-    queryFn: () => operatorService.routeAhead(unit!.trip!.id),
-    enabled: !!unit?.position && !!target && !!unit && onTrip(unit),
-    placeholderData: keepPreviousData,
-  });
-  // Never another trip's or stop's route while the new one loads.
-  const routeQ = { ...aheadQ, data: aheadQ.data && aheadQ.data.stopId === next?.id ? aheadQ.data : null };
-  // The rest of the trip, next stop onwards — drawn faintly, and only along real roads.
-  const restStops = useMemo(() => {
-    const t = unit?.trip;
-    if (!t || t.next_stop_index == null) return [];
-    return t.stops.slice(t.next_stop_index).filter((x) => x.lat != null && x.lng != null && !(x.lat === 0 && x.lng === 0)).map((x) => ({ lat: x.lat!, lng: x.lng! }));
-  }, [unit?.trip]);
-  const restQ = useQuery({
-    queryKey: ['fleet', 'trip-rest', unit?.trip?.id, unit?.trip?.next_stop_index, restStops.length],
-    queryFn: () => operatorService.liveRoute(restStops),
-    enabled: restStops.length >= 2,
-    staleTime: 10 * 60_000,
-  });
-  // Breadcrumb trail: the trip's driven path (same endpoint as the trip page's map), joined to where the truck is now.
-  const trailQ = useQuery({
-    queryKey: ['fleet', 'trail', unit?.trip?.id],
-    queryFn: () => operatorService.tripOverview(unit!.trip!.id),
-    enabled: !!unit && onTrip(unit),
-    refetchInterval: 60_000,
-    retry: false,
-  });
-  const here = unit?.position ?? null;
-  const trail = useMemo(() => {
-    const path = trailQ.data?.path ?? [];
-    if (path.length < 2) return null;
-    return here ? [...path, [here.lng, here.lat] as [number, number]] : path;
-  }, [trailQ.data, here]);
+  // The picked truck's road ahead, rest of the trip, trail, breaks and ETA (shared with the trip's live view).
+  const tripRoute = useTripRoute(unit, live.dataUpdatedAt, now);
+  const { routeQ, trail, eta } = tripRoute;
 
   // What the driver sent from each stop — only while the sheet is open full.
   const mediaQ = useQuery({
@@ -450,12 +416,6 @@ export default function FleetMapScreen() {
     retry: false,
   });
   const [viewer, setViewer] = useState<{ items: ViewerItem[]; index: number; title: string } | null>(null);
-
-  // Delivery time at the last stop: the next-stop ETA plus road time through the rest of the trip
-  // (at truck speed — the router times a car, and a loaded truck averages at most ~80 km/h).
-  const lastStop = unit?.trip?.stops[unit.trip.stops.length - 1] ?? null;
-  const restSec = restQ.data ? truckDriveSeconds(restQ.data.distanceMeters, restQ.data.durationSeconds) : null;
-  const eta = unit && onTrip(unit) && (routeQ.isFetched || !target) ? computeEta(unit, routeQ.data, routeQ.data ? Date.parse(routeQ.data.computedAt) : live.dataUpdatedAt || now) : null;
 
   const quietUnits = useMemo(() => shown.filter((u) => isSilent(u, now)), [shown, now]);
   // With nothing picked the summary (or a place's results) is up, so a sheet is open unless a focus view hides it.
@@ -596,7 +556,7 @@ export default function FleetMapScreen() {
             tilted={is3D}
             focusMode={focusMode}
             isolate
-            routeLine={routeQ.data?.geometry ?? null}
+            routeLine={tripRoute.routeLine}
             focus={place ? { lat: place.lat, lng: place.lng, km: radius, label: place.kind === 'me' ? 'You' : place.label } : null}
             initialCamera={!params.trip && !place && !lane ? prefs.prefs.camera ?? null : null}
             onLongPress={(at) => searchAround({ label: 'Dropped pin', lat: at.lat, lng: at.lng, kind: 'pin' })}
@@ -606,9 +566,9 @@ export default function FleetMapScreen() {
             padding={{ top: 70, bottom: sheetH + 40 }}
             onViewChange={(v) => { setCamera(v); if (v.center) savePrefs({ camera: { center: v.center, zoom: v.zoom } }); }}
             onGroupPress={openGroup}
-            restLine={restStops.length >= 2 ? restQ.data?.geometry ?? null : null}
+            restLine={tripRoute.restLine}
             trail={trail}
-            halts={unit ? trailQ.data?.halts?.filter((h) => h.kind === 'break') ?? null : null}
+            halts={unit ? tripRoute.halts?.filter((h) => h.kind === 'break') ?? null : null}
             follow={following}
             onUserMove={() => { if (unit) setFollowing(false); }}
           />
@@ -706,11 +666,9 @@ export default function FleetMapScreen() {
               onShare={unit.trip ? () => setShareChoose(true) : null}
               onShowRoute={unit.trip && unit.position ? toggleRoute : null}
               routeShown={focusMode === 'overview'}
-              halts={trailQ.data?.halts ?? null}
-              timeSplit={trailQ.data?.time_split ?? null}
-              finalEta={eta?.arrival && restSec != null && restStops.length >= 2 && lastStop
-                ? { time: f.time(new Date(eta.arrival.getTime() + restSec * 1000).toISOString()), place: lastStop.name || lastStop.address }
-                : null}
+              halts={tripRoute.halts}
+              timeSplit={tripRoute.timeSplit}
+              finalEta={tripRoute.final ? { time: f.time(tripRoute.final.at.toISOString()), place: tripRoute.final.place } : null}
             />
           ) : unit ? null : groupUnits.length ? (
             <GroupSheet units={groupUnits} now={now} onPick={pick} onZoom={() => mapRef.current?.fitKeys(group ?? [])} onClose={() => setGroup(null)} onHeight={setSheetH} />

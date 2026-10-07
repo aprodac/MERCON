@@ -1,9 +1,10 @@
 /**
  * Two pieces of Fleet map state that outlive one render:
  *
- *   useFleetPrefs     the view to come back to — filter, light/dark, 2D/3D and
- *                     where the camera was — kept on the phone, so reopening
- *                     the map lands where it was left.
+ *   useFleetPrefs     the view to come back to — filter, light/dark, 2D/3D,
+ *                     the trip live view's mode and where the camera was —
+ *                     kept on the phone, so reopening the map lands where it
+ *                     was left.
  *   useFleetChanges   what changed between two live refreshes while the map is
  *                     open (a truck turned late, stopped long, lost its GPS,
  *                     started or finished its trip), told once per refresh.
@@ -21,6 +22,8 @@ export interface FleetPrefs {
   filter?: FleetFilter;
   theme?: MapTheme;
   is3D?: boolean;
+  /** The view a trip's full-screen live map opens in (TripLiveScreen). */
+  tripView?: 'flat' | 'tilted' | 'drive' | 'route';
   camera?: { center: [number, number]; zoom: number };
 }
 
