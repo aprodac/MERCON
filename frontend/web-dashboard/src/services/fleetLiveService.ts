@@ -54,6 +54,8 @@ export interface LiveUnit {
     status: string;
     phase: LiveTripPhase;
     customer_name: string | null;
+    /** The customer's logo; absent from servers older than 2026-10-07. */
+    customer_logo_url?: string | null;
     planned_start: string | null;
     planned_end: string | null;
     stops: LiveStop[];

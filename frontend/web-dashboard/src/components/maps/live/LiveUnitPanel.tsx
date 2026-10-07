@@ -1,8 +1,9 @@
 import { Check, Maximize2, Minimize2, Navigation, Phone, Route, Smartphone, Truck, TriangleAlert, X } from 'lucide-react';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
+import { resolveFileUrl } from '@/lib/documents';
 import { cn } from '@/lib/utils';
 import { formatDuration, formatKm, MOTION_LABEL, nextStop, phoneMissing, punctuality, stopLabel, timeAgo, trackerMissing, unitTitle, type EtaInfo } from '@/lib/fleetLive';
 import { fleetLiveService, type LiveGpsFix, type LiveMediaItem, type LiveUnit } from '@/services/fleetLiveService';
@@ -48,9 +49,11 @@ export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare
 
   const header = (
     <div className="flex items-start gap-3">
-      <div className={cn('flex size-10 shrink-0 items-center justify-center rounded-xl', tone.soft)}>
-        {unit.vehicle ? <Truck className={cn('size-5', tone.text)} /> : <Smartphone className={cn('size-5', tone.text)} />}
-      </div>
+      <Photo src={unit.vehicle?.image_url} className="size-10 rounded-xl">
+        <div className={cn('flex size-10 shrink-0 items-center justify-center rounded-xl', tone.soft)}>
+          {unit.vehicle ? <Truck className={cn('size-5', tone.text)} /> : <Smartphone className={cn('size-5', tone.text)} />}
+        </div>
+      </Photo>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate font-mono text-[15px] font-semibold tracking-tight text-foreground">{unitTitle(unit)}</span>
@@ -172,7 +175,12 @@ export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare
                 {tone.label}
               </span>
             </div>
-            {unit.trip.customer_name && <p className="mt-0.5 truncate text-xs text-muted-foreground">{unit.trip.customer_name}</p>}
+            {unit.trip.customer_name && (
+              <div className="mt-1 flex items-center gap-1.5">
+                <Photo src={unit.trip.customer_logo_url} className="size-5 rounded-md bg-white" contain />
+                <p className="truncate text-xs text-muted-foreground">{unit.trip.customer_name}</p>
+              </div>
+            )}
             <ol className="mt-3 space-y-0">
               {unit.trip.stops.map((s, i) => {
                 const done = s.actual_arrival != null;
@@ -277,13 +285,29 @@ function FeedTile({ icon: Icon, label, fix, missing }: { icon: typeof Truck; lab
   );
 }
 
+/** A stored photo (truck, driver, customer logo); `children` — or nothing — when there's none or it fails to load. */
+function Photo({ src, className, contain, children }: { src: string | null | undefined; className: string; contain?: boolean; children?: ReactNode }) {
+  const [broken, setBroken] = useState<string | null>(null);
+  const url = resolveFileUrl(src);
+  if (!url || broken === url) return <>{children}</>;
+  return (
+    <img
+      src={url}
+      alt=""
+      onError={() => setBroken(url)}
+      className={cn('shrink-0 border border-black/[0.06] dark:border-white/10', contain ? 'object-contain' : 'object-cover', className)}
+    />
+  );
+}
+
 function Initials({ name, src }: { name: string; src: string | null }) {
-  if (src) return <img src={src} alt="" className="size-9 shrink-0 rounded-full object-cover" />;
   const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('');
   return (
-    <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-violet-600/12 text-xs font-semibold text-violet-700 dark:text-violet-300">
-      {initials || '?'}
-    </span>
+    <Photo src={src} className="size-9 rounded-full">
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-violet-600/12 text-xs font-semibold text-violet-700 dark:text-violet-300">
+        {initials || '?'}
+      </span>
+    </Photo>
   );
 }
 
