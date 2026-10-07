@@ -63,7 +63,6 @@ import {
 import { Toast } from '@mercon/mobile-shared/components/Toast';
 import { operatorService, type LiveUnit } from '../../lib/operator';
 import { AppTopBar } from '@/components/AppTopBar';
-import { makeTime } from '../trips/list/tripListModel';
 import { FleetMap, SILENT_COLOR, TONE, type FleetMapHandle, type FocusMode, type MapTheme, type MapView } from './FleetMap';
 import { GroupSheet, NotLiveSheet, UnitRow, UnitSheet } from './FleetSheet';
 import { CustomerPageSheet, NearSheet, SummarySheet, defaultRadiusKm, type PlaceSearch } from './FleetSummary';
@@ -77,11 +76,11 @@ import { useActionInbox } from '../dashboard/actions/useActionInbox';
 import { useActionIntent } from '../dashboard/actions/useActionIntent';
 import { MediaViewer, type ViewerItem } from '../trips/details/components/MediaViewer';
 import { niceName } from '../trips/create/components/ui';
-import type { QuickKind } from '../trips/details/tripDetailsModel';
-import { BulkStatusSheet, ShareKindSheet, TripShareFromMap } from './FleetShare';
+import { BulkStatusSheet, TripShareFlow } from './FleetShare';
 import {
-  agoText, haversineKm, isDelayed, isFree, isSilent, located, matchesFilter, matchesQuery, placeFromQuery, unitPriority, type FleetFilter,
+  agoText, haversineKm, isFree, isSilent, located, matchesFilter, matchesQuery, placeFromQuery, unitPriority, type FleetFilter,
 } from './fleetModel';
+import { useLiveFleet } from './useLiveFleet';
 import { useTripRoute } from './useTripRoute';
 
 const INK = '#3E3C3D';
@@ -105,9 +104,7 @@ const NEAR_PREFIX = /^(?:trucks?\s+)?(?:near|around|close to)\s+/i;
 
 export default function FleetMapScreen() {
   const router = useRouter();
-  const live = useQuery({ queryKey: ['dashboard', 'actions', 'live-map'], queryFn: () => operatorService.liveMap(), refetchInterval: 15_000 });
-  const tzQ = useQuery({ queryKey: ['dashboard', 'tz'], queryFn: () => operatorService.deploymentTimezone(), staleTime: Infinity });
-  const f = useMemo(() => makeTime(tzQ.data ?? 'Asia/Riyadh'), [tzQ.data]);
+  const { live, f, now } = useLiveFleet();
 
   const { onIntent, toast, setToast } = useActionIntent();
   const [filter, setFilterRaw] = useState<FleetFilter>('all');
@@ -118,13 +115,6 @@ export default function FleetMapScreen() {
   const [view, setView] = useState<'map' | 'list'>('map');
   const [listTab, setListTab] = useState<ListTab>('trucks');
   const [selected, setSelected] = useState<string | null>(null);
-  // The clock for ages, lateness and "free soon": moves on each refresh and every 30 s between.
-  const [clock, setClock] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setClock(Date.now()), 30_000);
-    return () => clearInterval(t);
-  }, []);
-  const now = Math.max(clock, live.dataUpdatedAt || 0);
   const all = useMemo(() => live.data ?? [], [live.data]);
 
   // The view to come back to: filter, theme, 2D/3D and camera (useFleetMapState.ts).
@@ -279,7 +269,6 @@ export default function FleetMapScreen() {
 
   // WhatsApp (FleetShare.tsx): what to send about the picked truck, then the trip page's share sheet…
   const [shareChoose, setShareChoose] = useState(false);
-  const [shareKind, setShareKind] = useState<QuickKind | null>(null);
   // …and trucks picked in the list (long-press) for one status message per customer.
   const [picked, setPicked] = useState<Set<string> | null>(null);
   const [bulk, setBulk] = useState<{ ids: string[]; positions: Record<string, { lat: number; lng: number } | null> } | null>(null);
@@ -736,19 +725,7 @@ export default function FleetMapScreen() {
         </View>
       )}
 
-      {unit?.trip ? (
-        <ShareKindSheet
-          visible={shareChoose}
-          title={`WhatsApp · ${unit.vehicle?.plate_number ?? unit.trip.ref_id ?? 'truck'}`}
-          delayed={isDelayed(unit)}
-          customer={unit.trip.customer_id ? { id: unit.trip.customer_id, name: unit.trip.customer_name ?? 'Customer' } : null}
-          onCustomerPage={(c) => { setShareChoose(false); setTimeout(() => setCustomerPage(c), 300); }}
-          // One sheet closes before the next opens (two modals at once don't show on iOS).
-          onPick={(k) => { setShareChoose(false); setTimeout(() => setShareKind(k), 300); }}
-          onClose={() => setShareChoose(false)}
-        />
-      ) : null}
-      {unit?.trip && shareKind ? <TripShareFromMap tripId={unit.trip.id} kind={shareKind} onClose={() => setShareKind(null)} /> : null}
+      {unit ? <TripShareFlow key={unit.key} unit={unit} open={shareChoose} onClose={() => setShareChoose(false)} onCustomerPage={setCustomerPage} /> : null}
       {bulk ? <BulkStatusSheet key={bulk.ids.join(',')} tripIds={bulk.ids} positions={bulk.positions} onClose={() => { setBulk(null); setPicked(null); }} /> : null}
       <FindTruckSheet tripId={findFor} units={all} onClose={() => setFindFor(null)} onAssigned={(message) => setToast({ message, type: 'success' })} />
       <CustomerPageSheet customer={customerPage} onClose={() => setCustomerPage(null)} onToast={(message) => setToast({ message, type: 'success' })} />

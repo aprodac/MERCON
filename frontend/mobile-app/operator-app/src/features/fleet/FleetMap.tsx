@@ -42,24 +42,13 @@
  * preview on Home. Falls back to a plain panel on builds without MapLibre.
  */
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, View, Text, Image, StyleSheet, TurboModuleRegistry, useWindowDimensions } from 'react-native';
+import { Animated, Easing, View, Text, Image, StyleSheet, useWindowDimensions } from 'react-native';
 import { MapPin } from 'lucide-react-native';
 import Supercluster from 'supercluster';
 import type { LiveUnit, TripHalt } from '../../lib/operator';
-import { feedsApart, isDelayed, isFree, isLongStop, isSilent, lateMin, lateText, located, minText, shortAgo, stoppedMin, tripProgress, unitPriority } from './fleetModel';
-import { quietOfflineTileErrors } from '../../lib/mapLogs';
+import { bearingBetween, feedsApart, isDelayed, isFree, isLongStop, isSilent, lateMin, lateText, located, minText, shortAgo, stoppedMin, tripProgress, unitPriority } from './fleetModel';
 import { MAP_BG, MAP_STYLES, loadMapStyle, readyMapStyle, type MapTheme, type StyleJson } from './mapStyle';
-
-const hasNativeMap = (() => {
-  try {
-    return !!TurboModuleRegistry.get('MLRNNetworkModule');
-  } catch {
-    return false;
-  }
-})();
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const ML: typeof import('@maplibre/maplibre-react-native') | null = hasNativeMap ? require('@maplibre/maplibre-react-native') : null;
-quietOfflineTileErrors(ML);
+import { ML } from '../../lib/maplibre';
 
 export { MAP_STYLES, type MapTheme };
 
@@ -207,14 +196,6 @@ function circleOf(a: { lat: number; lng: number; km: number }): GeoJSON.Feature 
     pts.push([a.lng + lngR * Math.cos(t), a.lat + latR * Math.sin(t)]);
   }
   return { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [pts] } };
-}
-
-/** Compass bearing from a to b, degrees clockwise from north. */
-function bearingBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
-  const toRad = (x: number) => (x * Math.PI) / 180;
-  const y = Math.sin(toRad(b.lng - a.lng)) * Math.cos(toRad(b.lat));
-  const x = Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) - Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(toRad(b.lng - a.lng));
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
 /** The camera state the page shows controls for. */

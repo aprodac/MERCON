@@ -4,20 +4,11 @@
  * "Open in Maps" button instead of crashing.
  */
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Linking, TurboModuleRegistry } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Linking } from 'react-native';
 import { MapPin, Truck } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { MAP_STYLE_URL } from '../../trips/details/components/TripMap';
-
-const hasNativeMap = (() => {
-  try {
-    return !!TurboModuleRegistry.get('MLRNNetworkModule');
-  } catch {
-    return false;
-  }
-})();
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const ML: typeof import('@maplibre/maplibre-react-native') | null = hasNativeMap ? require('@maplibre/maplibre-react-native') : null;
+import { ML } from '../../../lib/maplibre';
 
 export const mapsUrl = (lat: number, lng: number) => `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
 

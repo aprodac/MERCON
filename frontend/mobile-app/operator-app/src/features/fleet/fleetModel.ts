@@ -14,14 +14,13 @@ import {
   isSilent,
   located,
   onTrip,
-  punctuality as sharedPunctuality,
 } from '@mercon/shared-types';
 import type { LiveUnit } from '../../lib/operator';
 import { SAUDI_CITY_COORDS } from '../trips/services/travelTimeService';
 
 export {
-  computeEta, feedsApart, FEEDS_APART_M, formatKm, haversineKm, isDelayed, isFree, isLongStop, isSilent, lateMin, located,
-  LONG_STOP_MIN, nextStop, onTrip, stoppedMin, truckDriveSeconds, type EtaInfo,
+  bearingBetween, computeEta, feedsApart, FEEDS_APART_M, formatKm, haversineKm, isDelayed, isFree, isLongStop, isSilent, lateMin, located,
+  liveStopLabel, LONG_STOP_MIN, MOTION_LABEL, nextStop, onTrip, phoneMissing, punctuality, stoppedMin, trackerMissing, truckDriveSeconds, type EtaInfo,
 } from '@mercon/shared-types';
 
 /** "45 min" · "2 h 5 min" · "3 d 4 h" (shared fleetRules). */
@@ -112,14 +111,6 @@ export function shortAgo(iso: string | null | undefined, now = Date.now()): stri
   if (min < 60) return `${min}m`;
   const h = Math.floor(min / 60);
   return h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`;
-}
-
-// ── ETA ─────────────────────────────────────────────────────────────────────
-
-/** "On time" / "40 min late" (shared grace), in the phone's shape. */
-export function punctuality(lateByMin: number | null): { label: string; good: boolean } | null {
-  const p = sharedPunctuality(lateByMin);
-  return p ? { label: p.label, good: !p.late } : null;
 }
 
 // ── City search ─────────────────────────────────────────────────────────────

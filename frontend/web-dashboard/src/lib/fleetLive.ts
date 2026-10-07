@@ -9,6 +9,8 @@
  * alerts use the very same code. Only the web's own shapes are added here.
  */
 import {
+  bearingBetween,
+  liveStopLabel as stopLabel,
   computeEta as sharedComputeEta,
   formatDriveTime,
   formatKm,
@@ -17,12 +19,11 @@ import {
   isFree,
   nextStop as sharedNextStop,
   onTrip,
-  punctuality as sharedPunctuality,
   type EtaInfo,
 } from '@mercon/shared-types';
 import type { LiveStop, LiveUnit } from '@/services/fleetLiveService';
 
-export { formatKm, haversineKm, LATE_GRACE_MIN, truckDriveSeconds, TRUCK_MAX_KPH as TRUCK_MAX_AVG_KMH, type EtaInfo } from '@mercon/shared-types';
+export { bearingBetween, formatKm, haversineKm, LATE_GRACE_MIN, MOTION_LABEL, phoneMissing, punctuality, trackerMissing, truckDriveSeconds, TRUCK_MAX_KPH as TRUCK_MAX_AVG_KMH, type EtaInfo } from '@mercon/shared-types';
 
 export type LiveFilter = 'all' | 'on_trip' | 'delayed' | 'free' | 'offline';
 
@@ -63,9 +64,7 @@ export function unitTitle(u: LiveUnit): string {
 
 export const nextStop = (u: LiveUnit): LiveStop | null => sharedNextStop(u);
 
-export function stopLabel(s: LiveStop): string {
-  return s.name || s.address || `Stop ${s.sequence}`;
-}
+export { stopLabel };
 
 /** Drive time as "45 min" · "2 h 5 min" · "3 d 4 h" (shared fleetRules). */
 export const formatDuration = formatDriveTime;
@@ -82,12 +81,6 @@ export function timeAgo(iso: string | null | undefined, now = Date.now()): strin
 /** ETA to the next stop — the shared rule; `now` should be the route's `computedAt`. */
 export const computeEta = (u: LiveUnit, route: { distanceMeters: number; durationSeconds: number } | null, now = Date.now()): EtaInfo | null =>
   sharedComputeEta(u, route, now);
-
-/** "On time" / "15 min late" (shared grace), with the web's tone. */
-export function punctuality(lateByMin: number | null): { label: string; tone: 'good' | 'bad' } | null {
-  const p = sharedPunctuality(lateByMin);
-  return p ? { label: p.label, tone: p.late ? 'bad' : 'good' } : null;
-}
 
 /** The WhatsApp ETA message, ending with the trip's customer tracking link when there is one. */
 export function buildEtaShareText(u: LiveUnit, eta: EtaInfo | null, formatTime: (d: Date) => string, trackingUrl?: string | null): string {
@@ -227,14 +220,6 @@ export function stopNumbersLabel(numbers: number[]): string {
 /** "3h" / "12m" — for the small age tag under an offline marker. */
 export function shortAgo(iso: string | null | undefined, now = Date.now()): string {
   return timeAgo(iso, now).replace(' ago', '');
-}
-
-/** Compass bearing in degrees (0 = north, clockwise) from a to b. */
-export function bearingBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
-  const toRad = (x: number) => (x * Math.PI) / 180;
-  const y = Math.sin(toRad(b.lng - a.lng)) * Math.cos(toRad(b.lat));
-  const x = Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) - Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(toRad(b.lng - a.lng));
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
 /**

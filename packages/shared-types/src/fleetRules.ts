@@ -105,6 +105,28 @@ export function isLongStop(u: FleetUnitLike, now = Date.now()): boolean {
 
 export const feedsApart = (u: FleetUnitLike) => (u.feeds_gap_m ?? 0) > FEEDS_APART_M;
 
+/** What the truck is doing, in the same words on every screen. */
+export const MOTION_LABEL: Record<NonNullable<FleetUnitLike['motion']>, string> = {
+  moving: 'Moving',
+  idle: 'Stopped',
+  stale: 'Offline',
+  no_signal: 'No signal',
+};
+
+/** Why a GPS feed shows nothing: the truck's tracker… */
+export function trackerMissing(u: { vehicle: { has_tracker: boolean } | null }): string {
+  return !u.vehicle ? 'No truck' : !u.vehicle.has_tracker ? 'No tracker' : 'No fix yet';
+}
+/** …or the driver's phone (it only sends on a running trip). */
+export function phoneMissing(u: FleetUnitLike & { driver: unknown | null }): string {
+  return !u.driver ? 'No driver' : isFree(u) ? 'Off trip' : 'Not sending';
+}
+
+/** A live-map stop's name for a card: its name, else its address, else "Stop 2". */
+export function liveStopLabel(s: { name: string | null; address: string | null; sequence: number }): string {
+  return s.name || s.address || `Stop ${s.sequence}`;
+}
+
 // ── Distance and ETA ────────────────────────────────────────────────────────
 
 export function haversineKm(a: FleetPoint, b: FleetPoint): number {
@@ -113,6 +135,14 @@ export function haversineKm(a: FleetPoint, b: FleetPoint): number {
   const dLng = toRad(b.lng - a.lng);
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
   return 2 * 6371 * Math.asin(Math.sqrt(h));
+}
+
+/** Compass bearing from a to b, degrees clockwise from north. */
+export function bearingBetween(a: FleetPoint, b: FleetPoint): number {
+  const toRad = (x: number) => (x * Math.PI) / 180;
+  const y = Math.sin(toRad(b.lng - a.lng)) * Math.cos(toRad(b.lat));
+  const x = Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) - Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(toRad(b.lng - a.lng));
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
 /** Car time → truck time: never faster than TRUCK_MAX_KPH over the distance. */

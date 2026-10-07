@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
 import { cn } from '@/lib/utils';
-import { formatDuration, formatKm, nextStop, punctuality, stopLabel, timeAgo, unitTitle, type EtaInfo } from '@/lib/fleetLive';
+import { formatDuration, formatKm, MOTION_LABEL, nextStop, phoneMissing, punctuality, stopLabel, timeAgo, trackerMissing, unitTitle, type EtaInfo } from '@/lib/fleetLive';
 import { fleetLiveService, type LiveGpsFix, type LiveMediaItem, type LiveUnit } from '@/services/fleetLiveService';
 import { MediaViewer, StopMediaStrip } from './TripMedia';
 import { TONE, unitTone } from './liveMapStyle';
@@ -27,13 +27,6 @@ interface Props {
   pov: boolean;
   onTogglePov: () => void;
 }
-
-const MOTION_LABEL: Record<LiveUnit['motion'], string> = {
-  moving: 'Moving',
-  idle: 'Stopped',
-  stale: 'Offline',
-  no_signal: 'No signal',
-};
 
 export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare, onShowRoute, expanded, onToggleExpand, pov, onTogglePov }: Props) {
   const tone = TONE[unitTone(unit)];
@@ -126,7 +119,7 @@ export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare
             <Navigation className="size-3.5 shrink-0 text-blue-600 dark:text-blue-400" />
             <span className="min-w-0 flex-1 truncate font-medium text-foreground">{stopLabel(stop)}</span>
             {eta?.arrival && <span className="shrink-0 font-semibold tabular-nums text-foreground">{eta.approx ? '≈ ' : ''}{formatTime(eta.arrival)}</span>}
-            {p && <span className={cn('shrink-0 font-medium', p.tone === 'good' ? 'text-emerald-600' : 'text-rose-600')}>{p.label}</span>}
+            {p && <span className={cn('shrink-0 font-medium', p.late ? 'text-rose-600' : 'text-emerald-600')}>{p.label}</span>}
           </div>
         )}
         <div className="mt-2.5">{actions}</div>
@@ -159,8 +152,8 @@ export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare
 
         {/* GPS feeds */}
         <div className="grid grid-cols-2 gap-2">
-          <FeedTile icon={Truck} label="Truck tracker" fix={unit.vehicle_gps} missing={!unit.vehicle ? 'No truck' : !unit.vehicle.has_tracker ? 'No tracker' : 'No fix yet'} />
-          <FeedTile icon={Smartphone} label="Driver app" fix={unit.driver_gps} missing={!unit.driver ? 'No driver' : !unit.trip || unit.trip.phase === 'upcoming' ? 'Off trip' : 'Not sending'} />
+          <FeedTile icon={Truck} label="Truck tracker" fix={unit.vehicle_gps} missing={trackerMissing(unit)} />
+          <FeedTile icon={Smartphone} label="Driver app" fix={unit.driver_gps} missing={phoneMissing(unit)} />
         </div>
         {unit.feeds_gap_m != null && unit.feeds_gap_m > 1000 && (
           <p className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-300">
@@ -330,7 +323,7 @@ export function EtaStrip({ eta, formatTime }: { eta: EtaInfo; formatTime: (d: Da
       <Metric
         value={eta.durationSeconds != null ? formatDuration(eta.durationSeconds) : '—'}
         label={p?.label ?? (eta.stopLooksWrong ? 'stop location looks wrong' : 'drive time')}
-        tone={p?.tone}
+        tone={p ? (p.late ? 'bad' : 'good') : undefined}
       />
       {eta.distanceKm != null && <Metric value={`${eta.approx ? '≈ ' : ''}${formatKm(eta.distanceKm)}`} label="by road" />}
     </div>
