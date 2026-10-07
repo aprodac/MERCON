@@ -7,7 +7,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Image, StyleSheet } from 'react-native';
 import { ImageOff, Play } from 'lucide-react-native';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
-import type { DriverUpdate } from '../../../lib/operator';
+import { needsSending, type DriverUpdate } from '../../../lib/operator';
 import { STAGE_TITLE, durationText } from '../actions/actionModel';
 import { INK, MUTED, tap } from '../../notifications/components/parts';
 
@@ -19,7 +19,7 @@ export function FromDrivers({ updates, now, onSend }: {
   onSend: (u: DriverUpdate) => void;
 }) {
   const waiting = updates
-    .filter((u) => u.unsent_count > 0)
+    .filter(needsSending)
     .sort((a, b) => new Date(b.latest_at).getTime() - new Date(a.latest_at).getTime());
   if (waiting.length === 0) return null;
 

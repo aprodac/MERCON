@@ -10,7 +10,7 @@ import { shiftMonth, monthLabel } from '@/components/trips/monthly/monthlyBoardU
 import { tripService } from '@/services/tripService';
 import { useDeploymentTimezone } from '@/lib/datetime';
 import { cn } from '@/lib/utils';
-import { dateInZone, summarizeTripRows, type DayAssignmentInput, type MonthlyCrewMember, type TripImportRow } from '@mercon/shared-types';
+import { dateInZone, rosterClashes, runEvents, summarizeTripRows, type DayAssignmentInput, type MonthlyCrewMember, type RunEvent, type TripImportRow } from '@mercon/shared-types';
 
 export interface MonthDateItem {
   dateStr: string;
@@ -325,6 +325,46 @@ export const MonthlyDaysSelector: React.FC<MonthlyDaysSelectorProps> = ({
   const daysPerCrew = activeCrew.map((c) => sortedDates.filter((d) => dayAssignments[d]?.driverId && dayAssignments[d]?.driverId === c.driverId).length);
   const dayNum = (d: string) => Number(d.slice(8, 10));
 
+  /* ── Each day's run with real dates — a round trip often ends the next day ── */
+  const fmtTime = (iso: string) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(iso));
+  const fmtDay = (iso: string) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short' }).format(new Date(iso));
+  const fmtWeekday = (iso: string) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, weekday: 'short' }).format(new Date(iso));
+  const dayOfIso = (iso: string) => dateInZone(Date.parse(iso), tz);
+  const runs = useMemo(
+    () =>
+      rows
+        .map((r, i) => ({ i, date: dayOfIso(r.planned_start), start: r.planned_start, end: r.planned_end || null, events: runEvents(r) }))
+        .sort((a, b) => Date.parse(a.start) - Date.parse(b.start)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rows, tz],
+  );
+  const runByDate = useMemo(() => new Map(runs.map((r) => [r.date, r])), [runs]);
+  const runMinutes = runs[0]?.end ? Math.round((Date.parse(runs[0].end) - Date.parse(runs[0].start)) / 60000) : null;
+  const lengthText = (m: number) => {
+    const d = Math.floor(m / 1440);
+    const h = Math.floor((m % 1440) / 60);
+    const min = m % 60;
+    return [d ? `${d} d` : '', h ? `${h} h` : '', min ? `${min} min` : ''].filter(Boolean).join(' ') || '0 min';
+  };
+  /** Days whose run starts while the same driver or truck is still on an earlier one. */
+  const clashByDate = useMemo(() => {
+    const map = new Map<string, { from: string; until: string; driver: boolean; truck: boolean }>();
+    if (is3pl) return map;
+    rosterClashes(rows).forEach((c) => {
+      const date = dayOfIso(rows[c.second].planned_start);
+      if (!map.has(date)) map.set(date, { from: dayOfIso(rows[c.first].planned_start), until: rows[c.first].planned_end as string, driver: c.driver, truck: c.truck });
+    });
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, tz, is3pl]);
+  const clashDays = [...clashByDate.keys()].sort();
+  /** "04:00 Riyadh", "23:00 load at Jeddah", "Fri 9 Oct 11:53 back in Riyadh" — the day only when it moved on. */
+  const eventText = (e: RunEvent, startDay: string) => {
+    const day = dayOfIso(e.at) !== startDay ? `${fmtDay(e.at)} ` : '';
+    const what = e.kind === 'returnLoad' ? `load at ${e.place}` : e.kind === 'home' ? `back in ${e.place}` : e.place;
+    return `${day}${fmtTime(e.at)} ${what}`;
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start text-slate-800 dark:text-slate-200">
       {/* ── CALENDAR: the days, and who works each one ── */}
@@ -384,6 +424,11 @@ export const MonthlyDaysSelector: React.FC<MonthlyDaysSelectorProps> = ({
             const noDriver = !is3pl && on && (!a?.driverId || a.driverId === 'unassigned');
             const changed = on && Boolean(dayOverrides[item.dateStr]);
             const busy = on && !is3pl && (isBusy(a?.driverId, item.dateStr) || isBusy(a?.coDriverId, item.dateStr));
+            const run = on ? runByDate.get(item.dateStr) : undefined;
+            const clash = on ? clashByDate.get(item.dateStr) : undefined;
+            const runText = run
+              ? `${fmtTime(run.start)} → ${run.end ? `${dayOfIso(run.end) !== item.dateStr ? `${fmtWeekday(run.end)} ` : ''}${fmtTime(run.end)}` : '?'}`
+              : '';
             const colour = idx >= 0 ? CREW_COLOURS[idx % CREW_COLOURS.length] : null;
             const d: any = a?.driverId ? driverById.get(a.driverId) : null;
 
@@ -404,16 +449,27 @@ export const MonthlyDaysSelector: React.FC<MonthlyDaysSelectorProps> = ({
                 className={cn(
                   'relative h-14 rounded-xl border p-1.5 flex flex-col justify-between cursor-pointer select-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FA634E]/40',
                   on
-                    ? 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-300'
+                    ? clash
+                      ? 'border-rose-300 dark:border-rose-800 bg-rose-50/60 dark:bg-rose-950/30 hover:border-rose-400'
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-300'
                     : 'border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 text-slate-400 hover:border-slate-300'
                 )}
               >
                 <div className="flex items-center justify-between">
                   <span className={cn('text-xs font-bold', on ? 'text-slate-800 dark:text-slate-100' : '')}>{item.dayNumber}</span>
-                  {busy && <AlertTriangle className="w-3.5 h-3.5 text-amber-500" aria-label="Driver already has a trip this day" />}
+                  {clash ? (
+                    <span title={`Still on the ${fmtDay(`${clash.from}T12:00:00Z`)} run until ${fmtDay(clash.until)} ${fmtTime(clash.until)}`}>
+                      <AlertTriangle className="w-3.5 h-3.5 text-rose-500" aria-label="Same driver or truck is still on the previous run" />
+                    </span>
+                  ) : busy ? <AlertTriangle className="w-3.5 h-3.5 text-amber-500" aria-label="Driver already has a trip this day" /> : null}
                 </div>
                 {on && (
                   <div className="flex items-center justify-end gap-0.5">
+                    {runText && (
+                      <span className={cn('mr-auto truncate text-[10px] font-semibold tabular-nums', clash ? 'text-rose-700 dark:text-rose-300' : 'text-slate-500 dark:text-slate-400')} title={runText}>
+                        {runText}
+                      </span>
+                    )}
                     {a?.coDriverId && a.coDriverId !== 'unassigned' && (
                       <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-1 text-[10px] font-bold text-slate-500">+1</span>
                     )}
@@ -443,6 +499,7 @@ export const MonthlyDaysSelector: React.FC<MonthlyDaysSelectorProps> = ({
                         <PopoverContent align="end" side="bottom" avoidCollisions={false} className="w-[320px] rounded-2xl p-3 space-y-2.5" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-between">
                             <span className="text-sm font-bold">{new Date(`${item.dateStr}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })}</span>
+                            {run && <span className="sr-only">{runText}</span>}
                             {changed && <span className="rounded-full bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300">Changed</span>}
                           </div>
                           <div className="space-y-1">
@@ -503,8 +560,33 @@ export const MonthlyDaysSelector: React.FC<MonthlyDaysSelectorProps> = ({
           })}
         </div>
         <p className="text-[11px] text-slate-400">
-          Click a day to add or remove it{is3pl ? '.' : ". Click a driver's photo to change that one day."}
+          Click a day to add or remove it{is3pl ? '.' : ". Click a driver's photo to change that one day."} Each day shows when its run starts → ends.
         </p>
+
+        {runs.length > 0 && (
+          <div className="space-y-2 border-t border-slate-100 dark:border-slate-800 pt-3">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-xs font-bold">Each day's run</span>
+              {runMinutes != null && <span className="text-[11px] text-slate-500">{lengthText(runMinutes)} per run</span>}
+            </div>
+            <ul className="max-h-60 overflow-y-auto space-y-1 pr-1">
+              {runs.map((r) => {
+                const c = clashByDate.get(r.date);
+                return (
+                  <li key={r.i} className={cn('rounded-lg px-2 py-1.5 text-[11px] leading-relaxed', c ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200' : 'bg-slate-50 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300')}>
+                    <span className="font-bold text-slate-800 dark:text-slate-100 mr-1.5">{fmtDay(r.start)}</span>
+                    {(r.events.length ? r.events.map((e) => eventText(e, r.date)) : [`${fmtTime(r.start)} start`]).join('  →  ')}
+                    {c && (
+                      <span className="block font-semibold">
+                        {c.driver && c.truck ? 'Driver and truck' : c.driver ? 'Driver' : 'Truck'} still on the {fmtDay(`${c.from}T12:00:00Z`)} run until {fmtDay(c.until)} {fmtTime(c.until)}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
       </section>
 
       {/* ── CREW / PARTNER + SUMMARY ── */}
@@ -650,7 +732,7 @@ export const MonthlyDaysSelector: React.FC<MonthlyDaysSelectorProps> = ({
               </button>
             )}
 
-            {(overrideCount > 0 || noDriverDays.length > 0 || busyList.length > 0) && (
+            {(overrideCount > 0 || noDriverDays.length > 0 || busyList.length > 0 || clashDays.length > 0) && (
               <div className="space-y-1 border-t border-slate-100 dark:border-slate-800 pt-2 text-[11px]">
                 {overrideCount > 0 && (
                   <p className="flex items-center justify-between text-slate-600 dark:text-slate-300">
@@ -663,6 +745,14 @@ export const MonthlyDaysSelector: React.FC<MonthlyDaysSelectorProps> = ({
                 {noDriverDays.length > 0 && selectedDates.length > 0 && (
                   <p className="text-amber-700 dark:text-amber-300">
                     {noDriverDays.length === selectedDates.length ? 'No driver chosen yet' : `No driver on ${noDriverDays.map(dayNum).join(', ')}`}
+                  </p>
+                )}
+                {clashDays.length > 0 && (
+                  <p className="flex items-start gap-1 text-rose-700 dark:text-rose-300">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    <span>
+                      Runs overlap on {clashDays.map(dayNum).join(', ')}: {runMinutes != null ? `each run takes ${lengthText(runMinutes)}, so ` : ''}the same driver or truck is still on the road when the next day's run starts. Rotate drivers and trucks, or leave days between runs.
+                    </span>
                   </p>
                 )}
                 {busyList.length > 0 && (

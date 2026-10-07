@@ -36,7 +36,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { TruckMotion, CheckBadge, RouteLine, ClockIcon, RiskAlert } from '@/components/ui/kpi-icons';
-import { parseTripRouteNodes, getLegEndpoints } from '@mercon/shared-types';
+import { parseTripRouteNodes, getLegEndpoints, splitLegs } from '@mercon/shared-types';
 
 import { format, subDays, addDays } from 'date-fns';
 import { DateRange } from 'react-day-picker';
@@ -1416,14 +1416,15 @@ export default function TripListPage() {
       accessor: (row: Trip) => {
         const pickup = getPickupInfo(row);
         const dropoff = getDropoffInfo(row);
-        const stops = row.stops || [];
+        // A round trip shows its way out (Riyadh → Jeddah) and "back to Riyadh", not Riyadh → … → Riyadh.
+        const legs = splitLegs(row.stops || [], row.rate_category);
+        const stops = legs.round ? legs.outbound : row.stops || [];
+        const placeOf = (s?: any) =>
+          (s?.location_name || s?.location?.name || s?.location_address || s?.location?.address || '').replace(/🔁\s*/g, '').replace(/\[RETURN:.*?\]/gi, '').trim();
+        const backTo = legs.round ? placeOf(legs.ret[legs.ret.length - 1]) || placeOf(stops[0]) : '';
+        const running = ['InTransit', 'Loading', 'Delayed', 'Emergency'].includes(String(row.status));
 
-        const stopNames = stops
-          .map((s) => {
-            const n = s.location_name || s.location?.name || s.location_address || s.location?.address || '';
-            return n.replace(/🔁\s*/g, '').replace(/\[RETURN:.*?\]/gi, '').trim();
-          })
-          .filter(Boolean);
+        const stopNames = stops.map(placeOf).filter(Boolean);
 
         const firstStop = stopNames[0] || pickup.name || '—';
         const lastStop = stopNames.length > 1 ? stopNames[stopNames.length - 1] : dropoff.name || '—';
@@ -1437,7 +1438,7 @@ export default function TripListPage() {
           intermediateList = [dropoff.name];
         }
 
-        const fullRouteDisplay = [firstStop, ...intermediateList, lastStop].filter(Boolean).join(' → ');
+        const fullRouteDisplay = [firstStop, ...intermediateList, lastStop].filter(Boolean).join(' → ') + (backTo ? ` · round trip, back to ${backTo}` : '');
 
         return (
           <div className="flex flex-col min-w-0 py-0.5 space-y-1" title={fullRouteDisplay}>
@@ -1476,6 +1477,17 @@ export default function TripListPage() {
                 {lastStop}
               </span>
             </div>
+            {backTo && (
+              <div className="flex items-center gap-1.5 min-w-0 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                <span aria-hidden>↺</span>
+                <span className="truncate">Round trip · back to {backTo}</span>
+                {running && legs.currentLeg && (
+                  <span className="shrink-0 rounded-full bg-blue-50 dark:bg-blue-950/50 px-1.5 text-[10px] font-bold text-blue-700 dark:text-blue-300">
+                    {legs.currentLeg === 1 ? 'Leg 1 going' : 'Leg 2 returning'}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         );
       },

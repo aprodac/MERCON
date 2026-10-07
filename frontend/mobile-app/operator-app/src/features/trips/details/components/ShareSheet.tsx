@@ -52,6 +52,10 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
   const [withNext, setWithNext] = useState(true);
   const [viaCompany, setViaCompany] = useState(true);
   const [text, setText] = useState('');
+  // Photo message: null = the standard one (follows the photos / next-stop switch); a string = edited by hand.
+  const [captionEdit, setCaptionEdit] = useState<string | null>(null);
+  // 2–4 photos go as one combined picture so WhatsApp shows them together with the message under them.
+  const [combine, setCombine] = useState(true);
   const [sending, setSending] = useState(false);
   // Assignment message: who at the customer gets @tagged — a saved contact, someone typed in, or nobody.
   const contacts = useMemo(() => customerContacts(trip), [trip]);
@@ -100,8 +104,11 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
     setViaCompany(true);
     setWithNext(true);
     if (target.type === 'update') {
-      const unsent = target.update.items.filter((m) => !target.update.sent_ids.includes(m.id)).map((m) => m.id);
-      setChosen(new Set(unsent.length ? unsent : target.update.items.map((m) => m.id)));
+      // One photo is usually enough (most sets have three): start with the first not yet sent; tap others to add them.
+      const firstUnsent = target.update.items.find((m) => !target.update.sent_ids.includes(m.id)) ?? target.update.items[0];
+      setChosen(new Set(firstUnsent ? [firstUnsent.id] : []));
+      setCaptionEdit(null);
+      setCombine(true);
       setText('');
     } else {
       const first = target.kind === 'assignment' && contacts.length ? contacts[0] : null;
@@ -209,6 +216,11 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
         trackingUrl ? `\nTrack live: ${trackingUrl}` : null,
       ].filter(Boolean).join('\n')
     : '';
+  const message = captionEdit ?? caption;
+  /** WhatsApp has no albums: several photos only arrive "together, text under them" as one picture. */
+  const canCombine = chosenItems.length >= 2 && chosenItems.length <= 4 && videoCount === 0;
+  const combined = canCombine && combine;
+  const edited = captionEdit !== null && captionEdit !== caption;
 
   const send = async () => {
     if (needsNumber && !digits(otherPhone)) {
@@ -239,6 +251,9 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
       recipient: (who === 'driver' ? 'other' : who) as ShareRecipient,
       recipient_phone: digits(phone) || null,
       channel,
+      // Edited by hand: the company WhatsApp sends this text instead of the standard one.
+      caption: edited && message.trim() ? message.trim() : null,
+      combine: combined,
     });
     try {
       if (direct) {
@@ -250,7 +265,18 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
         return;
       }
       // The images themselves go through the share sheet; pick WhatsApp and the chat there.
-      const r = await shareMediaFiles(chosenItems, caption);
+      // One picture + caption: WhatsApp keeps the text on it (several files get the text on the first or apart).
+      const files = combined
+        ? [{
+            id: `combined-${chosenItems.map((m) => m.id.slice(0, 8)).join('-')}`,
+            kind: 'photo' as const,
+            stage: chosenItems[0].stage,
+            url: await operatorService.driverUpdateCollage({ trip_id: trip.id, update_key: update.key, media_ids: chosenItems.map((m) => m.id) }),
+            mime: 'image/jpeg',
+            captured_at: chosenItems[0].captured_at,
+          }]
+        : chosenItems;
+      const r = await shareMediaFiles(files, message);
       if (r.dismissed) return;
       // Marked as sent only once they actually went out.
       await record('link').catch(() => {});
@@ -320,6 +346,7 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
         {update ? (
           <>
             <Text style={s.label}>Photos · {chosen.size} of {update.items.length}</Text>
+            {update.items.length > 1 ? <Text style={[s.optDetail, { marginTop: -6 }]}>One is usually enough · tap more to add them. The rest stay on the trip as not sent.</Text> : null}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
               {update.items.map((m) => {
                 const on = chosen.has(m.id);
@@ -337,6 +364,19 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
                 );
               })}
             </ScrollView>
+            {canCombine ? (
+              <View style={s.switchRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.switchText}>Send as one picture</Text>
+                  <Text style={s.optDetail}>
+                    {combine
+                      ? `The ${chosenItems.length} photos together, the message under them`
+                      : 'Separate photos — WhatsApp may put the message on one photo or apart'}
+                  </Text>
+                </View>
+                <Switch value={combine} onValueChange={setCombine} trackColor={{ true: WA }} />
+              </View>
+            ) : null}
             {nextLine ? (
               <View style={s.switchRow}>
                 <Text style={s.switchText}>Add next stop & time</Text>
@@ -369,10 +409,31 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
                     );
                   })}
                 </View>
-                <Text style={s.bubbleCaption}>{caption}</Text>
+                <TextInput
+                  style={[s.bubbleCaption, s.captionInput]}
+                  value={message}
+                  onChangeText={setCaptionEdit}
+                  multiline
+                  scrollEnabled={false}
+                  maxLength={1024}
+                  textAlignVertical="top"
+                  accessibilityLabel="Message sent with the photos"
+                />
               </View>
             </View>
-            {!direct ? <Text style={[s.optDetail, { textAlign: 'center' }]}>{attached || 'Nothing'} sent as files. Pick WhatsApp and the chat in the share menu.</Text> : null}
+            <View style={s.editRow}>
+              <Text style={[s.optDetail, { flex: 1 }]}>{edited ? 'Edited · sent as you wrote it' : 'Tap the message to edit it'}</Text>
+              {edited ? (
+                <TouchableOpacity onPress={() => { tap(); setCaptionEdit(null); }} hitSlop={8}>
+                  <Text style={s.resetText}>Reset</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            {!direct ? (
+              <Text style={[s.optDetail, { textAlign: 'center' }]}>
+                {combined ? `${attached} sent as one picture with the message.` : `${attached || 'Nothing'} sent as files.`} Pick WhatsApp and the chat in the share menu.
+              </Text>
+            ) : null}
           </>
         ) : (
           <>
@@ -460,6 +521,10 @@ const s = StyleSheet.create({
   chat: { backgroundColor: '#E9E2D6', borderRadius: 16, padding: 12 },
   bubble: { backgroundColor: '#D9FDD3', borderRadius: 12, borderBottomRightRadius: 4, padding: 10, marginLeft: 30, fontSize: 13, lineHeight: 19, color: INK },
   bubbleCaption: { paddingHorizontal: 6, paddingVertical: 5, fontSize: 13, lineHeight: 19, color: INK },
+  // Editable in place: a faint dashed edge says the bubble's text can be changed.
+  captionInput: { minHeight: 60, borderRadius: 8, borderWidth: 1, borderStyle: 'dashed', borderColor: 'rgba(0,0,0,0.18)', marginTop: 4 },
+  editRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: -4 },
+  resetText: { fontSize: 12, fontWeight: '700', color: '#B42318' },
   bubbleWrap: { marginLeft: 30, backgroundColor: '#D9FDD3', borderRadius: 12, borderBottomRightRadius: 4, padding: 4, gap: 2 },
   bubbleMedia: { flexDirection: 'row', flexWrap: 'wrap', gap: 3 },
   bubbleThumb: { width: '49%', aspectRatio: 1, borderRadius: 9, overflow: 'hidden', backgroundColor: '#C9E9C2' },

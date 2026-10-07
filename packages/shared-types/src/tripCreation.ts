@@ -481,6 +481,16 @@ export interface TripSlotDraft extends QuotationSlotInput {
   returnPickupTime?: string;
   returnDropoffDate?: string;
   returnDropoffTime?: string;
+  /**
+   * Days after the pickup day (0 = same day) for the drop-off, return loading
+   * and arrival home. A monthly contract has times but no dates, so these say
+   * which day of each run an event falls on (e.g. pickup Day 1 20:00, Jeddah
+   * Day 2 10:00, return loading Day 2 20:00, home Day 3 10:00). When set they
+   * win over the dates and over the "earlier time means next day" guess.
+   */
+  dropoffDay?: number;
+  returnPickupDay?: number;
+  returnDropoffDay?: number;
 }
 
 export interface DayAssignmentInput {
@@ -569,32 +579,67 @@ export function daysBetween(from: string, to: string): number {
   return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86400000);
 }
 
+const validDay = (d: unknown): d is number => typeof d === 'number' && Number.isInteger(d) && d >= 0;
+
+type ReturnLegSlot = Pick<
+  TripSlotDraft,
+  | 'date' | 'pickupTime' | 'dropoffDate' | 'dropoffTime' | 'isOvernight' | 'dropoffDay'
+  | 'returnPickupDate' | 'returnPickupTime' | 'returnDropoffDate' | 'returnDropoffTime' | 'returnPickupDay' | 'returnDropoffDay'
+>;
+
 /**
- * The return leg's times for one trip date, as UTC ISO strings. Dates are
- * stored relative to the slot's date, so a monthly contract shifts them to
- * every operating day. Without a date, a time at or before the previous
- * event rolls to the next day.
+ * Which day of the trip (0 = the pickup day) the return loading and arrival
+ * home fall on. An explicit day wins, then a date (relative to the slot's
+ * date), else a time at or before the previous event rolls to the next day.
+ */
+export function returnLegDayOffsets(slot: ReturnLegSlot): { pickup?: number; arrival?: number } {
+  if (!slot.returnPickupTime) return {};
+  const outbound = dropoffDayOffset(slot);
+  const pickup = validDay(slot.returnPickupDay)
+    ? slot.returnPickupDay
+    : slot.returnPickupDate && slot.date
+    ? Math.max(0, daysBetween(slot.date, slot.returnPickupDate))
+    : slot.dropoffTime && slot.returnPickupTime < slot.dropoffTime
+    ? outbound + 1
+    : outbound;
+  if (!slot.returnDropoffTime) return { pickup };
+  const arrival = validDay(slot.returnDropoffDay)
+    ? slot.returnDropoffDay
+    : slot.returnDropoffDate && slot.date
+    ? Math.max(0, daysBetween(slot.date, slot.returnDropoffDate))
+    : slot.returnDropoffTime <= slot.returnPickupTime
+    ? pickup + 1
+    : pickup;
+  return { pickup, arrival };
+}
+
+/**
+ * The return leg's times for one trip date, as UTC ISO strings. Days are
+ * relative to the pickup day, so a monthly contract shifts them to every
+ * operating day.
  */
 export function returnLegTimes(
-  slot: Pick<TripSlotDraft, 'date' | 'pickupTime' | 'dropoffDate' | 'dropoffTime' | 'isOvernight' | 'returnPickupDate' | 'returnPickupTime' | 'returnDropoffDate' | 'returnDropoffTime'>,
+  slot: ReturnLegSlot,
   tripDate: string,
   toUtcIso: (date: string, time: string) => string,
 ): { pickup?: string; arrival?: string } {
-  if (!slot.returnPickupTime) return {};
-  const outboundDay = addDaysToDateStr(tripDate, dropoffDayOffset(slot));
-  const pickupDay = slot.returnPickupDate && slot.date
-    ? addDaysToDateStr(tripDate, Math.max(0, daysBetween(slot.date, slot.returnPickupDate)))
-    : slot.dropoffTime && slot.returnPickupTime < slot.dropoffTime
-    ? addDaysToDateStr(outboundDay, 1)
-    : outboundDay;
-  const pickup = toUtcIso(pickupDay, slot.returnPickupTime);
-  if (!slot.returnDropoffTime) return { pickup };
-  const arrivalDay = slot.returnDropoffDate && slot.date
-    ? addDaysToDateStr(tripDate, Math.max(0, daysBetween(slot.date, slot.returnDropoffDate)))
-    : slot.returnDropoffTime <= slot.returnPickupTime
-    ? addDaysToDateStr(pickupDay, 1)
-    : pickupDay;
-  return { pickup, arrival: toUtcIso(arrivalDay, slot.returnDropoffTime) };
+  const days = returnLegDayOffsets(slot);
+  if (days.pickup === undefined || !slot.returnPickupTime) return {};
+  const pickup = toUtcIso(addDaysToDateStr(tripDate, days.pickup), slot.returnPickupTime);
+  if (days.arrival === undefined || !slot.returnDropoffTime) return { pickup };
+  return { pickup, arrival: toUtcIso(addDaysToDateStr(tripDate, days.arrival), slot.returnDropoffTime) };
+}
+
+/**
+ * Drops the schedule fields that don't apply to this kind of trip, so a value
+ * left over from switching modes can't move a time: a monthly contract runs on
+ * days ("Day 2"), so its return-leg dates go; a single trip runs on dates, so
+ * its days go; days are only offered for round trips.
+ */
+export function slotScheduleFor<T extends TripSlotDraft>(slot: T, isMonthly: boolean, isRound: boolean): T {
+  const noDays = { dropoffDay: undefined, returnPickupDay: undefined, returnDropoffDay: undefined };
+  if (!isMonthly) return { ...slot, ...noDays };
+  return { ...slot, returnPickupDate: '', returnDropoffDate: '', ...(isRound ? {} : noDays) };
 }
 
 /**
@@ -603,7 +648,11 @@ export function returnLegTimes(
  * time — or a slot marked overnight — lands on the next day. For a monthly
  * contract the same offset is applied to every operating date.
  */
-export function dropoffDayOffset(slot: Pick<TripSlotDraft, 'date' | 'pickupTime' | 'dropoffDate' | 'dropoffTime' | 'isOvernight'>): number {
+export function dropoffDayOffset(slot: Pick<TripSlotDraft, 'date' | 'pickupTime' | 'dropoffDate' | 'dropoffTime' | 'isOvernight' | 'dropoffDay'>): number {
+  // An explicit day (monthly round trips) — 0 only when the drop-off is after pickup that day.
+  if (validDay(slot.dropoffDay) && (slot.dropoffDay > 0 || !slot.pickupTime || !slot.dropoffTime || slot.dropoffTime > slot.pickupTime)) {
+    return slot.dropoffDay;
+  }
   if (slot.date && slot.dropoffDate && slot.dropoffDate > slot.date) {
     const [y1, m1, d1] = slot.date.split('-').map(Number);
     const [y2, m2, d2] = slot.dropoffDate.split('-').map(Number);
@@ -952,10 +1001,12 @@ export function validateTripDraft(input: TripValidationInput): TripValidationIss
     if (!slot.pickupTime) issues.push({ section: 'schedule', field: key('pickup'), message: `${label}Choose the pickup time` });
     if (!slot.dropoffTime) issues.push({ section: 'schedule', field: key('dropoff'), message: `${label}Choose the drop-off time` });
 
-    if (isRoundTripCategory(input.rateCategory || '') && slot.returnPickupTime && slot.date) {
+    // A monthly contract's slot has no date of its own: check one operating day.
+    const anchorDay = isMonthly ? [...input.selectedDates].sort()[0] || slot.date : slot.date;
+    if (isRoundTripCategory(input.rateCategory || '') && slot.returnPickupTime && anchorDay) {
       try {
-        const out = slot.dropoffTime ? new Date(input.toUtcIso(addDaysToDateStr(slot.date, dropoffDayOffset(slot)), slot.dropoffTime)).getTime() : NaN;
-        const ret = returnLegTimes(slot, slot.date, input.toUtcIso);
+        const out = slot.dropoffTime ? new Date(input.toUtcIso(addDaysToDateStr(anchorDay, dropoffDayOffset(slot)), slot.dropoffTime)).getTime() : NaN;
+        const ret = returnLegTimes(slot, anchorDay, input.toUtcIso);
         const rp = ret.pickup ? new Date(ret.pickup).getTime() : NaN;
         const ra = ret.arrival ? new Date(ret.arrival).getTime() : NaN;
         if (!isNaN(out) && !isNaN(rp) && rp < out) {
@@ -1023,6 +1074,70 @@ export function dateInZone(ms: number, tz: string): string {
     /* fall through */
   }
   return new Date(ms + (FALLBACK_TZ_OFFSET_MIN[tz] ?? 180) * 60000).toISOString().slice(0, 10);
+}
+
+/** One planned moment of a trip: where the truck is and when. */
+export interface RunEvent {
+  at: string;
+  place: string;
+  kind: 'pickup' | 'stop' | 'drop' | 'returnLoad' | 'returnStop' | 'home';
+}
+
+const UUIDISH = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
+
+/**
+ * A trip row's stops in order with their planned times — the whole run, way
+ * back included (pickup → drop-off → return loading → home). Stops without a
+ * time are left out.
+ */
+export function runEvents(row: Pick<TripImportRow, 'stops'>): RunEvent[] {
+  const stops = [...(row.stops || [])].sort((a, b) => a.stop_sequence - b.stop_sequence);
+  const out = stops.filter((s) => s.leg_index === 0);
+  const back = stops.filter((s) => s.leg_index === 1);
+  const kindOf = (s: BuiltTripStop): RunEvent['kind'] => {
+    if (s.leg_index === 1) return s === back[0] ? 'returnLoad' : s === back[back.length - 1] ? 'home' : 'returnStop';
+    return s === out[0] ? 'pickup' : s === out[out.length - 1] ? 'drop' : 'stop';
+  };
+  return stops
+    .filter((s) => s.planned_arrival)
+    .map((s, i) => ({
+      at: new Date(s.planned_arrival as string | Date).toISOString(),
+      place: s.location_name && !UUIDISH.test(s.location_name) ? s.location_name : `Stop ${i + 1}`,
+      kind: kindOf(s),
+    }));
+}
+
+/** Two runs that overlap: the same driver or truck is still on the first when the second starts. */
+export interface RosterClash {
+  /** Indexes into the rows passed in. */
+  first: number;
+  second: number;
+  driver: boolean;
+  truck: boolean;
+}
+
+const realId = (id?: string) => Boolean(id && id !== 'unassigned');
+
+/**
+ * Runs whose crew or truck can't be in two places: a round trip that takes
+ * 32 hours, booked every day with one driver and one truck, overlaps the next
+ * day's run.
+ */
+export function rosterClashes(rows: Pick<TripImportRow, 'planned_start' | 'planned_end' | 'driver_id' | 'vehicle_id'>[]): RosterClash[] {
+  const order = rows.map((_, i) => i).sort((a, b) => Date.parse(rows[a].planned_start) - Date.parse(rows[b].planned_start));
+  const out: RosterClash[] = [];
+  order.forEach((a, k) => {
+    const end = rows[a].planned_end ? Date.parse(rows[a].planned_end as string) : NaN;
+    if (isNaN(end)) return;
+    for (const b of order.slice(k + 1)) {
+      const start = Date.parse(rows[b].planned_start);
+      if (isNaN(start) || start >= end) break;
+      const driver = realId(rows[a].driver_id) && rows[a].driver_id === rows[b].driver_id;
+      const truck = realId(rows[a].vehicle_id) && rows[a].vehicle_id === rows[b].vehicle_id;
+      if (driver || truck) out.push({ first: a, second: b, driver, truck });
+    }
+  });
+  return out;
 }
 
 /** How many rows start before `now`. */

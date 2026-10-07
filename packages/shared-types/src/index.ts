@@ -1258,6 +1258,7 @@ export * from './quotationMatching';
 export * from './quotationSearch';
 export * from './monthlyRotation';
 export * from './tripRoute';
+export * from './tripLegs';
 
 
 

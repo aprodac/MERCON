@@ -22,7 +22,10 @@ import {
   pricingFromQuotation,
   quotationMatchesRoute,
   quotationsForRoute,
+  returnLegDayOffsets,
+  rosterClashes,
   routeLegsFromSlot,
+  slotScheduleFor,
   truckClassOfVehicle,
   validateTripDraft,
   zonedWallTimeToUtcIso,
@@ -304,6 +307,7 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
   const [rawSlot, setSlot] = useState<TripSlotDraft>(() => initialSlot(params));
   const [charges, setCharges] = useState<TripChargeInput[]>([]);
   const [dropoffTouched, setDropoffTouched] = useState(false);
+  const [returnDropoffTouched, setReturnDropoffTouched] = useState(false);
   const [routeEstimate, setRouteEstimate] = useState<RouteEstimate | null>(null);
 
   const [assignmentType, setAssignmentType] = useState<AssignmentType>(params.assignment === 'third_party' ? 'third_party' : 'own');
@@ -340,27 +344,75 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
   const eta = routeEstimate && routeEstimate.key === etaKey && routeReady ? routeEstimate : null;
   const travelMinutes = eta ? eta.totalMinutes : null;
 
+  /** Minutes from leaving pickup to reaching the drop-off — not the whole round trip. */
+  const outboundMinutes = useMemo(() => {
+    if (!eta) return null;
+    const end = eta.points.findIndex((p) => p.kind === 'dropoff');
+    if (end < 0) return eta.totalMinutes;
+    let t = 0;
+    for (let i = 0; i < end; i++) t += eta.dwell[i] + eta.legs[i].minutes;
+    return t;
+  }, [eta]);
+
+  /** Round trip: minutes from loading for the way back to arriving home. */
+  const returnMinutes = useMemo(() => {
+    if (!eta || !isRoundTrip) return null;
+    const start = eta.points.findIndex((p) => p.kind === 'returnPickup' || p.alsoReturnPickup);
+    if (start < 0) return null;
+    let t = 0;
+    for (let i = start; i < eta.legs.length; i++) t += (i === start ? 0 : eta.dwell[i]) + eta.legs[i].minutes;
+    return t;
+  }, [eta, isRoundTrip]);
+
   /** A duty trip's length (10 / 12 hours), or null for a trip that runs as long as the drive. */
   const dutyMinutes = useMemo(() => {
     const t = normalizeLineTypeToken(rateCategory);
     return t === '10_HRS' ? 600 : t === '12_HRS' ? 720 : null;
   }, [rateCategory]);
 
-  /** Drop-off follows pickup + duty length or drive time (rounded up to 15 min) until the user sets it. */
+  /**
+   * Drop-off follows pickup + duty length or drive time (rounded up to 15 min)
+   * until the user sets it; a round trip's arrival home follows the return
+   * loading + the drive back the same way. A monthly contract keeps days
+   * ("Day 2"), a single trip keeps dates.
+   */
   const slot = useMemo<TripSlotDraft>(() => {
-    const base = { ...rawSlot, saveAsQuotation: false };
-    if (dropoffTouched || !rawSlot.pickupTime || (!isMonthly && !rawSlot.date)) return isMonthly ? { ...base, dropoffDate: '' } : base;
-    const [h, m] = rawSlot.pickupTime.split(':').map(Number);
-    const total = h * 60 + m + Math.ceil((dutyMinutes ?? travelMinutes ?? 240) / 15) * 15;
-    const hh = String(Math.floor((total % 1440) / 60)).padStart(2, '0');
-    const mm = String(total % 60).padStart(2, '0');
-    return {
-      ...base,
-      dropoffTime: `${hh}:${mm}`,
-      // Monthly: each day's drop-off is that day (or the next morning when earlier than pickup).
-      dropoffDate: isMonthly ? '' : rawSlot.date ? addDaysToDateStr(rawSlot.date, Math.floor(total / 1440)) : rawSlot.date,
+    const base: TripSlotDraft = slotScheduleFor(
+      { ...rawSlot, saveAsQuotation: false, ...(isMonthly ? { dropoffDate: '' } : {}) },
+      isMonthly,
+      isRoundTrip,
+    );
+    const toMin = (t: string) => {
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m;
     };
-  }, [rawSlot, dropoffTouched, travelMinutes, isMonthly, dutyMinutes]);
+    const hhmm = (total: number) => `${String(Math.floor((total % 1440) / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+
+    let out = base;
+    if (!dropoffTouched && rawSlot.pickupTime && (isMonthly || rawSlot.date)) {
+      const total = toMin(rawSlot.pickupTime) + Math.ceil((dutyMinutes ?? outboundMinutes ?? 240) / 15) * 15;
+      out = {
+        ...out,
+        dropoffTime: hhmm(total),
+        ...(isMonthly
+          ? { dropoffDay: isRoundTrip ? Math.floor(total / 1440) : undefined }
+          : { dropoffDate: rawSlot.date ? addDaysToDateStr(rawSlot.date, Math.floor(total / 1440)) : rawSlot.date }),
+      };
+    }
+
+    if (isRoundTrip && !returnDropoffTouched && out.returnPickupTime && returnMinutes != null) {
+      const total = toMin(out.returnPickupTime) + Math.ceil(returnMinutes / 15) * 15;
+      const loadDay = returnLegDayOffsets(out).pickup ?? 0;
+      out = {
+        ...out,
+        returnDropoffTime: hhmm(total),
+        ...(isMonthly
+          ? { returnDropoffDay: loadDay + Math.floor(total / 1440) }
+          : { returnDropoffDate: out.returnPickupDate ? addDaysToDateStr(out.returnPickupDate, Math.floor(total / 1440)) : '' }),
+      };
+    }
+    return out;
+  }, [rawSlot, dropoffTouched, returnDropoffTouched, outboundMinutes, returnMinutes, isMonthly, isRoundTrip, dutyMinutes]);
   const isRound = isRoundTripCategory(rateCategory);
   const toUtcIso = useCallback((date: string, time: string) => zonedWallTimeToUtcIso(date, time, tz), [tz]);
 
@@ -773,12 +825,31 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
   }, [etaKey, etaPoints]);
 
   const setDropoff = useCallback(
-    (patch: { dropoffDate?: string; dropoffTime?: string }) => {
+    (patch: { dropoffDate?: string; dropoffTime?: string; dropoffDay?: number }) => {
       // Start from what's on screen (the suggestion) so changing only the time keeps the date.
-      setSlot((s) => ({ ...s, dropoffDate: slot.dropoffDate, dropoffTime: slot.dropoffTime, ...patch }));
+      setSlot((s) => ({ ...s, dropoffDate: slot.dropoffDate, dropoffTime: slot.dropoffTime, dropoffDay: slot.dropoffDay, ...patch }));
       setDropoffTouched(true);
     },
-    [slot.dropoffDate, slot.dropoffTime],
+    [slot.dropoffDate, slot.dropoffTime, slot.dropoffDay],
+  );
+
+  /** Round trip: when the truck loads for the way back. Empty clears the whole return leg's times. */
+  const setReturnPickup = useCallback((patch: { returnPickupDate?: string; returnPickupTime: string; returnPickupDay?: number }) => {
+    if (!patch.returnPickupTime) {
+      setSlot((s) => ({ ...s, returnPickupDate: '', returnPickupTime: '', returnPickupDay: undefined, returnDropoffDate: '', returnDropoffTime: '', returnDropoffDay: undefined }));
+      setReturnDropoffTouched(false);
+      return;
+    }
+    setSlot((s) => ({ ...s, ...patch }));
+  }, []);
+
+  /** Round trip: when the truck is back home — set by hand, so the drive estimate stops moving it. */
+  const setReturnDropoff = useCallback(
+    (patch: { returnDropoffDate?: string; returnDropoffTime: string; returnDropoffDay?: number }) => {
+      setSlot((s) => ({ ...s, returnDropoffDate: slot.returnDropoffDate, returnDropoffDay: slot.returnDropoffDay, ...patch }));
+      setReturnDropoffTouched(true);
+    },
+    [slot.returnDropoffDate, slot.returnDropoffDay],
   );
 
   /* ── Fleet ── */
@@ -1058,6 +1129,26 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     [customerId, slot, vehicleType, rateCategory, billingType, assignmentType, driverId, coDriverId, vehicleId, thirdPartyProviderId, thirdPartyDriverName, thirdPartyDriverPhone, thirdPartyVehiclePlate, thirdPartyCost, awbNumber, dayAssignments, isMonthly, selectedDates, charges, toUtcIso, today],
   );
 
+  /**
+   * A monthly contract's runs: how long one run takes, and the operating days
+   * whose run starts while the same driver or truck is still on an earlier one
+   * (a 32-hour round trip booked every day with one crew).
+   */
+  const runCheck = useMemo(() => {
+    if (!isMonthly || selectedDates.length === 0 || !slot.pickupTime) return { minutes: null as number | null, clashDates: [] as string[] };
+    try {
+      const rows = buildRows();
+      const first = rows[0];
+      const minutes = first?.planned_end ? Math.round((Date.parse(first.planned_end) - Date.parse(first.planned_start)) / 60000) : null;
+      const clashDates = assignmentType === 'third_party'
+        ? []
+        : [...new Set(rosterClashes(rows).map((c) => dateInZone(Date.parse(rows[c.second].planned_start), tz)))].sort();
+      return { minutes, clashDates };
+    } catch {
+      return { minutes: null, clashDates: [] };
+    }
+  }, [isMonthly, selectedDates.length, slot.pickupTime, buildRows, assignmentType, tz]);
+
   const pastTripCount = useMemo(() => {
     if (allIssues.length > 0) return 0;
     try {
@@ -1215,6 +1306,11 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     // schedule
     setDropoff,
     dropoffTouched,
+    setReturnPickup,
+    setReturnDropoff,
+    returnDropoffTouched,
+    isRoundTrip,
+    runCheck,
     travelMinutes,
     eta,
     etaPending: routeReady && !eta,

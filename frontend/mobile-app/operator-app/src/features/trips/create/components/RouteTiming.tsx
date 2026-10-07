@@ -28,7 +28,24 @@ function clock(start: string, plus: number): { time: string; days: number } {
   return { time: `${String(Math.floor((total % 1440) / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`, days: Math.floor(total / 1440) };
 }
 
-export function RouteTiming({ eta, pending, startTime, dutyMinutes }: { eta: RouteEstimate | null; pending: boolean; startTime?: string; dutyMinutes?: number | null }) {
+/**
+ * `returnLoadAt`: a round trip's return loading, in minutes after pickup. The
+ * way back is then timed from it (with the wait shown) instead of straight
+ * after the drop-off.
+ */
+export function RouteTiming({
+  eta,
+  pending,
+  startTime,
+  dutyMinutes,
+  returnLoadAt,
+}: {
+  eta: RouteEstimate | null;
+  pending: boolean;
+  startTime?: string;
+  dutyMinutes?: number | null;
+  returnLoadAt?: number | null;
+}) {
   if (!eta) {
     return pending ? (
       <Section icon={Timer} tone="violet" title="Route timing">
@@ -37,9 +54,16 @@ export function RouteTiming({ eta, pending, startTime, dutyMinutes }: { eta: Rou
     ) : null;
   }
 
-  // Minutes from pickup to arriving at each point.
+  // Minutes from pickup to arriving at / leaving each point.
+  const loadIdx = startTime && returnLoadAt != null ? eta.points.findIndex((p) => p.kind === 'returnPickup' || p.alsoReturnPickup) : -1;
   const arrive: number[] = [0];
-  for (let i = 0; i < eta.legs.length; i++) arrive.push(arrive[i] + eta.dwell[i] + eta.legs[i].minutes);
+  const leave: number[] = [];
+  for (let i = 0; i < eta.points.length; i++) {
+    leave.push(i === loadIdx ? Math.max(arrive[i], returnLoadAt!) : arrive[i] + eta.dwell[i]);
+    if (i < eta.legs.length) arrive.push(leave[i] + eta.legs[i].minutes);
+  }
+  const waitsForLoad = loadIdx >= 0;
+  const wholeTrip = waitsForLoad ? arrive[arrive.length - 1] : eta.totalMinutes;
 
   const color = (p: RoutePoint) =>
     p.kind === 'pickup' || p.kind === 'returnPickup' ? Colors.success : p.kind === 'dropoff' || p.kind === 'finalDrop' ? Colors.primary : Colors.gray400;
@@ -53,7 +77,7 @@ export function RouteTiming({ eta, pending, startTime, dutyMinutes }: { eta: Rou
         {eta.points.map((p, i) => {
           const at = startTime ? clock(startTime, arrive[i]) : null;
           const leg = eta.legs[i];
-          const stay = eta.dwell[i];
+          const stay = i === loadIdx ? leave[i] - arrive[i] : eta.dwell[i];
           return (
             <View key={`${p.kind}-${i}`}>
               <View style={styles.point}>
@@ -78,9 +102,14 @@ export function RouteTiming({ eta, pending, startTime, dutyMinutes }: { eta: Rou
                   </View>
                 ) : null}
               </View>
-              {stay > 0 ? (
+              {i === loadIdx ? (
                 <Text style={styles.stay}>
-                  {stay} min at this stop{at ? ` · leave ${clock(startTime!, arrive[i] + stay).time}` : ''}
+                  {stay > 0 ? `Waits ${dur(stay)} · ` : ''}loads for return {clock(startTime!, leave[i]).time}
+                  {clock(startTime!, leave[i]).days > 0 ? ` (+${clock(startTime!, leave[i]).days}d)` : ''}
+                </Text>
+              ) : stay > 0 ? (
+                <Text style={styles.stay}>
+                  {stay} min at this stop{at ? ` · leave ${clock(startTime!, leave[i]).time}` : ''}
                 </Text>
               ) : null}
               {leg ? (
@@ -99,13 +128,14 @@ export function RouteTiming({ eta, pending, startTime, dutyMinutes }: { eta: Rou
       <View style={styles.total}>
         <Text style={styles.totalLabel}>Whole trip</Text>
         <Text style={styles.totalValue}>
-          {dur(eta.totalMinutes)}
+          {dur(wholeTrip)}
           {eta.totalKm != null ? <Text style={styles.totalKm}>{`  ·  ${eta.totalKm} km`}</Text> : null}
         </Text>
       </View>
       <Text style={styles.note}>
         {eta.source === 'road' ? 'Road driving times from the map service' : eta.source === 'mixed' ? 'Partly road times, partly approximate' : 'Approximate times from the distance between places'}
-        {eta.dwell.some((d) => d > 0) ? `, plus ${eta.dwell.find((d) => d > 0)} min at each stop.` : '.'}
+        {eta.dwell.some((d, i) => d > 0 && i !== loadIdx) ? `, plus ${eta.dwell.find((d) => d > 0)} min at each stop` : ''}
+        {waitsForLoad ? ', and the wait until the return loading.' : '.'}
         {dutyMinutes ? ` The drop-off follows the ${dutyMinutes / 60}-hour duty, not the drive.` : ''}
       </Text>
       {unknown.length ? (

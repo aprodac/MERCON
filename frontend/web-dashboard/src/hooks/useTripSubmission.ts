@@ -14,6 +14,8 @@ import {
   resolveSlotDriverPayout,
   type TripImportRow,
   validateTripDraft,
+  isRoundTripCategory,
+  slotScheduleFor,
 } from '@mercon/shared-types';
 
 type PastChoice = 'Completed' | 'Incomplete';
@@ -119,11 +121,21 @@ export function useTripSubmission(
     },
   });
 
+  /**
+   * The slots with only the schedule fields their kind of trip uses (a monthly
+   * round trip runs on "Day 2"-style days, a single trip on dates), so a value
+   * left over from switching modes can't move a time.
+   */
+  const scheduledSlots = (): any[] =>
+    (contractSlots || []).map((s) =>
+      slotScheduleFor(s, contractBillingType?.toLowerCase() === 'monthly', isRoundTripCategory(contractRateCategory || '')),
+    );
+
   /** The rows the wizard will send — also what the review screen totals. */
   const buildContractRows = (quotationIds: Record<string, string> = {}): TripImportRow[] =>
     buildTripRows({
       customerId: contractCustomer,
-      slots: contractSlots.map((s) => (quotationIds[s.id] ? { ...s, rateCardId: quotationIds[s.id] } : s)),
+      slots: scheduledSlots().map((s) => (quotationIds[s.id] ? { ...s, rateCardId: quotationIds[s.id] } : s)),
       vehicleType: contractVehicleType,
       rateCategory: contractRateCategory,
       billingType: contractBillingType,
@@ -262,7 +274,7 @@ export function useTripSubmission(
     validateTripDraft({
       customerId: contractCustomer,
       rateCategory: contractRateCategory,
-      slots: contractSlots || [],
+      slots: scheduledSlots(),
       billingType: contractBillingType,
       assignmentType,
       masterDriver,
@@ -319,7 +331,7 @@ export function useTripSubmission(
     const issues = validateTripDraft({
       rateCategory: contractRateCategory,
       customerId: contractCustomer,
-      slots: contractSlots,
+      slots: scheduledSlots(),
       billingType: contractBillingType,
       assignmentType,
       masterDriver,

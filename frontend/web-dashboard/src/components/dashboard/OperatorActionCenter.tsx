@@ -1,3 +1,4 @@
+import { tripEnds } from '@mercon/shared-types';
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -53,9 +54,10 @@ export default function OperatorActionCenter({ trips, onOpenQuickAssign }: Opera
       const customerName = t.customer?.name || (t as any).customerName || 'Customer';
       const stops = t.stops || [];
       const origin = (stops[0]?.location_name || (t as any).pickup || 'Origin').replace(/\]+$/, '').trim();
-      const rawDest = (stops[stops.length - 1]?.location_name || (t as any).dropoff || 'Destination').replace(/\]+$/, '').trim();
+      const turn = tripEnds(stops as any[], (t as any).rate_category);
+      const rawDest = ((turn.to ?? stops[stops.length - 1])?.location_name || (t as any).dropoff || 'Destination').replace(/\]+$/, '').trim();
       const dest = rawDest.includes('→') ? rawDest.split('→').pop()?.trim() || rawDest : rawDest.replace(/^RETURN:\s*/i, '').trim();
-      const routeStr = `${origin} → ${dest}`;
+      const routeStr = `${origin} → ${dest}${turn.round ? ' (round trip)' : ''}`;
 
       // 1. Delayed Active Trips (CRITICAL)
       const isDelayed =

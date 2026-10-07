@@ -1,3 +1,4 @@
+import { tripEnds } from '@mercon/shared-types';
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -112,7 +113,11 @@ function matchesDateFilter(dateStr: string | null | undefined, filter: string, t
 const DASHBOARD_EXPORT_COLUMNS: ExportColumn<any>[] = [
   { id: 'id', label: 'Trip ID', accessor: (t) => t.id || t.tripId || t.ref_id },
   { id: 'customer', label: 'Customer', accessor: (t) => t.customerName || t.customer?.name || '—' },
-  { id: 'route', label: 'Route', accessor: (t) => t.route || `${t.pickup || t.stops?.[0]?.location_name || ''} → ${t.dropoff || t.stops?.[t.stops?.length - 1]?.location_name || ''}` },
+  { id: 'route', label: 'Route', accessor: (t) => {
+    if (t.route) return t.route;
+    const ends = tripEnds(t.stops as any[], t.rate_category);
+    return `${t.pickup || ends.from?.location_name || ''} → ${t.dropoff || (ends.to ?? t.stops?.[t.stops?.length - 1])?.location_name || ''}${ends.round ? ' (round trip)' : ''}`;
+  } },
   { id: 'location', label: 'Current Location', accessor: (t) => {
     const loc = t.vehicle?.resolved_location || t.rawTrip?.vehicle?.resolved_location;
     if (!loc || loc.display_state === 'UNAVAILABLE' || !loc.latitude || !loc.longitude) return 'Location unavailable';
@@ -521,7 +526,8 @@ export default function DashboardPage() {
       const vehiclePlate = t.vehicle?.plate_number || t.vehicle?.ref_id || (t.is_third_party ? (t.third_party_vehicle_plate || '3PL Truck') : 'VEH-PENDING');
 
       const origin = (t.stops?.[0]?.location_name || t.rateCard?.route_origin || 'Riyadh Hub').replace(/\]+$/, '').trim();
-      const rawDest = (t.stops?.[t.stops.length - 1]?.location_name || t.rateCard?.route_destination || 'Jeddah Gateway').replace(/\]+$/, '').trim();
+      // A round trip's destination is where it turns back (Jeddah), not the last stop (home).
+      const rawDest = ((tripEnds(t.stops as any[], t.rate_category).to ?? t.stops?.[t.stops.length - 1])?.location_name || t.rateCard?.route_destination || 'Jeddah Gateway').replace(/\]+$/, '').trim();
       // Strip "RETURN: Origin → " prefix — return trips encode destination as "RETURN: From → To"
       const destination = rawDest.includes('→')
         ? rawDest.split('→').pop()?.trim() || rawDest

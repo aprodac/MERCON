@@ -28,6 +28,8 @@ export interface OperatorTrip {
   id: string;
   ref_id: string | null;
   status: string;
+  /** e.g. ROUND_TRIP — a round trip shows its way out and "back to …". */
+  rate_category?: string | null;
   planned_start?: string | null;
   planned_end?: string | null;
   actual_start?: string | null;
@@ -272,6 +274,13 @@ export interface DriverUpdate {
   sent_ids: string[];
   unsent_count: number;
 }
+
+/**
+ * A photo set still waits to be sent while none of it has gone out. Usually
+ * one of a set's photos (most have three) reaches the customer; the others
+ * stay marked "not sent" on the trip without being asked for again.
+ */
+export const needsSending = (u: Pick<DriverUpdate, 'items' | 'sent_ids'>): boolean => u.items.length > 0 && u.sent_ids.length === 0;
 
 export interface ShareResult {
   share_url: string;
@@ -1403,9 +1412,19 @@ export const operatorService = {
     recipient: ShareRecipient;
     recipient_phone?: string | null;
     channel: 'link' | 'whatsapp_api';
+    /** The message as the operator edited it (sent with the photos from the company WhatsApp). */
+    caption?: string | null;
+    /** 2–4 photos as one combined picture with the message under it. */
+    combine?: boolean;
   }): Promise<ShareResult> {
     const { data } = await api.post('/operator-inbox/driver-updates/share', body);
     return data.data as ShareResult;
+  },
+
+  /** The chosen photos combined into one picture (POST /operator-inbox/driver-updates/collage) — its /uploads URL. */
+  async driverUpdateCollage(body: { trip_id: string; update_key: string; media_ids: string[] }): Promise<string> {
+    const { data } = await api.post('/operator-inbox/driver-updates/collage', body);
+    return (data.data as { url: string }).url;
   },
 
   /** Replaces the trip's route and planned times (PUT /trips/:id/stops, as the web's Edit Trip). Draft / Scheduled trips only. */

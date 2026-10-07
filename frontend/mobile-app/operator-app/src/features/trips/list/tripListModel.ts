@@ -4,6 +4,7 @@
  * the deployment's timezone.
  */
 import type { OperatorTrip } from '../../../lib/operator';
+import { splitLegs } from '../tripLegs';
 
 export type Phase = 'draft' | 'planned' | 'running' | 'delayed' | 'done' | 'cancelled';
 
@@ -43,6 +44,7 @@ interface Stop {
   planned_arrival: string | null;
   actual_arrival: string | null;
   delay_reason?: string | null;
+  leg_index?: number | null;
 }
 
 const stopsOf = (t: OperatorTrip): Stop[] => [...((t.stops ?? []) as Stop[])].sort((a, b) => a.stop_sequence - b.stop_sequence);
@@ -56,10 +58,32 @@ export function placeName(s: Stop | undefined): string {
 }
 
 /** "Riyadh DC → Jeddah Port" with how many stops sit in between. */
-export function routeOf(t: OperatorTrip): { from: string; to: string; via: number } {
+export interface TripRoute {
+  from: string;
+  to: string;
+  /** Stops in between (a round trip: on both legs, not counting where it turns back). */
+  via: number;
+  /** Round trip: where it ends after the way back (usually `from`). */
+  back: string | null;
+  /** Round trip running: 1 on the way out, 2 on the way back. */
+  leg: 1 | 2 | null;
+}
+
+/** A round trip shows its way out (Riyadh → Jeddah) and "back to Riyadh" — not "Riyadh → Riyadh". */
+export function routeOf(t: OperatorTrip): TripRoute {
   const st = stopsOf(t);
-  if (st.length === 0) return { from: '—', to: '—', via: 0 };
-  return { from: placeName(st[0]), to: placeName(st[st.length - 1]), via: Math.max(0, st.length - 2) };
+  if (st.length === 0) return { from: '—', to: '—', via: 0, back: null, leg: null };
+  const legs = splitLegs(st, t.rate_category);
+  if (!legs.round) return { from: placeName(st[0]), to: placeName(st[st.length - 1]), via: Math.max(0, st.length - 2), back: null, leg: null };
+  const out = legs.outbound;
+  const ret = legs.ret;
+  return {
+    from: placeName(out[0]),
+    to: placeName(out[out.length - 1]),
+    via: Math.max(0, out.length - 2) + Math.max(0, ret.length - 2),
+    back: ret.length ? placeName(ret[ret.length - 1]) : placeName(out[0]),
+    leg: legs.currentLeg,
+  };
 }
 
 export function progressOf(t: OperatorTrip): { done: number; total: number; nextIdx: number; next: string | null } {

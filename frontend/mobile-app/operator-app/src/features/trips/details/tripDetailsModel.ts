@@ -9,6 +9,7 @@ import type { TripStatus } from '@mercon/mobile-shared/lib/trips';
 import { formatTripStatusMessage, haltActivityLabel, insertByTime, type StatusTrip } from '@mercon/shared-types';
 import { operatorService, type DriverUpdate, type OperatorTripDetail, type OperatorTripStop, type TripHalt, type TripPhase } from '../../../lib/operator';
 import { niceName } from '../create/components/ui';
+import { splitLegs } from '../tripLegs';
 
 export type Stop = OperatorTripStop;
 
@@ -107,6 +108,9 @@ export function stopName(s: Stop | undefined, i: number): string {
 export const sortedStops = (t: OperatorTripDetail): Stop[] =>
   [...(t.stops ?? [])].sort((a, b) => a.stop_sequence - b.stop_sequence);
 
+/** A round trip's way out and way back (see tripLegs); a one-way trip is all `outbound`. */
+export const tripLegsOf = (t: OperatorTripDetail) => splitLegs(sortedStops(t), t.rate_category || t.rateCard?.rate_category);
+
 /** Minutes late against the plan (negative = early); null when either time is missing. */
 export function minutesLate(planned: string | null | undefined, actual: string | null | undefined): number | null {
   if (!planned || !actual) return null;
@@ -135,6 +139,8 @@ export function makeFormatters(tz: string) {
     dateTime: (iso?: string | null) => fmt(iso, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }),
     dayTime: (iso?: string | null) => fmt(iso, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }),
     date: (iso?: string | null) => fmt(iso, { day: 'numeric', month: 'short', year: 'numeric' }),
+    /** The calendar day in the deployment's timezone, to compare two times. */
+    dayKey: (iso?: string | null) => fmt(iso, { year: 'numeric', month: '2-digit', day: '2-digit' }),
     /** A stop time: just the time when it's today, else day + time. */
     smart: (iso?: string | null) => {
       if (!iso) return '';
@@ -206,7 +212,9 @@ export function statePhrase(t: OperatorTripDetail, phase: TripPhase, f: Formatte
     const i = stops.findIndex((s) => !s.actual_arrival);
     if (i < 0) return 'At the last stop';
     const due = stops[i].planned_arrival ? ` · due ${f.smart(stops[i].planned_arrival)}` : '';
-    return `Heading to ${stopName(stops[i], i)}${due}`;
+    const leg = tripLegsOf(t).currentLeg;
+    const legText = leg === 1 ? 'Leg 1 going · ' : leg === 2 ? 'Leg 2 returning · ' : '';
+    return `${legText}Heading to ${stopName(stops[i], i)}${due}`;
   }
   if (phase === 'done') return t.actual_end ? `Finished ${f.dateTime(t.actual_end)}` : 'Finished';
   if (phase === 'cancelled') return t.updatedAt ? `Cancelled ${f.dateTime(t.updatedAt)}` : 'Cancelled';
@@ -313,9 +321,10 @@ export function sendStatus(u: DriverUpdate): { state: SendState; text: string } 
   const state: SendState = u.unsent_count === 0 && u.items.length > 0 ? 'sent' : u.sent_ids.length > 0 ? 'partial' : 'unsent';
   if (state === 'unsent' || !last) return { state: 'unsent', text: 'Not sent to the customer yet' };
   const to = `to ${recipientLabel(last.recipient)}${last.shared_by ? ` by ${niceName(last.shared_by)}` : ''} · ${ago(last.shared_at)}`;
+  // Usually one photo of a set is sent; the others are kept and marked not sent, not asked for again.
   return state === 'sent'
     ? { state, text: `Sent ${to}` }
-    : { state, text: `${u.unsent_count} new not sent · last sent ${to}` };
+    : { state, text: `${u.sent_ids.length} of ${u.items.length} sent ${to} · ${u.unsent_count} not sent` };
 }
 
 // ── WhatsApp texts ────────────────────────────────────────────────────────────
@@ -417,12 +426,24 @@ export async function remainingTo(from: { lat: number; lng: number }, to: { lat:
   return { km, sec: (km / FALLBACK_KMH) * 3600, to: toName, approx: true };
 }
 
-/** Where a trip ends — its last stop's position and the name customers use ("AL BAHA"). */
-export function destinationOf(t: OperatorTripDetail): { lat: number; lng: number; name: string } | null {
+/**
+ * Where the truck is heading to end this leg: the last stop, or for a round
+ * trip on its way out the turn-around point (Jeddah, not back in Riyadh).
+ */
+export function legDestinationStop(t: OperatorTripDetail): { stop: Stop; index: number } | null {
   const stops = sortedStops(t);
-  const dest = stops[stops.length - 1];
+  if (stops.length === 0) return null;
+  const legs = tripLegsOf(t);
+  const dest = legs.round && legs.currentLeg !== 2 ? legs.outbound[legs.outbound.length - 1] : stops[stops.length - 1];
+  return { stop: dest, index: stops.indexOf(dest) };
+}
+
+/** Where the truck is heading — that stop's position and the name customers use ("AL BAHA"). */
+export function destinationOf(t: OperatorTripDetail): { lat: number; lng: number; name: string } | null {
+  const target = legDestinationStop(t);
+  const dest = target?.stop;
   if (!dest || !Number.isFinite(dest.location_lat) || (!dest.location_lat && !dest.location_lng)) return null;
-  return { lat: dest.location_lat, lng: dest.location_lng, name: (dest.location?.city || stopName(dest, stops.length - 1)).toUpperCase() };
+  return { lat: dest.location_lat, lng: dest.location_lng, name: (dest.location?.city || stopName(dest, target!.index)).toUpperCase() };
 }
 
 /** Great-circle distance in km. */
@@ -453,7 +474,8 @@ export function statusTripOf(
   const driver = trip.is_third_party
     ? trip.third_party_driver_name
     : trip.driver ? `${trip.driver.first_name} ${trip.driver.last_name}`.trim() : null;
-  const lastPlanned = stops[last]?.planned_arrival || trip.planned_end || null;
+  // Due time of where the truck is heading now (a round trip's way out ends at the turn-around point).
+  const lastPlanned = legDestinationStop(trip)?.stop.planned_arrival || stops[last]?.planned_arrival || trip.planned_end || null;
   let eta: StatusTrip['eta'] = null;
   if (phase === 'active' && remaining) {
     const arrival = new Date(now + remaining.sec * 1000);
@@ -466,10 +488,13 @@ export function statusTripOf(
       late: lateMin != null && lateMin > ON_TIME_GRACE_MIN ? `${formatDuration(lateMin * 60)} late` : null,
     };
   }
+  // A round trip reads as its way out (RIYADH → JEDDAH), not first → last stop (RIYADH → RIYADH).
+  const legs = tripLegsOf(trip);
+  const outEnd = legs.round ? stops.indexOf(legs.outbound[legs.outbound.length - 1]) : last;
   return {
     from: last >= 0 ? placeCode(stops[0], 0) : null,
-    to: last >= 0 ? placeCode(stops[last], last) : null,
-    local: last > 0 && sameCity(stops[0], stops[last]),
+    to: outEnd >= 0 ? placeCode(stops[outEnd], outEnd) : null,
+    local: outEnd > 0 && sameCity(stops[0], stops[outEnd]),
     vehicleClass: vehicleClassOf(trip),
     lineType: lineType(trip),
     driverName: driver,

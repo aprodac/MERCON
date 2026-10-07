@@ -9,7 +9,7 @@ import { AppState } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { autoTrackingUrl, operatorService, type DriverUpdate, type OperatorTripDetail, type TrackingLinkInfo, type TripOverview } from '../../../lib/operator';
-import { phaseOf, remainingTo, sortedStops, stopName, type Remaining } from './tripDetailsModel';
+import { legDestinationStop, phaseOf, remainingTo, stopName, type Remaining } from './tripDetailsModel';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ACTIVE_REFRESH_MS = 20_000;
@@ -73,11 +73,12 @@ export function useTripDetails(id: string | undefined) {
   // message and the map chip. Re-asked only when the truck has moved ~1 km.
   const [remaining, setRemaining] = useState<Remaining | null>(null);
   const pos = overview?.unit?.position;
-  const stops = trip ? sortedStops(trip) : [];
-  const dest = stops.length ? stops[stops.length - 1] : null;
+  // The end of the current leg: a round trip on its way out is heading to the turn-around point.
+  const target = trip ? legDestinationStop(trip) : null;
+  const dest = target?.stop ?? null;
   const posKey = pos && phase === 'active' ? `${pos.lat.toFixed(2)},${pos.lng.toFixed(2)}` : null;
   const destKey = dest && Number.isFinite(dest.location_lat) && (dest.location_lat || dest.location_lng) ? `${dest.location_lat},${dest.location_lng}` : null;
-  const destName = dest ? (dest.location?.city || stopName(dest, stops.length - 1)).toUpperCase() : '';
+  const destName = dest ? (dest.location?.city || stopName(dest, target!.index)).toUpperCase() : '';
 
   useEffect(() => {
     if (!posKey || !destKey) return;
