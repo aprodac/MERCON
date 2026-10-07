@@ -12,7 +12,7 @@ import { isDateTimeInPast } from '@/utils/pastDateTripUtils';
 import { useDeploymentTimezone } from '@/lib/datetime';
 import { dutyShiftMinutes } from '@/services/travelTimeService';
 import { cn, isUuid } from '@/lib/utils';
-import { formatQuotationRef, STOP_ROLE_COLORS } from '@mercon/shared-types';
+import { daysBetween, dropoffDayOffset, formatQuotationRef, returnLegDayOffsets, STOP_ROLE_COLORS } from '@mercon/shared-types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { locationService, type Location } from '@/services/locationService';
 import PinChip, { isExactPin } from '@/components/locations/PinChip';
@@ -50,6 +50,29 @@ interface RouteWorkspaceProps {
   highlightSchedule?: boolean;
   /** The pickup time used last time on this lane, offered as a one-click fill. */
   lastLaneTime?: { date: string; time: string; label: string } | null;
+}
+
+/** Any fixed date: a monthly trip's return is timed from it to count whole days. */
+const DAY_ANCHOR = '2000-01-01';
+const DAY_CHOICES = 5;
+
+/** "Day 1 / Day 2 …" — which day of each monthly run an event falls on (0 = the pickup day). */
+function DaySelect({ value, onChange, label }: { value: number; onChange: (day: number) => void; label: string }) {
+  const count = Math.max(DAY_CHOICES, value + 1);
+  return (
+    <Select value={String(value)} onValueChange={(v) => onChange(Number(v))}>
+      <SelectTrigger aria-label={label} className="h-9 w-[84px] shrink-0 rounded-xl border-slate-200 bg-white shadow-2xs text-xs font-semibold">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {Array.from({ length: count }, (_, d) => (
+          <SelectItem key={d} value={String(d)} className="text-xs">
+            Day {d + 1}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
 }
 
 export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
@@ -192,6 +215,10 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
   const returnDropoffIso = toIso(slot.returnDropoffDate, slot.returnDropoffTime);
   const dropoffDateObj = dropoffIsoValue ? new Date(dropoffIsoValue) : undefined;
   const returnPickupDateObj = returnPickupIso ? new Date(returnPickupIso) : undefined;
+  // Monthly round trip: which day of each run the return loading and arrival home are on (dates don't apply).
+  const returnDays = returnLegDayOffsets(
+    isMonthly ? { ...slot, returnPickupDate: '', returnDropoffDate: '' } : { ...slot, dropoffDay: undefined, returnPickupDay: undefined, returnDropoffDay: undefined },
+  );
   const returnFrom = (slot.returnOrigin || slot.destination || '').trim();
   const returnTo = ((!slot.returnDestination || isUuid(slot.returnDestination)) ? slot.origin : slot.returnDestination || '').trim();
 
@@ -774,10 +801,12 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                     // Never overwrite an arrival the user set by hand, nor a saved trip's.
                     if (!autoFillArrival || slot.dropoffManual || isRouteLocked) return;
                     if (slot.pickupTime && slot.pickupTime.trim()) {
+                      const fromDay = slot.date || slot.pickupDate || new Date().toISOString().slice(0, 10);
                       handleUpdateTripSlot(slot.id, {
                         dropoffDate: dDate,
                         dropoffTime: dTime,
                         isOvernight,
+                        ...(isMonthly && isRoundTrip ? { dropoffDay: Math.max(0, daysBetween(fromDay, dDate)) } : {}),
                         // Planned time at each intermediate stop (see buildTripRows).
                         intermediateArrivalOffsets: stopOffsetsMinutes,
                       });
@@ -808,20 +837,29 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                 )}
               </label>
               {isMonthly ? (
-                <TimePicker
-                  value={slot.dropoffTime || ''}
-                  onChange={(timeStr) => {
-                    handleUpdateTripSlot(slot.id, {
-                      dropoffTime: timeStr,
-                      dropoffManual: Boolean(timeStr),
-                    });
-                  }}
-                  placeholder="Select dropoff time..."
-                  buttonClassName={cn(
-                    "h-9 rounded-xl border-slate-200 bg-white shadow-2xs font-semibold text-xs text-slate-800 px-3 w-full",
-                    (scheduleError || fieldErrors?.[`dropoff-${slot.id}`] || fieldErrors?.[`schedule-${slot.id}`]) && "border-red-500 ring-1 ring-red-500"
+                <div className="flex gap-1.5">
+                  {isRoundTrip && (
+                    <DaySelect
+                      label="Outbound arrival day"
+                      value={dropoffDayOffset(slot)}
+                      onChange={(d) => handleUpdateTripSlot(slot.id, { dropoffDay: d, dropoffManual: true })}
+                    />
                   )}
-                />
+                  <TimePicker
+                    value={slot.dropoffTime || ''}
+                    onChange={(timeStr) => {
+                      handleUpdateTripSlot(slot.id, {
+                        dropoffTime: timeStr,
+                        dropoffManual: Boolean(timeStr),
+                      });
+                    }}
+                    placeholder="Select dropoff time..."
+                    buttonClassName={cn(
+                      "h-9 rounded-xl border-slate-200 bg-white shadow-2xs font-semibold text-xs text-slate-800 px-3 w-full",
+                      (scheduleError || fieldErrors?.[`dropoff-${slot.id}`] || fieldErrors?.[`schedule-${slot.id}`]) && "border-red-500 ring-1 ring-red-500"
+                    )}
+                  />
+                </div>
               ) : (
                 <DateTimePicker
                   value={dropoffIsoValue}
@@ -860,12 +898,28 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                 <div className="space-y-1 min-w-0">
                   <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">Return loading</span>
                   {isMonthly ? (
-                    <TimePicker
-                      value={slot.returnPickupTime || ''}
-                      onChange={(t) => handleUpdateTripSlot(slot.id, { returnPickupTime: t, ...(!t ? { returnDropoffTime: '', returnDropoffManual: false } : {}) })}
-                      placeholder="Loading time"
-                      buttonClassName="h-9 rounded-xl border-slate-200 bg-white shadow-2xs font-semibold text-xs text-slate-800 px-3 w-full"
-                    />
+                    <div className="flex gap-1.5">
+                      <DaySelect
+                        label="Return loading day"
+                        value={returnDays.pickup ?? dropoffDayOffset(slot)}
+                        onChange={(d) => handleUpdateTripSlot(slot.id, { returnPickupDay: d })}
+                      />
+                      <TimePicker
+                        value={slot.returnPickupTime || ''}
+                        onChange={(t) =>
+                          handleUpdateTripSlot(slot.id, {
+                            returnPickupTime: t,
+                            returnPickupDate: '',
+                            ...(!t ? { returnPickupDay: undefined, returnDropoffTime: '', returnDropoffDay: undefined, returnDropoffManual: false } : {}),
+                          })
+                        }
+                        placeholder="Loading time"
+                        buttonClassName={cn(
+                          "h-9 rounded-xl border-slate-200 bg-white shadow-2xs font-semibold text-xs text-slate-800 px-3 w-full",
+                          fieldErrors?.[`returnPickup-${slot.id}`] && "border-red-500 ring-1 ring-red-500"
+                        )}
+                      />
+                    </div>
                   ) : (
                     <DateTimePicker
                       value={returnPickupIso}
@@ -890,10 +944,16 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                     <TransitTimeBadge
                       origin={returnFrom}
                       destination={returnTo}
-                      pickupDate={slot.returnPickupDate || slot.dropoffDate || slot.date}
+                      // Monthly: no dates — time the drive from a fixed day and keep the day count.
+                      pickupDate={isMonthly ? DAY_ANCHOR : slot.returnPickupDate || slot.dropoffDate || slot.date}
                       pickupTime={slot.returnPickupTime || ''}
                       onAutoSetDropoffDateTime={(dDate, dTime) => {
                         if (!autoFillArrival || slot.returnDropoffManual || isRouteLocked || !slot.returnPickupTime) return;
+                        if (isMonthly) {
+                          const loadDay = returnDays.pickup ?? dropoffDayOffset(slot);
+                          handleUpdateTripSlot(slot.id, { returnDropoffDate: '', returnDropoffTime: dTime, returnDropoffDay: loadDay + Math.max(0, daysBetween(DAY_ANCHOR, dDate)) });
+                          return;
+                        }
                         handleUpdateTripSlot(slot.id, { returnDropoffDate: dDate, returnDropoffTime: dTime });
                       }}
                       compact
@@ -917,12 +977,22 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                     )}
                   </span>
                   {isMonthly ? (
-                    <TimePicker
-                      value={slot.returnDropoffTime || ''}
-                      onChange={(t) => handleUpdateTripSlot(slot.id, { returnDropoffTime: t, returnDropoffManual: Boolean(t) })}
-                      placeholder="Arrival time"
-                      buttonClassName="h-9 rounded-xl border-slate-200 bg-white shadow-2xs font-semibold text-xs text-slate-800 px-3 w-full"
-                    />
+                    <div className="flex gap-1.5">
+                      <DaySelect
+                        label="Arrival home day"
+                        value={returnDays.arrival ?? returnDays.pickup ?? dropoffDayOffset(slot)}
+                        onChange={(d) => handleUpdateTripSlot(slot.id, { returnDropoffDay: d, returnDropoffManual: true })}
+                      />
+                      <TimePicker
+                        value={slot.returnDropoffTime || ''}
+                        onChange={(t) => handleUpdateTripSlot(slot.id, { returnDropoffTime: t, returnDropoffDate: '', returnDropoffManual: Boolean(t) })}
+                        placeholder="Arrival time"
+                        buttonClassName={cn(
+                          "h-9 rounded-xl border-slate-200 bg-white shadow-2xs font-semibold text-xs text-slate-800 px-3 w-full",
+                          fieldErrors?.[`returnDropoff-${slot.id}`] && "border-red-500 ring-1 ring-red-500"
+                        )}
+                      />
+                    </div>
                   ) : (
                     <DateTimePicker
                       value={returnDropoffIso}
@@ -951,6 +1021,9 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
               )}
               {!slot.returnPickupTime && (
                 <p className="text-[11px] text-slate-400">Optional — set it to plan the way back and when the truck is free again.</p>
+              )}
+              {isMonthly && (
+                <p className="text-[11px] text-slate-400">Day 1 is each operating day; Day 2 is the next day.</p>
               )}
             </div>
           )}
