@@ -448,6 +448,7 @@ export const getTrips = async (req: Request, res: Response) => {
               tripId: true,
               stop_sequence: true,
               stop_type: true,
+              leg_index: true,
               location_lat: true,
               location_lng: true,
               location_name: true,

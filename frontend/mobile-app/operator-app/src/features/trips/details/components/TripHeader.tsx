@@ -6,9 +6,10 @@
  */
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { RotateCcw } from 'lucide-react-native';
 import { CompanyAvatar, niceName } from '../../create/components/ui';
 import type { OperatorTripDetail, TripPhase } from '../../../../lib/operator';
-import { TONE, delayText, sortedStops, statusChip, stopName, type Formatters, type Tone, statePhrase } from '../tripDetailsModel';
+import { TONE, delayText, sortedStops, statusChip, stopName, tripLegsOf, type Formatters, type Tone, statePhrase } from '../tripDetailsModel';
 import { Card, Chip, INK, MUTED } from './parts';
 
 const PHASE_TONE: Record<TripPhase, Tone> = { planned: 'violet', active: 'blue', done: 'green', cancelled: 'gray' };
@@ -22,9 +23,14 @@ export function TripHeader({ trip, phase, f, children }: { trip: OperatorTripDet
   const nextIdx = phase === 'active' ? stops.findIndex((s) => !s.actual_arrival) : -1;
   const doneCount = stops.filter((s) => s.actual_arrival).length;
   const reported = [...stops].reverse().find((s) => s.delay_reason || s.delay_note);
-  const from = stops.length ? niceName(stopName(stops[0], 0)) : null;
-  const to = stops.length > 1 ? niceName(stopName(stops[stops.length - 1], stops.length - 1)) : null;
-  const via = Math.max(0, stops.length - 2);
+  // A round trip shows its way out (Riyadh → Jeddah) and "back to Riyadh" — not first → last stop.
+  const legs = tripLegsOf(trip);
+  const name = (st: (typeof stops)[number] | undefined) => (st ? niceName(stopName(st, stops.indexOf(st))) : null);
+  const outEnd = legs.round ? legs.outbound[legs.outbound.length - 1] : stops[stops.length - 1];
+  const from = stops.length ? name(stops[0]) : null;
+  const to = stops.length > 1 ? name(outEnd) : null;
+  const back = legs.round ? name(legs.ret[legs.ret.length - 1]) || from : null;
+  const via = legs.round ? Math.max(0, legs.outbound.length - 2) + Math.max(0, legs.ret.length - 2) : Math.max(0, stops.length - 2);
   const now = delayed ? `Delayed${reported ? ` · ${delayText(reported)}` : ''}` : phrase;
   // Progress only means something while the trip is running.
   const showProgress = phase === 'active' && stops.length > 0;
@@ -41,17 +47,25 @@ export function TripHeader({ trip, phase, f, children }: { trip: OperatorTripDet
       </View>
 
       {from ? (
-        <View style={s.routeBox}>
-          <View style={s.rail}>
-            <View style={[s.pin, { backgroundColor: '#FFFFFF', borderColor: INK }]} />
-            {to ? <View style={s.railLine} /> : null}
-            {to ? <View style={[s.pin, { backgroundColor: INK, borderColor: INK }]} /> : null}
+        <View style={s.routeWrap}>
+          <View style={s.routeBox}>
+            <View style={s.rail}>
+              <View style={[s.pin, { backgroundColor: '#FFFFFF', borderColor: INK }]} />
+              {to ? <View style={s.railLine} /> : null}
+              {to ? <View style={[s.pin, { backgroundColor: INK, borderColor: INK }]} /> : null}
+            </View>
+            <View style={{ flex: 1, minWidth: 0, gap: 10 }}>
+              <Text style={s.route} numberOfLines={1}>{from}</Text>
+              {to ? <Text style={s.route} numberOfLines={1}>{to}</Text> : null}
+            </View>
+            {via > 0 ? <Text style={s.via}>{`+${via} ${via === 1 ? 'stop' : 'stops'}`}</Text> : null}
           </View>
-          <View style={{ flex: 1, minWidth: 0, gap: 10 }}>
-            <Text style={s.route} numberOfLines={1}>{from}</Text>
-            {to ? <Text style={s.route} numberOfLines={1}>{to}</Text> : null}
-          </View>
-          {via > 0 ? <Text style={s.via}>{`+${via} ${via === 1 ? 'stop' : 'stops'}`}</Text> : null}
+          {back ? (
+            <View style={s.backRow}>
+              <RotateCcw size={13} color={MUTED} strokeWidth={2.4} />
+              <Text style={s.backText} numberOfLines={1}>{`Round trip · back to ${back}`}</Text>
+            </View>
+          ) : null}
         </View>
       ) : null}
 
@@ -80,7 +94,10 @@ const s = StyleSheet.create({
   top: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   customer: { fontSize: 17, fontWeight: '700', color: INK, lineHeight: 22, letterSpacing: -0.2 },
   ref: { fontSize: 13, color: MUTED, fontVariant: ['tabular-nums'] },
-  routeBox: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F6F6F7', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 11 },
+  routeWrap: { backgroundColor: '#F6F6F7', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 11, gap: 8 },
+  routeBox: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  backRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#E9E9EC' },
+  backText: { flex: 1, fontSize: 13, fontWeight: '600', color: MUTED },
   rail: { alignItems: 'center', alignSelf: 'stretch', justifyContent: 'center', paddingVertical: 4 },
   pin: { width: 9, height: 9, borderRadius: 5, borderWidth: 2 },
   railLine: { flex: 1, width: 2, backgroundColor: '#C9C9D1', marginVertical: 2 },

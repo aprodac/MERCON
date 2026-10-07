@@ -28,6 +28,8 @@ export interface OperatorTrip {
   id: string;
   ref_id: string | null;
   status: string;
+  /** e.g. ROUND_TRIP — a round trip shows its way out and "back to …". */
+  rate_category?: string | null;
   planned_start?: string | null;
   planned_end?: string | null;
   actual_start?: string | null;

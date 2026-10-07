@@ -9,6 +9,7 @@ import type { TripStatus } from '@mercon/mobile-shared/lib/trips';
 import { formatTripStatusMessage, haltActivityLabel, insertByTime, type StatusTrip } from '@mercon/shared-types';
 import { operatorService, type DriverUpdate, type OperatorTripDetail, type OperatorTripStop, type TripHalt, type TripPhase } from '../../../lib/operator';
 import { niceName } from '../create/components/ui';
+import { splitLegs } from '../tripLegs';
 
 export type Stop = OperatorTripStop;
 
@@ -106,6 +107,9 @@ export function stopName(s: Stop | undefined, i: number): string {
 
 export const sortedStops = (t: OperatorTripDetail): Stop[] =>
   [...(t.stops ?? [])].sort((a, b) => a.stop_sequence - b.stop_sequence);
+
+/** A round trip's way out and way back (see tripLegs); a one-way trip is all `outbound`. */
+export const tripLegsOf = (t: OperatorTripDetail) => splitLegs(sortedStops(t), t.rate_category || t.rateCard?.rate_category);
 
 /** Minutes late against the plan (negative = early); null when either time is missing. */
 export function minutesLate(planned: string | null | undefined, actual: string | null | undefined): number | null {
@@ -206,7 +210,9 @@ export function statePhrase(t: OperatorTripDetail, phase: TripPhase, f: Formatte
     const i = stops.findIndex((s) => !s.actual_arrival);
     if (i < 0) return 'At the last stop';
     const due = stops[i].planned_arrival ? ` · due ${f.smart(stops[i].planned_arrival)}` : '';
-    return `Heading to ${stopName(stops[i], i)}${due}`;
+    const leg = tripLegsOf(t).currentLeg;
+    const legText = leg === 1 ? 'Leg 1 going · ' : leg === 2 ? 'Leg 2 returning · ' : '';
+    return `${legText}Heading to ${stopName(stops[i], i)}${due}`;
   }
   if (phase === 'done') return t.actual_end ? `Finished ${f.dateTime(t.actual_end)}` : 'Finished';
   if (phase === 'cancelled') return t.updatedAt ? `Cancelled ${f.dateTime(t.updatedAt)}` : 'Cancelled';
@@ -466,10 +472,13 @@ export function statusTripOf(
       late: lateMin != null && lateMin > ON_TIME_GRACE_MIN ? `${formatDuration(lateMin * 60)} late` : null,
     };
   }
+  // A round trip reads as its way out (RIYADH → JEDDAH), not first → last stop (RIYADH → RIYADH).
+  const legs = tripLegsOf(trip);
+  const outEnd = legs.round ? stops.indexOf(legs.outbound[legs.outbound.length - 1]) : last;
   return {
     from: last >= 0 ? placeCode(stops[0], 0) : null,
-    to: last >= 0 ? placeCode(stops[last], last) : null,
-    local: last > 0 && sameCity(stops[0], stops[last]),
+    to: outEnd >= 0 ? placeCode(stops[outEnd], outEnd) : null,
+    local: outEnd > 0 && sameCity(stops[0], stops[outEnd]),
     vehicleClass: vehicleClassOf(trip),
     lineType: lineType(trip),
     driverName: driver,
