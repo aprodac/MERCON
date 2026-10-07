@@ -33,7 +33,7 @@ import type { ViewerItem } from '../trips/details/components/MediaViewer';
 import { niceName } from '../trips/create/components/ui';
 import type { makeTime } from '../trips/list/tripListModel';
 import { SILENT_COLOR, STATE_STYLE, TONE, unitState, unitTone, type UnitTone } from './FleetMap';
-import { agoText, formatDuration, formatKm, isFree, isSilent, located, nextStop, punctuality, stoppedMin, type EtaInfo } from './fleetModel';
+import { agoText, formatDuration, formatKm, isSilent, located, MOTION_LABEL, nextStop, phoneMissing, punctuality, stoppedMin, trackerMissing, type EtaInfo } from './fleetModel';
 
 const INK = '#3E3C3D';
 const MUTED = '#6B6B76';
@@ -41,12 +41,12 @@ const LINE = '#E9E9EC';
 const BRAND = '#FA634E';
 const BRAND_LIGHT = '#FFF0EB';
 
-/** What the truck is doing right now — same words as the web live map. */
-const MOTION: Record<NonNullable<LiveUnit['motion']>, { label: string; color: string }> = {
-  moving: { label: 'Moving', color: '#16A34A' },
-  idle: { label: 'Stopped', color: INK },
-  stale: { label: 'Offline', color: '#9898A4' },
-  no_signal: { label: 'No signal', color: '#9898A4' },
+/** The dot beside what the truck is doing (the words are the shared MOTION_LABEL, as on the web). */
+const MOTION_COLOR: Record<NonNullable<LiveUnit['motion']>, string> = {
+  moving: '#16A34A',
+  idle: INK,
+  stale: '#9898A4',
+  no_signal: '#9898A4',
 };
 
 /** How far a finger has to travel before a swipe or drag counts. */
@@ -256,8 +256,8 @@ export function UnitSheet({
               )}
             </View>
             {p ? (
-              <View style={[s.pill, { backgroundColor: p.good ? '#E8F5EE' : BRAND_LIGHT }]}>
-                <Text style={[s.pillText, { color: p.good ? '#1F7A45' : BRAND }]}>{p.label}</Text>
+              <View style={[s.pill, { backgroundColor: !p.late ? '#E8F5EE' : BRAND_LIGHT }]}>
+                <Text style={[s.pillText, { color: !p.late ? '#1F7A45' : BRAND }]}>{p.label}</Text>
               </View>
             ) : null}
           </View>
@@ -278,8 +278,8 @@ export function UnitSheet({
       {expanded ? (
         <>
           <View style={s.feeds}>
-            <Feed icon={Truck} label="Tracker" iso={u.vehicle_gps?.recorded_at} missing={!u.vehicle ? 'No truck' : !u.vehicle.has_tracker ? 'None fitted' : 'No fix yet'} now={now} />
-            <Feed icon={Smartphone} label="Phone" iso={u.driver_gps?.recorded_at} missing={!u.driver ? 'No driver' : isFree(u) ? 'Off trip' : 'Silent'} now={now} />
+            <Feed icon={Truck} label="Tracker" iso={u.vehicle_gps?.recorded_at} missing={trackerMissing(u)} now={now} />
+            <Feed icon={Smartphone} label="Phone" iso={u.driver_gps?.recorded_at} missing={phoneMissing(u)} now={now} />
           </View>
           {u.feeds_gap_m != null && u.feeds_gap_m > 1000 ? <Text style={[s.note, { color: BRAND, fontWeight: '600' }]}>Tracker and phone are {formatKm(u.feeds_gap_m / 1000)} apart</Text> : null}
           {t && t.stops.length ? <StopTimeline stops={t.stops} nextId={next?.id ?? null} f={f} media={media ?? null} onOpenMedia={onOpenMedia} /> : null}
@@ -374,7 +374,7 @@ function BreakList({ halts, f }: { halts: TripHalt[]; f: Time }) {
 
 /** "● Moving · 72 km/h · GPS 1 min ago" */
 function MotionLine({ unit: u, now, stoppedFor }: { unit: LiveUnit; now: number; stoppedFor?: number | null }) {
-  const m = u.motion ? MOTION[u.motion] : null;
+  const m = u.motion ? { label: MOTION_LABEL[u.motion], color: MOTION_COLOR[u.motion] } : null;
   const parts = [
     // "Stopped 25 min", not just "Stopped".
     u.motion === 'idle' && stoppedFor != null && stoppedFor >= 1 ? `${m?.label} ${formatDuration(stoppedFor * 60)}` : m?.label,

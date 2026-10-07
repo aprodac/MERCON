@@ -6,6 +6,8 @@
  *   TripShareFromMap  the trip page's own share sheet (same message, same
  *                     recipients: customer group / contact, driver, our team,
  *                     another number) for the truck's trip.
+ *   TripShareFlow     the two together for one truck (the Fleet map's sheet,
+ *                     a trip's live view): pick what, then send it.
  *   BulkStatusSheet   several picked trucks → one message per customer
  *                     (statusShare.ts), each sent to that customer's WhatsApp
  *                     group (or, on request, their number), or all of them as
@@ -20,6 +22,8 @@ import { useTripDetails } from '../trips/details/useTripDetails';
 import { makeFormatters, waLink, type QuickKind } from '../trips/details/tripDetailsModel';
 import { shareTextToWhatsApp } from '../dashboard/components/ActiveTripsSection';
 import { buildStatusMessages, type CustomerStatusMessage } from '../share/statusShare';
+import type { LiveUnit } from '../../lib/operator';
+import { isDelayed } from './fleetModel';
 
 const INK = '#3E3C3D';
 const MUTED = '#6B6B76';
@@ -61,6 +65,33 @@ export function ShareKindSheet({ visible, title, delayed, onPick, onClose, custo
         ) : null}
       </View>
     </AppModal>
+  );
+}
+
+/** WhatsApp about one truck's trip: what to send, then the trip page's share sheet for it. */
+export function TripShareFlow({ unit, open, onClose, onCustomerPage }: {
+  unit: LiveUnit; open: boolean; onClose: () => void;
+  /** Offers the customer's all-trucks live page as well. */
+  onCustomerPage?: (c: { id: string; name: string }) => void;
+}) {
+  const [kind, setKind] = useState<QuickKind | null>(null);
+  const t = unit.trip;
+  if (!t) return null;
+  // One sheet closes before the next opens (two modals at once don't show on iOS).
+  const after = (go: () => void) => { onClose(); setTimeout(go, 300); };
+  return (
+    <>
+      <ShareKindSheet
+        visible={open}
+        title={`WhatsApp · ${unit.vehicle?.plate_number ?? t.ref_id ?? 'truck'}`}
+        delayed={isDelayed(unit)}
+        customer={onCustomerPage && t.customer_id ? { id: t.customer_id, name: t.customer_name ?? 'Customer' } : null}
+        onCustomerPage={onCustomerPage ? (c) => after(() => onCustomerPage(c)) : undefined}
+        onPick={(k) => after(() => setKind(k))}
+        onClose={onClose}
+      />
+      {kind ? <TripShareFromMap tripId={t.id} kind={kind} onClose={() => setKind(null)} /> : null}
+    </>
   );
 }
 

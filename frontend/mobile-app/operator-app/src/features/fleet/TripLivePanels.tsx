@@ -16,10 +16,10 @@ import React from 'react';
 import { Linking, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Check, ChevronDown, ChevronUp, MessageCircle, Navigation, Phone, Smartphone, TriangleAlert, Truck } from 'lucide-react-native';
 import type { LiveGpsFix, LiveUnit, TripHalt } from '../../lib/operator';
-import { niceName } from '../trips/create/components/ui';
+import { initialsOf, niceName } from '../trips/create/components/ui';
 import type { makeTime } from '../trips/list/tripListModel';
 import { TONE, unitTone } from './FleetMap';
-import { agoText, formatDuration, formatKm, nextStop, punctuality, type EtaInfo } from './fleetModel';
+import { agoText, formatDuration, formatKm, liveStopLabel, MOTION_LABEL, nextStop, phoneMissing, punctuality, trackerMissing, type EtaInfo } from './fleetModel';
 import type { MapTheme } from './mapStyle';
 
 type Time = ReturnType<typeof makeTime>;
@@ -34,7 +34,7 @@ export const GLASS: Record<MapTheme, Glass> = {
 /** The web's font-mono for plates and trip numbers. */
 const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 
-const stopLabel = (s: Stop) => niceName(s.name) || niceName(s.address) || `Stop ${s.sequence}`;
+const stopLabel = (s: Stop) => niceName(liveStopLabel(s));
 
 export function NextStopCard({ unit, eta, final, f, theme }: {
   unit: LiveUnit; eta: EtaInfo | null; final: { at: Date; place: string | null } | null; f: Time; theme: MapTheme;
@@ -72,7 +72,7 @@ export function EtaStrip({ eta, f, g }: { eta: EtaInfo; f: Time; g: Glass }) {
         g={g}
         value={eta.durationSeconds != null ? formatDuration(eta.durationSeconds) : '—'}
         label={p?.label ?? (eta.stopLooksWrong ? 'stop location looks wrong' : 'drive time')}
-        tone={p ? (p.good ? g.good : g.bad) : undefined}
+        tone={p ? (p.late ? g.bad : g.good) : undefined}
       />
       {eta.distanceKm != null ? <Metric g={g} value={`${eta.approx ? '≈ ' : ''}${formatKm(eta.distanceKm)}`} label="by road" /> : null}
     </View>
@@ -88,8 +88,6 @@ function Metric({ value, label, tone, g }: { value: string; label: string; tone?
   );
 }
 
-const MOTION: Record<NonNullable<LiveUnit['motion']>, string> = { moving: 'Moving', idle: 'Stopped', stale: 'Offline', no_signal: 'No signal' };
-
 export function MotionChip({ unit, theme }: { unit: LiveUnit; theme: MapTheme }) {
   const dark = theme === 'dark';
   const c = unit.motion === 'moving'
@@ -100,7 +98,7 @@ export function MotionChip({ unit, theme }: { unit: LiveUnit; theme: MapTheme })
   return (
     <View style={[x.chip, { backgroundColor: c.bg }]}>
       <View style={[x.chipDot, { backgroundColor: c.dot }]} />
-      <Text style={[x.chipText, { color: c.fg }]}>{unit.motion ? MOTION[unit.motion] : 'No GPS'}</Text>
+      <Text style={[x.chipText, { color: c.fg }]}>{unit.motion ? MOTION_LABEL[unit.motion] : 'No GPS'}</Text>
     </View>
   );
 }
@@ -143,7 +141,7 @@ export function UnitPanel({ unit, now, f, theme, expanded, onToggle, onShare, ha
         <View style={[x.driver, { backgroundColor: g.subtle }]}>
           <View style={[x.initials, { backgroundColor: 'rgba(124,58,237,0.12)' }]}>
             <Text style={[x.initialsText, { color: theme === 'dark' ? '#C4B5FD' : '#6D28D9' }]}>
-              {unit.driver.name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('') || '?'}
+              {initialsOf(unit.driver.name)}
             </Text>
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
@@ -161,8 +159,8 @@ export function UnitPanel({ unit, now, f, theme, expanded, onToggle, onShare, ha
       {expanded ? (
         <View style={{ gap: 10, marginTop: 10 }}>
           <View style={x.feeds}>
-            <FeedTile g={g} icon={Truck} label="Truck tracker" fix={unit.vehicle_gps} missing={!unit.vehicle ? 'No truck' : !unit.vehicle.has_tracker ? 'No tracker' : 'No fix yet'} now={now} />
-            <FeedTile g={g} icon={Smartphone} label="Driver app" fix={unit.driver_gps} missing={!unit.driver ? 'No driver' : !t || t.phase === 'upcoming' ? 'Off trip' : 'Not sending'} now={now} />
+            <FeedTile g={g} icon={Truck} label="Truck tracker" fix={unit.vehicle_gps} missing={trackerMissing(unit)} now={now} />
+            <FeedTile g={g} icon={Smartphone} label="Driver app" fix={unit.driver_gps} missing={phoneMissing(unit)} now={now} />
           </View>
           {unit.feeds_gap_m != null && unit.feeds_gap_m > 1000 ? (
             <View style={x.apart}>

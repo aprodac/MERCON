@@ -19,21 +19,18 @@
  * A trip whose truck isn't on the live map (not started, finished, no GPS)
  * says so — the trip page keeps its plain map for those.
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, LayoutAnimation, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useQuery } from '@tanstack/react-query';
 import { Box, ChevronDown, Compass, LocateFixed, Map as MapIcon, Moon, Navigation, Route, Sun, type LucideIcon } from 'lucide-react-native';
-import { operatorService } from '../../lib/operator';
-import type { QuickKind } from '../trips/details/tripDetailsModel';
-import { makeTime } from '../trips/list/tripListModel';
 import { FleetMap, type FleetMapHandle, type FocusMode, type MapView } from './FleetMap';
-import { ShareKindSheet, TripShareFromMap } from './FleetShare';
+import { TripShareFlow } from './FleetShare';
 import { EtaStrip, GLASS as PANEL, NextStopCard, UnitPanel } from './TripLivePanels';
-import { isDelayed, located, stoppedMin } from './fleetModel';
+import { located, stoppedMin } from './fleetModel';
 import type { MapTheme } from './mapStyle';
 import { useFleetPrefs, type FleetPrefs } from './useFleetMapState';
+import { useLiveFleet } from './useLiveFleet';
 import { useTripRoute } from './useTripRoute';
 
 type Mode = NonNullable<FleetPrefs['tripView']>;
@@ -56,17 +53,8 @@ export default function TripLiveScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
-  // Same queries as the Fleet map — opening one after the other reuses the data.
-  const live = useQuery({ queryKey: ['dashboard', 'actions', 'live-map'], queryFn: () => operatorService.liveMap(), refetchInterval: 15_000 });
-  const tzQ = useQuery({ queryKey: ['dashboard', 'tz'], queryFn: () => operatorService.deploymentTimezone(), staleTime: Infinity });
-  const f = useMemo(() => makeTime(tzQ.data ?? 'Asia/Riyadh'), [tzQ.data]);
-
-  const [clock, setClock] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setClock(Date.now()), 30_000);
-    return () => clearInterval(t);
-  }, []);
-  const now = Math.max(clock, live.dataUpdatedAt || 0);
+  // Same data as the Fleet map — opening one after the other reuses it.
+  const { live, f, now } = useLiveFleet();
 
   const unit = useMemo(() => live.data?.find((u) => u.trip?.id === id && located(u)) ?? null, [live.data, id]);
   const units = useMemo(() => (unit ? [unit] : []), [unit]);
@@ -89,7 +77,6 @@ export default function TripLiveScreen() {
   const [topH, setTopH] = useState(120);
   const [expanded, setExpanded] = useState(false);
   const [shareChoose, setShareChoose] = useState(false);
-  const [shareKind, setShareKind] = useState<QuickKind | null>(null);
 
   const applyMode = (m: Mode) => {
     setMode(m);
@@ -133,7 +120,6 @@ export default function TripLiveScreen() {
     );
   }
 
-  const t = unit.trip!;
   const eta = route.eta;
   const speed = unit.motion === 'moving' && unit.position?.speed_kph != null ? Math.round(unit.position.speed_kph) : null;
   const lastHalt = route.halts?.[route.halts.length - 1];
@@ -248,15 +234,7 @@ export default function TripLiveScreen() {
         </ScrollView>
       </View>
 
-      <ShareKindSheet
-        visible={shareChoose}
-        title={`WhatsApp · ${unit.vehicle?.plate_number ?? t.ref_id ?? 'truck'}`}
-        delayed={isDelayed(unit)}
-        // One sheet closes before the next opens (two modals at once don't show on iOS).
-        onPick={(k) => { setShareChoose(false); setTimeout(() => setShareKind(k), 300); }}
-        onClose={() => setShareChoose(false)}
-      />
-      {shareKind ? <TripShareFromMap tripId={t.id} kind={shareKind} onClose={() => setShareKind(null)} /> : null}
+      <TripShareFlow unit={unit} open={shareChoose} onClose={() => setShareChoose(false)} />
     </View>
   );
 }

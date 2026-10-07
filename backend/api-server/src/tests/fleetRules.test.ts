@@ -4,7 +4,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeEta, punctuality, steadyArrival, truckDriveSeconds, isLongStop, isSilent, LATE_ALERT_MIN, formatDriveTime, haltActivityLabel, insertByTime } from '@mercon/shared-types';
+import { computeEta, punctuality, steadyArrival, truckDriveSeconds, isLongStop, isSilent, LATE_ALERT_MIN, formatDriveTime, haltActivityLabel, insertByTime, bearingBetween, liveStopLabel, trackerMissing, phoneMissing, MOTION_LABEL } from '@mercon/shared-types';
 import { lateAlertText } from '../services/tracking/etaWatcher';
 
 const unit = (stop: { lat: number; lng: number; planned_arrival?: string | null }, extra: Record<string, unknown> = {}) => ({
@@ -79,6 +79,26 @@ describe('fleet rules', () => {
     ];
     const out = insertByTime(steps, [{ label: 'break', at: 30, done: true }, { label: 'now break', at: 60, done: true }]);
     assert.deepEqual(out.map((x) => x.label), ['created', 'started', 'break', 'arrived B', 'now break', 'planned C']);
+  });
+
+  it('labels stops, motion and quiet GPS feeds the same way on every screen', () => {
+    assert.equal(liveStopLabel({ name: 'Jeddah Port', address: 'Port Rd', sequence: 2 }), 'Jeddah Port');
+    assert.equal(liveStopLabel({ name: null, address: 'Port Rd', sequence: 2 }), 'Port Rd');
+    assert.equal(liveStopLabel({ name: null, address: null, sequence: 2 }), 'Stop 2');
+    assert.equal(MOTION_LABEL.idle, 'Stopped');
+    assert.equal(trackerMissing({ vehicle: null }), 'No truck');
+    assert.equal(trackerMissing({ vehicle: { has_tracker: false } }), 'No tracker');
+    assert.equal(trackerMissing({ vehicle: { has_tracker: true } }), 'No fix yet');
+    const onTrip = unit({ lat: 21.42, lng: 39.82 });
+    assert.equal(phoneMissing({ ...onTrip, driver: null }), 'No driver');
+    assert.equal(phoneMissing({ ...onTrip, driver: {} }), 'Not sending');
+    assert.equal(phoneMissing({ ...onTrip, trip: null, driver: {} }), 'Off trip');
+  });
+
+  it('works out compass bearings', () => {
+    assert.equal(Math.round(bearingBetween({ lat: 24, lng: 46 }, { lat: 25, lng: 46 })), 0);
+    assert.equal(Math.round(bearingBetween({ lat: 24, lng: 46 }, { lat: 24, lng: 47 })), 90);
+    assert.equal(Math.round(bearingBetween({ lat: 24, lng: 46 }, { lat: 23, lng: 46 })), 180);
   });
 
   it('writes the late alert an operator can act on', () => {
