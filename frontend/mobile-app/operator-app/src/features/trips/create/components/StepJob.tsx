@@ -25,7 +25,8 @@ type Sheet = 'customer' | 'quotes' | 'lineType' | 'class' | 'billing' | 'charge'
 /** What the pin sheet is for: a new place typed in the picker, or the exact spot of this trip's pickup / drop-off. */
 type PinTarget =
   | { kind: 'new'; name: string; target: LocationTarget }
-  | { kind: 'endpoint'; which: 'origin' | 'destination'; name: string; start: { lat: number; lng: number } | null };
+  | { kind: 'endpoint'; which: 'origin' | 'destination'; name: string; start: { lat: number; lng: number } | null }
+  | { kind: 'stop'; leg: 0 | 1; index: number; name: string; start: { lat: number; lng: number } | null };
 
 /** How well a pickup / drop-off is pinned: not at all, roughly (e.g. the city centre), or on the gate. */
 export type PinState = 'none' | 'approx' | 'exact';
@@ -76,6 +77,8 @@ export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors
     if (!t) return;
     if (t.kind === 'new') {
       placeTo(t.target, await form.createPinnedLocation(t.name, pin));
+    } else if (t.kind === 'stop') {
+      await form.setStopPin(t.leg, t.index, pin);
     } else {
       await form.setEndpointPin(t.which, pin);
     }
@@ -87,26 +90,50 @@ export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors
     if (t?.kind === 'new') placeTo(t.target, { name: t.name, locationId: null });
     setPinTarget(null);
   };
+  /** The chip for a stop: how it is pinned now (this trip's own pin first, else its saved place's), and "open the pin sheet". */
+  const pinChip = (
+    name: string,
+    own: { lat?: number | null; lng?: number | null; precision?: string | null; address?: string | null },
+    locationId: string | null | undefined,
+    open: (start: { lat: number; lng: number } | null) => void,
+  ): EndpointPin | undefined => {
+    if (!name?.trim()) return undefined;
+    const place = locationId ? form.locations.find((l) => l.id === locationId) : undefined;
+    const ownPin = hasPin(own.lat, own.lng);
+    const lat = ownPin ? own.lat : place?.lat;
+    const lng = ownPin ? own.lng : place?.lng;
+    const pinned = hasPin(lat, lng);
+    const precision = (ownPin ? own.precision : null) || place?.coordinate_precision;
+    return {
+      state: !pinned ? 'none' : precision === 'EXACT' ? 'exact' : 'approx',
+      address: (ownPin ? own.address : null) || undefined,
+      open: () => open(pinned ? { lat: Number(lat), lng: Number(lng) } : null),
+    };
+  };
+
   /**
-   * A pickup / drop-off can always be pinned for this trip — the quotation may only
-   * say "Riyadh" while the truck loads at the customer's warehouse there.
+   * Any stop can be pinned for this trip — the quotation may only say "Riyadh"
+   * while the truck loads at the customer's warehouse there.
    */
   const endpointPin = (which: 'origin' | 'destination'): EndpointPin | undefined => {
     const { slot } = form;
     const name = which === 'origin' ? slot.origin : slot.destination;
-    if (!name?.trim()) return undefined;
-    const lat = which === 'origin' ? slot.originLat : slot.destinationLat;
-    const lng = which === 'origin' ? slot.originLng : slot.destinationLng;
-    const locationId = which === 'origin' ? slot.originLocationId : slot.destinationLocationId;
-    const pinned = hasPin(lat, lng);
-    const precision =
-      (which === 'origin' ? slot.originPrecision : slot.destinationPrecision) ||
-      form.locations.find((l) => l.id === locationId)?.coordinate_precision;
-    return {
-      state: !pinned ? 'none' : precision === 'EXACT' ? 'exact' : 'approx',
-      address: (which === 'origin' ? slot.originAddress : slot.destinationAddress) || undefined,
-      open: () => setPinTarget({ kind: 'endpoint', which, name, start: pinned ? { lat: Number(lat), lng: Number(lng) } : null }),
-    };
+    return pinChip(
+      name,
+      which === 'origin'
+        ? { lat: slot.originLat, lng: slot.originLng, precision: slot.originPrecision, address: slot.originAddress }
+        : { lat: slot.destinationLat, lng: slot.destinationLng, precision: slot.destinationPrecision, address: slot.destinationAddress },
+      which === 'origin' ? slot.originLocationId : slot.destinationLocationId,
+      (start) => setPinTarget({ kind: 'endpoint', which, name, start }),
+    );
+  };
+
+  const stopPin = (leg: 0 | 1, index: number): EndpointPin | undefined => {
+    const { slot } = form;
+    const name = (leg === 0 ? slot.intermediateLocations : slot.returnIntermediateLocations || [])[index] || '';
+    const own = (leg === 0 ? slot.intermediateStopPins : slot.returnIntermediateStopPins)?.[index];
+    const locationId = (leg === 0 ? slot.intermediateLocationIds : slot.returnIntermediateLocationIds)?.[index];
+    return pinChip(name, own ?? {}, locationId, (start) => setPinTarget({ kind: 'stop', leg, index, name, start }));
   };
 
   const applyCard = (q: OperatorQuotation) => {
@@ -294,7 +321,7 @@ export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors
             </View>
           </View>
         ) : null}
-        <RouteTimeline form={form} err={err} onPick={setLocationTarget} onPin={endpointPin} />
+        <RouteTimeline form={form} err={err} onPick={setLocationTarget} onPin={endpointPin} onStopPin={stopPin} />
       </Section>
 
       {!applied ? priceSection : null}
@@ -389,8 +416,8 @@ export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors
       />
       <PinPickerSheet
         visible={pinTarget !== null}
-        title={pinTarget?.kind === 'endpoint' ? `Exact location · ${niceName(pinTarget.name)}` : `Pin · ${niceName(pinTarget?.name)}`}
-        start={pinTarget?.kind === 'endpoint' ? pinTarget.start : null}
+        title={pinTarget && pinTarget.kind !== 'new' ? `Exact location · ${niceName(pinTarget.name)}` : `Pin · ${niceName(pinTarget?.name)}`}
+        start={pinTarget && pinTarget.kind !== 'new' ? pinTarget.start : null}
         initialQuery={pinTarget?.kind === 'new' ? pinTarget.name : ''}
         saveLabel={pinTarget?.kind === 'new' ? 'Save place' : 'Save pin'}
         onSave={savePin}
@@ -470,12 +497,15 @@ function RouteTimeline({
   err,
   onPick,
   onPin,
+  onStopPin,
 }: {
   form: CreateTripForm;
   err: (f: string) => string | undefined;
   onPick: (t: LocationTarget) => void;
   /** The pin chip of a pickup / drop-off (undefined until it has a place). */
   onPin: (which: 'origin' | 'destination') => EndpointPin | undefined;
+  /** The same for a stop in between (leg 0 = outbound, 1 = return). */
+  onStopPin: (leg: 0 | 1, index: number) => EndpointPin | undefined;
 }) {
   const { slot } = form;
   const fees = slot.intermediateStopFees || [];
@@ -490,7 +520,7 @@ function RouteTimeline({
       <View style={tl.rail} />
       <Stop dot="start" value={niceName(slot.origin)} placeholder="Pickup" onPress={() => onPick({ kind: 'origin' })} onPin={onPin('origin')} error={Boolean(err('origin'))} />
       {slot.intermediateLocations.map((name, i) => (
-        <Stop key={`o-${i}`} dot="stop" value={niceName(name)} fee={fees[i] ?? ''} onFee={(v) => form.setStopFee(0, i, fee(v))} onRemove={() => form.removeStop(0, i)} />
+        <Stop key={`o-${i}`} dot="stop" value={niceName(name)} onPin={onStopPin(0, i)} fee={fees[i] ?? ''} onFee={(v) => form.setStopFee(0, i, fee(v))} onRemove={() => form.removeStop(0, i)} />
       ))}
       <Stop dot="end" value={niceName(slot.destination)} placeholder="Drop-off" onPress={() => onPick({ kind: 'destination' })} onPin={onPin('destination')} error={Boolean(err('destination'))} />
 
@@ -507,7 +537,7 @@ function RouteTimeline({
             onRemove={same(returnStart, slot.destination) ? undefined : () => form.setReturnEndpoint('returnOrigin', null)}
           />
           {(slot.returnIntermediateLocations || []).map((name, i) => (
-            <Stop key={`r-${i}`} dot="stop" muted value={niceName(name)} fee={returnFees[i] ?? ''} onFee={(v) => form.setStopFee(1, i, fee(v))} onRemove={() => form.removeStop(1, i)} />
+            <Stop key={`r-${i}`} dot="stop" muted value={niceName(name)} onPin={onStopPin(1, i)} fee={returnFees[i] ?? ''} onFee={(v) => form.setStopFee(1, i, fee(v))} onRemove={() => form.removeStop(1, i)} />
           ))}
           <AddRow label="+ Add return stop" onPress={() => onPick({ kind: 'stop', leg: 1 })} />
           <Stop
@@ -550,7 +580,7 @@ function Stop({
   /** A stop's fee, billed on top of the rate. */
   fee?: string;
   onFee?: (v: string) => void;
-  /** The pickup / drop-off's pin chip: "Set pin", "Set exact" or "Exact". */
+  /** The stop's pin chip: "Set pin", "Set exact" or "Exact". */
   onPin?: EndpointPin;
 }) {
   const color = dot === 'start' ? Colors.success : dot === 'end' ? Colors.primary : Colors.gray400;
@@ -598,7 +628,7 @@ function Stop({
   );
 }
 
-/** What the route shows for a pickup / drop-off's pin, and what tapping it opens. */
+/** What the route shows for a stop's pin, and what tapping it opens. */
 interface EndpointPin {
   state: PinState;
   /** The spot's address, when this trip has its own pin (pasted link / search). */

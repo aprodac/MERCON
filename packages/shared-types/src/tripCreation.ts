@@ -88,6 +88,8 @@ export interface TripSlotRoute {
 
   intermediateLocations?: string[];
   intermediateLocationIds?: (string | null)[];
+  /** A stop's own pin for this trip (e.g. a warehouse in that city), by index; null = the place's pin. */
+  intermediateStopPins?: (SlotStopPin | null)[];
 
   returnOrigin?: string;
   returnOriginLocationId?: string | null;
@@ -101,6 +103,31 @@ export interface TripSlotRoute {
 
   returnIntermediateLocations?: string[];
   returnIntermediateLocationIds?: (string | null)[];
+  returnIntermediateStopPins?: (SlotStopPin | null)[];
+}
+
+/** The exact spot of one stop on this trip, set on the create form. */
+export interface SlotStopPin {
+  lat: number;
+  lng: number;
+  address?: string | null;
+  /** EXACT (pasted link / map moved by hand) or APPROXIMATE (a search pick). */
+  precision: string;
+}
+
+/** A leg's in-between stops as trip stops, each with its place and, when set, this trip's own pin. */
+function midStops(names: string[] | undefined, ids: (string | null)[] | undefined, pins: (SlotStopPin | null)[] | undefined) {
+  return (names || [])
+    .map((raw, idx) => {
+      const name = (raw || '').trim();
+      const pin = pins?.[idx];
+      return {
+        name,
+        location_id: safeUuid(ids?.[idx]),
+        ...(pin ? { lat: pin.lat, lng: pin.lng, coordinate_precision: pin.precision, ...(pin.address ? { address: pin.address } : {}) } : {}),
+      };
+    })
+    .filter((m) => m.name);
 }
 
 /**
@@ -122,9 +149,6 @@ export function buildStopsFromSlot(slot: TripSlotRoute, isRound: boolean): Built
   const originStr = (slot.origin || '').trim();
   const destStr = (slot.destination || '').trim();
 
-  const outboundStops = (slot.intermediateLocations || []).map((s) => (s || '').trim()).filter(Boolean);
-  const returnStops = (slot.returnIntermediateLocations || []).map((s) => (s || '').trim()).filter(Boolean);
-
   const returnStart = (slot.returnOrigin || '').trim() || destStr;
   const returnEnd = (slot.returnDestination || '').trim() || originStr;
   const retStartSpot = slot.returnOriginLat == null && returnStart === destStr ? sameSpotAs(slot, 'destination') : {};
@@ -140,10 +164,7 @@ export function buildStopsFromSlot(slot: TripSlotRoute, isRound: boolean): Built
       coordinate_precision: slot.originPrecision || (slot.originLat != null ? 'APPROXIMATE' : 'UNKNOWN'),
       update_canonical_location: slot.updateCanonicalOrigin === true,
     },
-    intermediates: outboundStops.map((stopName: string, idx: number) => ({
-      name: stopName,
-      location_id: safeUuid(slot.intermediateLocationIds?.[idx]),
-    })),
+    intermediates: midStops(slot.intermediateLocations, slot.intermediateLocationIds, slot.intermediateStopPins),
     destination: {
       name: slot.destinationName || destStr,
       address: slot.destinationAddress || null,
@@ -164,10 +185,7 @@ export function buildStopsFromSlot(slot: TripSlotRoute, isRound: boolean): Built
         }
       : undefined,
     returnIntermediates: isRound
-      ? returnStops.map((stopName: string, idx: number) => ({
-          name: stopName,
-          location_id: safeUuid(slot.returnIntermediateLocationIds?.[idx]),
-        }))
+      ? midStops(slot.returnIntermediateLocations, slot.returnIntermediateLocationIds, slot.returnIntermediateStopPins)
       : undefined,
     returnDestination: isRound
       ? {

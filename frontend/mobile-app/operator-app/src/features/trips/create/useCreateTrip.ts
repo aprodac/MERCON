@@ -28,6 +28,7 @@ import {
   zonedWallTimeToUtcIso,
   type DayAssignmentInput,
   type TripChargeInput,
+  type SlotStopPin,
   type TripSlotDraft,
   type TripValidationIssue,
 } from '@mercon/shared-types';
@@ -115,6 +116,19 @@ function emptySlot(): TripSlotDraft {
 
 /** A stop-fee list as long as its stops (older slots may hold fewer fees). */
 const padFees = (fees: string[] | undefined, n: number) => Array.from({ length: n }, (_, i) => fees?.[i] ?? '');
+/** A pin as the pin sheet hands it over. */
+type PickedStopPin = { lat: number; lng: number; address: string | null; exact: boolean };
+
+/** A search pick is approximate; a pasted link or a hand-placed pin is exact (owner rule 2026-10-03). */
+const stopPinOf = (pin: PickedStopPin): SlotStopPin => ({
+  lat: pin.lat,
+  lng: pin.lng,
+  address: pin.address,
+  precision: pin.exact ? 'EXACT' : 'APPROXIMATE',
+});
+
+/** A stop-pin list as long as its stops; null = the stop uses its saved place's pin. */
+const padPins = (pins: (SlotStopPin | null)[] | undefined, n: number) => Array.from({ length: n }, (_, i) => pins?.[i] ?? null);
 
 const num = (v?: string | number | null) => {
   const n = Number(v);
@@ -160,7 +174,9 @@ function routeFromQuotation(q: OperatorQuotation): Partial<TripSlotDraft> {
     intermediateLocations: mids.map((m) => m.name),
     intermediateLocationIds: mids.map((m) => m.locationId ?? null),
     intermediateStopFees: mids.map(() => ''),
+    intermediateStopPins: mids.map(() => null),
     returnIntermediateStopFees: retMids.map(() => ''),
+    returnIntermediateStopPins: retMids.map(() => null),
     returnOrigin: ret.length ? ret[0].name : '',
     returnOriginLocationId: ret.length ? ret[0].locationId ?? null : null,
     returnDestination: ret.length > 1 ? ret[ret.length - 1].name : '',
@@ -586,12 +602,14 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
             intermediateLocations: [...s.intermediateLocations, loc.name],
             intermediateLocationIds: [...(s.intermediateLocationIds || []), loc.locationId ?? null],
             intermediateStopFees: [...padFees(s.intermediateStopFees, s.intermediateLocations.length), ''],
+            intermediateStopPins: [...padPins(s.intermediateStopPins, s.intermediateLocations.length), null],
           }
         : {
             ...s,
             returnIntermediateLocations: [...(s.returnIntermediateLocations || []), loc.name],
             returnIntermediateLocationIds: [...(s.returnIntermediateLocationIds || []), loc.locationId ?? null],
             returnIntermediateStopFees: [...padFees(s.returnIntermediateStopFees, (s.returnIntermediateLocations || []).length), ''],
+            returnIntermediateStopPins: [...padPins(s.returnIntermediateStopPins, (s.returnIntermediateLocations || []).length), null],
           },
     );
   }, []);
@@ -604,12 +622,14 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
             intermediateLocations: s.intermediateLocations.filter((_, i) => i !== index),
             intermediateLocationIds: (s.intermediateLocationIds || []).filter((_, i) => i !== index),
             intermediateStopFees: padFees(s.intermediateStopFees, s.intermediateLocations.length).filter((_, i) => i !== index),
+            intermediateStopPins: padPins(s.intermediateStopPins, s.intermediateLocations.length).filter((_, i) => i !== index),
           }
         : {
             ...s,
             returnIntermediateLocations: (s.returnIntermediateLocations || []).filter((_, i) => i !== index),
             returnIntermediateLocationIds: (s.returnIntermediateLocationIds || []).filter((_, i) => i !== index),
             returnIntermediateStopFees: padFees(s.returnIntermediateStopFees, (s.returnIntermediateLocations || []).length).filter((_, i) => i !== index),
+            returnIntermediateStopPins: padPins(s.returnIntermediateStopPins, (s.returnIntermediateLocations || []).length).filter((_, i) => i !== index),
           },
     );
   }, []);
@@ -646,6 +666,7 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
       intermediateLocations: r.stops.map((m) => m.name),
       intermediateLocationIds: r.stops.map((m) => m.locationId ?? null),
       intermediateStopFees: r.stops.map(() => ''),
+      intermediateStopPins: r.stops.map(() => null),
     }));
   }, []);
 
@@ -681,6 +702,19 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     [customerId],
   );
 
+  /** A saved place with no pin at all gets the one just set for this trip. */
+  const pinPlaceIfUnpinned = useCallback(
+    async (locationId: string | null | undefined, pin: PickedStopPin) => {
+      const place = locationId ? locations.find((l) => l.id === locationId) : undefined;
+      if (!place || (place.lat != null && place.lng != null)) return;
+      await operatorService.pinLocation(place.id, pin);
+      setLocations((prev) =>
+        prev.map((l) => (l.id === place.id ? { ...l, lat: pin.lat, lng: pin.lng, coordinate_precision: pin.exact ? 'EXACT' : 'APPROXIMATE' } : l)),
+      );
+    },
+    [locations],
+  );
+
   /**
    * The exact spot of this trip's pickup / drop-off — e.g. the customer's warehouse
    * in Riyadh while the quotation only says "Riyadh". The place stays the same
@@ -689,25 +723,37 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
    * when the trip is created, unless that place is already pinned exactly.
    */
   const setEndpointPin = useCallback(
-    async (which: 'origin' | 'destination', pin: { lat: number; lng: number; address: string | null; exact: boolean }) => {
-      const locationId = which === 'origin' ? slot.originLocationId : slot.destinationLocationId;
-      const place = locationId ? locations.find((l) => l.id === locationId) : undefined;
-      if (place && (place.lat == null || place.lng == null)) {
-        await operatorService.pinLocation(place.id, pin);
-        setLocations((prev) =>
-          prev.map((l) => (l.id === place.id ? { ...l, lat: pin.lat, lng: pin.lng, coordinate_precision: pin.exact ? 'EXACT' : 'APPROXIMATE' } : l)),
-        );
-      }
+    async (which: 'origin' | 'destination', pin: PickedStopPin) => {
+      await pinPlaceIfUnpinned(which === 'origin' ? slot.originLocationId : slot.destinationLocationId, pin);
+      const own = stopPinOf(pin);
       setSlot((s) => ({
         ...s,
-        [`${which}Lat`]: pin.lat,
-        [`${which}Lng`]: pin.lng,
-        [`${which}Address`]: pin.address || undefined,
-        // A search pick is approximate; a pasted link or a hand-placed pin is exact (owner rule 2026-10-03).
-        [`${which}Precision`]: pin.exact ? 'EXACT' : 'APPROXIMATE',
+        [`${which}Lat`]: own.lat,
+        [`${which}Lng`]: own.lng,
+        [`${which}Address`]: own.address || undefined,
+        [`${which}Precision`]: own.precision,
       }));
     },
-    [slot.originLocationId, slot.destinationLocationId, locations],
+    [pinPlaceIfUnpinned, slot.originLocationId, slot.destinationLocationId],
+  );
+
+  /** The same for a stop in between (leg 0 = outbound, 1 = return), by its index. */
+  const setStopPin = useCallback(
+    async (leg: 0 | 1, index: number, pin: PickedStopPin) => {
+      const ids = leg === 0 ? slot.intermediateLocationIds : slot.returnIntermediateLocationIds;
+      await pinPlaceIfUnpinned(ids?.[index], pin);
+      setSlot((s) => {
+        if (leg === 0) {
+          const pins = padPins(s.intermediateStopPins, s.intermediateLocations.length);
+          pins[index] = stopPinOf(pin);
+          return { ...s, intermediateStopPins: pins };
+        }
+        const pins = padPins(s.returnIntermediateStopPins, (s.returnIntermediateLocations || []).length);
+        pins[index] = stopPinOf(pin);
+        return { ...s, returnIntermediateStopPins: pins };
+      });
+    },
+    [pinPlaceIfUnpinned, slot.intermediateLocationIds, slot.returnIntermediateLocationIds],
   );
 
   const updateSlot = useCallback((patch: Partial<TripSlotDraft>) => setSlot((s) => ({ ...s, ...patch })), []);
@@ -1161,6 +1207,7 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     createLocation,
     createPinnedLocation,
     setEndpointPin,
+    setStopPin,
     setStopFee,
     routeComplete,
     charges,
