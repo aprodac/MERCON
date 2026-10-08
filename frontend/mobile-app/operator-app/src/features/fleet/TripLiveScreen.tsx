@@ -26,12 +26,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Box, ChevronDown, Compass, LocateFixed, Map as MapIcon, Moon, Navigation, Route, Sun, type LucideIcon } from 'lucide-react-native';
 import { FleetMap, type FleetMapHandle, type FocusMode, type MapView } from './FleetMap';
 import { TripShareFlow } from './FleetShare';
+import { HaltSheet } from './HaltSheet';
 import { EtaStrip, GLASS as PANEL, NextStopCard, UnitPanel } from './LivePanels';
 import { located, stoppedMin } from './fleetModel';
 import type { MapTheme } from './mapStyle';
 import { useFleetPrefs, type FleetPrefs } from './useFleetMapState';
 import { useLiveFleet } from './useLiveFleet';
 import { useTripRoute } from './useTripRoute';
+import type { TripHalt } from '../../lib/operator';
 
 type Mode = NonNullable<FleetPrefs['tripView']>;
 
@@ -77,6 +79,7 @@ export default function TripLiveScreen() {
   const [topH, setTopH] = useState(120);
   const [expanded, setExpanded] = useState(false);
   const [shareChoose, setShareChoose] = useState(false);
+  const [haltOpen, setHaltOpen] = useState<TripHalt | null>(null);
 
   const applyMode = (m: Mode) => {
     setMode(m);
@@ -151,6 +154,7 @@ export default function TripLiveScreen() {
         restLine={route.restLine}
         trail={route.trail}
         halts={breaks.length ? breaks : null}
+        onHaltPress={setHaltOpen}
         follow={following}
         onUserMove={() => setFollowing(false)}
         onViewChange={onViewChange}
@@ -235,6 +239,7 @@ export default function TripLiveScreen() {
       </View>
 
       <TripShareFlow unit={unit} open={shareChoose} onClose={() => setShareChoose(false)} />
+      <HaltSheet halt={haltOpen} f={f} onClose={() => setHaltOpen(null)} />
     </View>
   );
 }

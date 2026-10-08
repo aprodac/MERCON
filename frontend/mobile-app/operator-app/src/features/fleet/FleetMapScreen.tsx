@@ -62,7 +62,7 @@ import {
   AlertTriangle, Compass, Info, Layers, List, LocateFixed, Map as MapIcon, MapPin, Maximize, Maximize2, MessageCircle, Minimize2, Minus, Plus, Search, X, type LucideIcon,
 } from 'lucide-react-native';
 import { Toast } from '@mercon/mobile-shared/components/Toast';
-import { operatorService, type LiveUnit } from '../../lib/operator';
+import { operatorService, type LiveUnit, type TripHalt } from '../../lib/operator';
 import { AppTopBar } from '@/components/AppTopBar';
 import { FleetMap, SILENT_COLOR, TONE, type FleetMapHandle, type FocusMode, type MapTheme, type MapView } from './FleetMap';
 import { GroupSheet, NotLiveSheet, UnitRow, UnitSheet } from './FleetSheet';
@@ -70,6 +70,7 @@ import { CustomerPageSheet, NearSheet, SummarySheet, defaultRadiusKm, type Place
 import { changeText, isBadChange, useFleetChanges, useFleetPrefs, type FleetChange } from './useFleetMapState';
 import { FleetLegend } from './FleetLegend';
 import { LaneSheet } from './LaneSheet';
+import { HaltSheet } from './HaltSheet';
 import { LANE_KM, LANE_WIDE_KM, bookedOnLane, freeTrucksAt, lanesOnRoad, parseLaneQuery, truckSeconds } from './laneModel';
 import { FindTruckSheet, useTripActions } from './FleetActions';
 import { AttentionList, ListTabs, ScheduledList, attentionItems, matchesTripText, scheduledTrips, type ListTab } from './FleetLists';
@@ -113,6 +114,7 @@ export default function FleetMapScreen() {
   // The 2D / 3D toggle (Map options); off unless the operator turns it on.
   const [is3D, setIs3DRaw] = useState(false);
   const [query, setQuery] = useState('');
+  const [haltOpen, setHaltOpen] = useState<TripHalt | null>(null);
   const [view, setView] = useState<'map' | 'list'>('map');
   const [listTab, setListTab] = useState<ListTab>('trucks');
   const [selected, setSelected] = useState<string | null>(null);
@@ -567,6 +569,7 @@ export default function FleetMapScreen() {
             restLine={tripRoute.restLine}
             trail={trail}
             halts={unit ? tripRoute.halts?.filter((h) => h.kind === 'break') ?? null : null}
+            onHaltPress={setHaltOpen}
             follow={following}
             onUserMove={() => { if (unit) setFollowing(false); }}
           />
@@ -741,6 +744,7 @@ export default function FleetMapScreen() {
 
       {unit ? <TripShareFlow key={unit.key} unit={unit} open={shareChoose} onClose={() => setShareChoose(false)} onCustomerPage={setCustomerPage} /> : null}
       {bulk ? <BulkStatusSheet key={bulk.ids.join(',')} tripIds={bulk.ids} positions={bulk.positions} onClose={() => { setBulk(null); setPicked(null); }} /> : null}
+      <HaltSheet halt={haltOpen} f={f} onClose={() => setHaltOpen(null)} />
       <FindTruckSheet tripId={findFor} units={all} onClose={() => setFindFor(null)} onAssigned={(message) => setToast({ message, type: 'success' })} />
       <CustomerPageSheet customer={customerPage} onClose={() => setCustomerPage(null)} onToast={(message) => setToast({ message, type: 'success' })} />
       <MediaViewer items={viewer?.items ?? null} startIndex={viewer?.index ?? 0} title={viewer?.title ?? ''} onClose={() => setViewer(null)} />
