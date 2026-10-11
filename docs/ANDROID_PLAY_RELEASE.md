@@ -79,6 +79,8 @@ ends.
 
 ### 4c. Privacy policy
 
+**URL: https://mercon.tech/privacy.html** — page source `frontend/web-dashboard/public/privacy.html` (static, no login; MERCON Logistics Services Co., C.R. 1009152862, contact mail@merconlogisticssa.com). Keep it in step with what the apps collect.
+
 A public URL is required (any app collecting location). It must cover: what is
 collected (table above), why, that location is only collected during an active
 trip, retention (trip media 60 days), and a contact for deletion requests.
@@ -89,6 +91,23 @@ App access (give reviewers a working **test driver login** on production with
 a sample trip, or Google cannot review the app), Ads (none), Content rating,
 Target audience (adults, not for children), News app (no).
 
+## 4e. Battery optimisation exemption (since 1.2.1)
+
+The app declares `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` and shows Android's
+"Let app always run in background?" dialog when the driver taps Allow in the
+phone setup guide. Play only allows this for apps whose core function breaks
+otherwise. If a reviewer asks, the reason is:
+
+> MERCON Driver is an internal fleet app. Drivers must receive newly assigned
+> delivery trips immediately and keep sharing trip location while a delivery
+> is running. On many Android phones (Realme, Oppo, Xiaomi, Vivo) the battery
+> manager froze the app: trip notifications arrived about 6 minutes late and
+> trip tracking stopped. The exemption is only requested when the driver taps
+> "Allow" in the setup screen, with an explanation, and the driver can refuse.
+
+If Play rejects it: remove the permission from `app.config.ts` and the step
+falls back to opening the app settings page.
+
 ## 5. Before uploading — open questions
 
 - `SYSTEM_ALERT_WINDOW` ("display over other apps") is in the APK, pulled in
@@ -97,3 +116,30 @@ Target audience (adults, not for children), News app (no).
 - The upload goes to **Internal testing** first (up to 100 testers, by email
   list); closed testing with 12+ testers for 14 days is needed before a public
   production release on a new personal developer account.
+
+## 6. Store listing (Grow users → Store presence → Main store listing)
+
+Until the listing is filled and the app has passed review once, internal
+testers see a temporary name (the package id) and no logo.
+
+- **App name:** `MERCON Driver`
+- **Short description (max 80):** `Trips, live trip tracking and instant alerts for MERCON truck drivers.`
+- **Full description:**
+  > MERCON Driver is the app for drivers working with MERCON.
+  >
+  > • Get new trips instantly, with a notification the moment the office assigns one
+  > • See each trip's pickup and drop-off points, times and instructions
+  > • Update the trip step by step: start, arrived, loading done, delivered
+  > • Take photos of the cargo and proof of delivery
+  > • Share your location with the office only while a trip is running
+  > • Report delays and use SOS in an emergency
+  > • See your trip history, earnings and documents
+  > • English and Urdu
+  >
+  > This app is for MERCON drivers only. You need an account from your MERCON operator to sign in.
+- **App icon (512×512):** `docs/play-store/play-icon-512.png`
+- **Feature graphic (1024×500):** `docs/play-store/play-feature-graphic-1024x500.png`
+- **Phone screenshots:** at least 2 (e.g. login, trips list, trip details, live trip).
+  Take them from a real phone (`adb exec-out screencap -p > shot.png`) using
+  a test account. Never show real customer or driver data.
+- App category: **Business** (or Maps & Navigation). Contact email: the company email.
