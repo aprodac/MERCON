@@ -4,7 +4,7 @@
  * the deployment's timezone.
  */
 import type { OperatorTrip } from '../../../lib/operator';
-import { splitLegs } from '../tripLegs';
+import { liveLegOf, splitLegs } from '../tripLegs';
 
 export type Phase = 'draft' | 'planned' | 'running' | 'delayed' | 'done' | 'cancelled';
 
@@ -43,6 +43,7 @@ interface Stop {
   location?: { name?: string | null; code?: string | null } | null;
   planned_arrival: string | null;
   actual_arrival: string | null;
+  actual_departure?: string | null;
   delay_reason?: string | null;
   leg_index?: number | null;
 }
@@ -65,7 +66,7 @@ export interface TripRoute {
   via: number;
   /** Round trip: where it ends after the way back (usually `from`). */
   back: string | null;
-  /** Round trip running: 1 on the way out, 2 on the way back. */
+  /** Round trip under way: 1 on the way out, 2 on the way back (null before it starts / once done). */
   leg: 1 | 2 | null;
 }
 
@@ -82,7 +83,7 @@ export function routeOf(t: OperatorTrip): TripRoute {
     to: placeName(out[out.length - 1]),
     via: Math.max(0, out.length - 2) + Math.max(0, ret.length - 2),
     back: ret.length ? placeName(ret[ret.length - 1]) : placeName(out[0]),
-    leg: legs.currentLeg,
+    leg: liveLegOf(legs, t.status),
   };
 }
 

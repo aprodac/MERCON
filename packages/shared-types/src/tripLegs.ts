@@ -12,6 +12,7 @@ export interface LegStop {
   stop_type?: string | null;
   leg_index?: number | null;
   actual_arrival?: string | Date | null;
+  actual_departure?: string | Date | null;
 }
 
 export interface TripLegs<S extends LegStop> {
@@ -20,7 +21,11 @@ export interface TripLegs<S extends LegStop> {
   outbound: S[];
   /** The way back (round trip only). */
   ret: S[];
-  /** 1 or 2 while a round trip still has stops to reach (the leg of the next one), else null. */
+  /**
+   * 1 or 2 while a round trip still has stops to finish (the leg of the stop the
+   * truck is at or heading to), else null. Says nothing about whether the trip
+   * has started — use `liveLegOf` for anything shown to people.
+   */
   currentLeg: 1 | 2 | null;
 }
 
@@ -43,9 +48,41 @@ export function splitLegs<S extends LegStop>(stops: S[] | null | undefined, rate
     outbound = st.slice(0, end + 1);
     ret = st.slice(end + 1);
   }
-  const next = st.find((s) => !s.actual_arrival);
-  const currentLeg = !next ? null : ret.includes(next) ? 2 : 1;
+  const cur = currentStopIndex(st);
+  const currentLeg = cur < 0 ? null : ret.includes(st[cur]) ? 2 : 1;
   return { round: true, outbound, ret, currentLeg };
+}
+
+/**
+ * The stop the truck is at or heading to — the same rule as the server's
+ * `resolveAuthoritativeActiveStop`: a stop it has reached but not left is
+ * still the current one (so at the turn-around it is still on leg 1 until it
+ * leaves). A stop counts as left once it has a departure or a later stop has
+ * been reached. -1 once every stop is done.
+ */
+function currentStopIndex(st: LegStop[]): number {
+  let last = -1;
+  st.forEach((s, i) => { if (s.actual_arrival || s.actual_departure) last = i; });
+  if (last < 0) return st.length ? 0 : -1;
+  if (!st[last].actual_departure) return last;
+  return last + 1 < st.length ? last + 1 : -1;
+}
+
+/** Trip statuses where the truck is out on the job — the only time a leg is "current". */
+const ON_THE_ROAD = new Set(['Loading', 'InTransit', 'Delayed', 'Emergency']);
+
+/**
+ * The leg a round trip is on right now, for display: null unless it is a round
+ * trip that is actually under way (a scheduled trip is on no leg yet, a
+ * delivered one is on none any more).
+ */
+export function liveLegOf(legs: Pick<TripLegs<LegStop>, 'round' | 'currentLeg'>, status?: string | null): 1 | 2 | null {
+  return legs.round && ON_THE_ROAD.has(String(status ?? '')) ? legs.currentLeg : null;
+}
+
+/** "Leg 1 going" / "Leg 2 returning" — the one wording for the current leg everywhere. */
+export function legLabel(leg: 1 | 2): string {
+  return leg === 1 ? 'Leg 1 going' : 'Leg 2 returning';
 }
 
 /**

@@ -2,7 +2,8 @@
  * Route: /trips — the operator's trips.
  *
  *   Delayed  — every delayed trip, the longest-delayed first.
- *   Now      — a live list: needs attention, on the road, starting next.
+ *   Now      — trips under way only: needs attention, on the road. Trips
+ *              that haven't started (draft / scheduled) live in Schedule.
  *   Schedule — a date strip (with a count per day) and that day's trips.
  *   History  — delivered and cancelled trips by day, loading as you scroll.
  * Search looks across every trip on the server. Long-press a trip for quick
@@ -77,22 +78,20 @@ export default function TripsScreen() {
     try { await data.refresh(); } finally { setRefreshing(false); }
   };
 
-  // ── Now: the live board ───────────────────────────────────────────────────
+  // ── Now: the live board — only trips under way; not-started ones are in Schedule ──
   const board = useMemo(() => {
     const attention: OperatorTrip[] = [];
     const road: OperatorTrip[] = [];
-    const next: OperatorTrip[] = [];
     for (const t of data.open) {
       const p = phaseOf(t.status);
+      if (p !== 'running' && p !== 'delayed') continue;
       if (needsAttention(t, now)) attention.push(t);
-      else if (p === 'running' || p === 'delayed') road.push(t);
-      else next.push(t);
+      else road.push(t);
     }
     const byStart = (a: OperatorTrip, b: OperatorTrip) => new Date(tripDayIso(a) ?? 0).getTime() - new Date(tripDayIso(b) ?? 0).getTime();
     return {
       attention: attention.sort(byStart),
       road: road.sort(byStart),
-      next: next.sort(byStart),
     };
   }, [data.open, now]);
 
@@ -108,7 +107,6 @@ export default function TripsScreen() {
   const nowSections = useMemo(() => [
     { key: 'attention', title: 'Needs attention', tone: '#D92D20', data: board.attention },
     { key: 'road', title: 'On the road', tone: '#2F5FD0', data: board.road },
-    { key: 'next', title: 'Starting next', tone: '#7651D6', data: board.next },
   ].filter((sct) => sct.data.length > 0), [board]);
 
   // ── Schedule: counts per day and the chosen day's trips ───────────────────
@@ -241,7 +239,7 @@ export default function TripsScreen() {
               renderSectionHeader={({ section }) => <SectionHead title={section.title} count={section.data.length} tone={(section as any).tone} />}
               renderItem={({ item }) => renderCard(item, true)}
               ItemSeparatorComponent={Gap}
-              ListEmptyComponent={data.openLoading ? <Loading /> : <Empty icon={CircleCheckBig} title="No open trips" text="Every trip is delivered or cancelled." good />}
+              ListEmptyComponent={data.openLoading ? <Loading /> : <Empty icon={CircleCheckBig} title="Nothing on the road" text="Trips show here once they start. Upcoming trips are in Schedule." good />}
             />
           ) : view === 'schedule' ? (
             <FlatList

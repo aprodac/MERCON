@@ -118,7 +118,8 @@ export function TimePicker({
   );
 
   return (
-    <div className={cn('relative inline-block w-full', className)}>
+    // min-w-0 all the way down: in a flex row the picker must shrink and truncate, not push past its card.
+    <div className={cn('relative inline-block w-full min-w-0', className)}>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
@@ -127,16 +128,16 @@ export function TimePicker({
             variant="outline"
             disabled={disabled}
             className={cn(
-              'w-full justify-between text-left font-normal h-9 px-3 rounded-xl border-input bg-background transition-all hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-[#FA634E] focus-visible:outline-none focus-visible:border-[#FA634E]',
+              'w-full min-w-0 justify-between text-left font-normal h-9 px-3 rounded-xl border-input bg-background transition-all hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-[#FA634E] focus-visible:outline-none focus-visible:border-[#FA634E]',
               !value && 'text-muted-foreground',
               error && 'border-red-500 ring-2 ring-red-500/30 bg-red-50/20 text-red-900 dark:text-red-200',
               disabled && 'opacity-50 cursor-not-allowed',
               buttonClassName
             )}
           >
-            <div className="flex items-center gap-2 truncate">
+            <div className="flex min-w-0 items-center gap-2">
               <Clock className="w-4 h-4 text-emerald-600 shrink-0 opacity-90" />
-              <span className="truncate text-xs font-mono font-bold">
+              <span className={cn('truncate text-xs', value ? 'font-mono font-bold' : 'font-medium')}>
                 {formatDisplayTime(value)}
               </span>
             </div>
