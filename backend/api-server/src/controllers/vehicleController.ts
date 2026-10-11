@@ -158,7 +158,8 @@ export const getVehicles = async (req: Request, res: Response) => {
               },
               customer: { select: { name: true } },
               stops: {
-                select: { stop_type: true, location_name: true, location_address: true, stop_sequence: true },
+                // leg_index + arrival/departure: a round trip reads "Riyadh → Jeddah ↺ · Leg 2", not Riyadh → Riyadh.
+                select: { stop_type: true, location_name: true, location_address: true, stop_sequence: true, leg_index: true, actual_arrival: true, actual_departure: true },
                 orderBy: { stop_sequence: 'asc' },
               },
             },
