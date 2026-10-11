@@ -503,7 +503,11 @@ const tripsToExportRowsWithTotals = (trips: Trip[], tz: string = 'Asia/Riyadh') 
   return [...rows, totalsRow];
 };
 
-type TripStatusFilter = TripStatus | 'All' | 'Active' | 'Issues' | 'Completed,Invoiced';
+/**
+ * 'All', a group from the KPI cards ('Active', 'Issues'), one status, or several picked in the
+ * Filters menu as a comma list ("Scheduled,Delayed") — the backend's `status` takes the same list.
+ */
+type TripStatusFilter = TripStatus | 'All' | 'Active' | 'Issues' | 'Completed,Invoiced' | (string & {});
 
 const STATUS_TABS: { label: string; value: TripStatusFilter }[] = [
   { label: 'All', value: 'All' },
@@ -554,12 +558,44 @@ const EXACT_SERVER_STATUSES = new Set<TripStatusFilter>([
   'AtDelivery',
 ]);
 
-const getServerStatusFilter = (status: TripStatusFilter) => (
-  EXACT_SERVER_STATUSES.has(status) ? status : undefined
-);
+/** Statuses the Filters menu offers to tick (several at once). */
+const STATUS_CHOICES = ['Draft', 'Scheduled', 'Loading', 'InTransit', 'Delayed', 'Completed', 'Invoiced', 'Cancelled'] as const;
 
-const matchesTripStatusFilter = (trip: Trip, filter: TripStatusFilter) => {
+/** Ready-made picks above the ticks. */
+const STATUS_PRESETS: { label: string; statuses: string[] }[] = [
+  { label: 'Not started', statuses: ['Draft', 'Scheduled'] },
+  { label: 'On the road', statuses: ['Loading', 'InTransit', 'Delayed'] },
+  { label: 'Open', statuses: ['Draft', 'Scheduled', 'Loading', 'InTransit', 'Delayed'] },
+  { label: 'Finished', statuses: ['Completed', 'Invoiced'] },
+];
+
+/** The ticked statuses a filter stands for ('All' → none ticked; KPI groups → their members). */
+const statusesOf = (filter: TripStatusFilter): string[] => {
+  if (filter === 'All') return [];
+  if (filter === 'Active') return ['Scheduled', 'Loading', 'InTransit', 'Delayed'];
+  if (filter === 'Issues') return ['Delayed', 'Cancelled'];
+  return String(filter).split(',').filter(Boolean);
+};
+
+/** Back from ticks to a filter value: nothing ticked is 'All'. */
+const filterOf = (statuses: string[]): TripStatusFilter => {
+  const picked = STATUS_CHOICES.filter((st) => statuses.includes(st));
+  return picked.length === 0 ? 'All' : picked.join(',');
+};
+
+const statusFilterLabel = (filter: TripStatusFilter) =>
+  STATUS_LABELS[filter] || statusesOf(filter).map((st) => STATUS_LABELS[st] || st).join(', ');
+
+const getServerStatusFilter = (status: TripStatusFilter) => {
+  if (EXACT_SERVER_STATUSES.has(status)) return status;
+  // Several statuses: the server filters on the list (`status=Scheduled,Delayed`).
+  const parts = String(status).split(',');
+  return parts.length > 1 && parts.every((p) => EXACT_SERVER_STATUSES.has(p as TripStatusFilter)) ? parts.join(',') : undefined;
+};
+
+const matchesTripStatusFilter = (trip: Trip, filter: TripStatusFilter): boolean => {
   if (filter === 'All') return true;
+  if (String(filter).includes(',')) return String(filter).split(',').some((part) => matchesTripStatusFilter(trip, part));
   if (filter === 'Active') {
     return ['Scheduled', 'Loading', 'InTransit', 'Delayed', 'Dispatched', 'AtPickup', 'AtDelivery'].includes(trip.status);
   }
@@ -780,7 +816,8 @@ export default function TripListPage() {
     const searchParam = searchParams.get('search') || searchParams.get('vehicle') || searchParams.get('vehicle_name') || searchParams.get('plate_number');
     const statusParam = searchParams.get('status') as TripStatusFilter | null;
 
-    if (statusParam && EXACT_SERVER_STATUSES.has(statusParam as any)) {
+    // ?status=Delayed or several: ?status=Scheduled,Delayed
+    if (statusParam && statusParam.split(',').every((st) => EXACT_SERVER_STATUSES.has(st as any))) {
       setSelectedStatus(statusParam);
     }
 
@@ -1960,32 +1997,69 @@ export default function TripListPage() {
                     <ChevronDown className="w-2.5 h-2.5 text-slate-400" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-64 p-3.5 shadow-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl space-y-3 z-50">
+                <DropdownMenuContent align="start" className="w-72 p-3.5 shadow-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl space-y-3 z-50">
                   <DropdownMenuLabel className="text-[10px] font-bold tracking-wider uppercase text-slate-400 p-0">
                     Filter Trips
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator className="my-1 border-slate-100 dark:border-slate-850" />
                   
                   <div className="space-y-2.5">
-                    {/* Status Group / Exact State Filter */}
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Status</label>
-                      <select
-                        value={selectedStatus}
-                        onChange={(e) => {
-                          setSelectedStatus(e.target.value as any);
-                          setCurrentPage(1);
-                        }}
-                        className="w-full h-8 px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer"
-                      >
-                        <option value="All">All Statuses</option>
-                        <option value="Scheduled">Scheduled</option>
-                        <option value="Loading">Loading</option>
-                        <option value="InTransit">In Transit</option>
-                        <option value="Delayed">Delayed</option>
-                        <option value="Completed">Completed</option>
-                        <option value="Cancelled">Cancelled</option>
-                      </select>
+                    {/* Status — tick several (Scheduled + Delayed …) or use a ready-made pick */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Status</label>
+                        {selectedStatus !== 'All' && (
+                          <button
+                            type="button"
+                            onClick={() => { setSelectedStatus('All'); setCurrentPage(1); }}
+                            className="text-[10px] font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                          >
+                            Any status
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {STATUS_PRESETS.map((pr) => {
+                          const on = filterOf(pr.statuses) === filterOf(statusesOf(selectedStatus));
+                          return (
+                            <button
+                              key={pr.label}
+                              type="button"
+                              onClick={() => { setSelectedStatus(on ? 'All' : filterOf(pr.statuses)); setCurrentPage(1); }}
+                              className={cn(
+                                'h-6 px-2 rounded-full border text-[10px] font-bold transition-colors cursor-pointer',
+                                on
+                                  ? 'bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900 dark:border-white'
+                                  : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
+                              )}
+                              aria-pressed={on}
+                            >
+                              {pr.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-2 gap-y-0.5" role="group" aria-label="Statuses">
+                        {STATUS_CHOICES.map((st) => {
+                          const ticked = statusesOf(selectedStatus).includes(st);
+                          return (
+                            <label key={st} className="flex items-center gap-2 h-7 px-1.5 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-200">
+                              <input
+                                type="checkbox"
+                                checked={ticked}
+                                onChange={() => {
+                                  const now = statusesOf(selectedStatus);
+                                  setSelectedStatus(filterOf(ticked ? now.filter((x) => x !== st) : [...now, st]));
+                                  setCurrentPage(1);
+                                }}
+                                className="size-3.5 accent-[#FA634E] cursor-pointer"
+                              />
+                              <span className={cn('w-2 h-2 rounded-full shrink-0', STATUS_DOT[st] || 'bg-slate-400')} />
+                              {STATUS_LABELS[st] || st}
+                            </label>
+                          );
+                        })}
+                      </div>
                     </div>
 
                     {/* Company Filter */}
@@ -2182,7 +2256,7 @@ export default function TripListPage() {
                     <TripKanbanBoard
                       ref={kanbanBoardRef}
                       trips={trips}
-                      statusFilter={selectedStatus !== 'All' ? (selectedStatus as string) : undefined}
+                      statusFilter={selectedStatus !== 'All' && !String(selectedStatus).includes(',') ? (selectedStatus as string) : undefined}
                       focusedStage={stageParam}
                       onStageFocusChange={handleStageFocusChange}
                       onStatusChange={handleKanbanStatusChange}
@@ -2223,7 +2297,7 @@ export default function TripListPage() {
                       <div className="flex items-center gap-2">
                         <Filter className="h-3.5 w-3.5 text-brand shrink-0" />
                         <span>
-                          Filtered by status: <strong className="underline decoration-brand text-slate-900 dark:text-slate-100 font-bold">{STATUS_LABELS[selectedStatus] || selectedStatus}</strong> ({trips.length} trip{trips.length === 1 ? '' : 's'} matching)
+                          Filtered by status: <strong className="underline decoration-brand text-slate-900 dark:text-slate-100 font-bold">{statusFilterLabel(selectedStatus)}</strong> ({trips.length} trip{trips.length === 1 ? '' : 's'} matching)
                         </span>
                       </div>
                       <button
