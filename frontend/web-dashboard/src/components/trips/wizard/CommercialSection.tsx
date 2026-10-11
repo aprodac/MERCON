@@ -367,7 +367,10 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
       const numRate = Number(rc.rate ?? rc.base_price ?? 0);
       const rateStr = String(numRate).toLowerCase();
 
-      const fullSearchableText = `${qNum} ${orig} ${dest} ${vClass} ${rCat} ${rateStr}`;
+      // Stops in between (both legs), so "Taif" finds a Riyadh → Taif → Jeddah quotation.
+      const mids = quotationRouteLegs(rc).flatMap((leg) => leg.slice(1, -1)).map((x) => String(x.name || '').toLowerCase()).join(' ');
+
+      const fullSearchableText = `${qNum} ${orig} ${dest} ${mids} ${vClass} ${rCat} ${rateStr}`;
 
       // A) Price / Budget Evaluator
       if (budgetEvaluator) {
@@ -392,12 +395,12 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
       }
 
       // C) City Aliases / Airport Codes / Arabic Name Matching
-      if (matchesAnyTerm(orig, expandedSingleQuery) || matchesAnyTerm(dest, expandedSingleQuery)) {
+      if (matchesAnyTerm(orig, expandedSingleQuery) || matchesAnyTerm(dest, expandedSingleQuery) || (mids && matchesAnyTerm(mids, expandedSingleQuery))) {
         return true;
       }
 
       // D) Standard Substring Match across metadata
-      if (qNum.includes(rawQuery) || orig.includes(rawQuery) || dest.includes(rawQuery) || vClass.includes(rawQuery) || rCat.includes(rawQuery) || rateStr.includes(rawQuery)) {
+      if (qNum.includes(rawQuery) || orig.includes(rawQuery) || dest.includes(rawQuery) || mids.includes(rawQuery) || vClass.includes(rawQuery) || rCat.includes(rawQuery) || rateStr.includes(rawQuery)) {
         return true;
       }
 
@@ -647,8 +650,9 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
                   // the route-change watcher drop the selection → "Define Quotation".
                   const [qOut, qRet] = quotationRouteLegs(rc);
                   const hasCardRoute = Boolean(qOut && qOut.length >= 2);
-                  const originId = rc.originLocation?.id || firstStop?.location?.id || firstStop?.location_id || primarySlot.originLocationId;
-                  const destinationId = rc.destinationLocation?.id || lastStop?.location?.id || lastStop?.location_id || primarySlot.destinationLocationId;
+                  // A round trip's destination is where the way out ends, not its last stop (back home).
+                  const originId = rc.originLocation?.id || (hasCardRoute ? qOut[0].id : null) || firstStop?.location?.id || firstStop?.location_id || primarySlot.originLocationId;
+                  const destinationId = rc.destinationLocation?.id || (hasCardRoute ? qOut[qOut.length - 1].id : null) || lastStop?.location?.id || lastStop?.location_id || primarySlot.destinationLocationId;
                   const originLabel = origName || primarySlot.origin;
                   const destinationLabel = destName || primarySlot.destination;
                   const outMids = hasCardRoute ? qOut.slice(1, -1) : [];

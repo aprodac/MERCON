@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatQuotationRef } from '@mercon/shared-types';
+import { formatQuotationRef, quotationRouteLegs, sameRouteStop } from '@mercon/shared-types';
 import { cn } from '@/lib/utils';
 import { normalizeRateCategory, normalizeVehicleClass, normalizeBillingType } from '@/utils/taxonomyRegistry';
 
@@ -95,8 +95,21 @@ export const QuotationRateCard: React.FC<QuotationRateCardProps> = ({
   const cardBType = normalizeBillingType(rawBType);
   const isMonthlyCard = cardBType === 'Monthly';
 
-  const firstStop = rc.stops && rc.stops.length > 0 ? rc.stops[0] : null;
-  const lastStop = rc.stops && rc.stops.length > 1 ? rc.stops[rc.stops.length - 1] : firstStop;
+  // The quotation's route as legs, so a round trip's way out reads Riyadh → Jeddah
+  // (not first → last stop, Riyadh → Riyadh) and the stops in between can be shown.
+  const [outLeg, retLeg] = quotationRouteLegs(rc);
+  const hasLegs = Boolean(outLeg && outLeg.length >= 2);
+  const firstStop = hasLegs ? { source_label: outLeg[0].name } : rc.stops && rc.stops.length > 0 ? rc.stops[0] : null;
+  const lastStop = hasLegs
+    ? { source_label: outLeg[outLeg.length - 1].name }
+    : rc.stops && rc.stops.length > 1 ? rc.stops[rc.stops.length - 1] : firstStop;
+  const stopName = (n?: string | null) => (n || '').replace(/\s*\[.*?\]/g, '').split(',')[0].trim() || 'Stop';
+  const outMids = hasLegs ? outLeg.slice(1, -1).map((x) => stopName(x.name)) : [];
+  const retMids = retLeg && retLeg.length >= 2 ? retLeg.slice(1, -1).map((x) => stopName(x.name)) : [];
+  // A stored return leg that isn't just "back the same way" (B → A) is shown too.
+  const retIsPlain = !retLeg || retLeg.length < 2 || !hasLegs || (
+    retMids.length === 0 && sameRouteStop(retLeg[0], outLeg[outLeg.length - 1]) && sameRouteStop(retLeg[retLeg.length - 1], outLeg[0])
+  );
 
   let origName = extractEndpointName(firstStop, [
     rc.route_origin,
@@ -180,15 +193,41 @@ export const QuotationRateCard: React.FC<QuotationRateCardProps> = ({
         </div>
       </div>
 
-      {/* HERO CENTER: PROMINENT LOCATION ROUTE LANE */}
-      <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between gap-1.5 my-0.5">
-        <span className="text-xs font-black text-slate-900 dark:text-white truncate max-w-[45%]" title={finalOrigName}>
-          {finalOrigName}
-        </span>
-        <span className="text-[#FA634E] font-bold text-xs shrink-0">→</span>
-        <span className="text-xs font-black text-[#FA634E] truncate max-w-[45%]" title={finalDestName}>
-          {finalDestName}
-        </span>
+      {/* HERO CENTER: ROUTE LANE — origin → destination, with the stops in between */}
+      <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-700/80 my-0.5 space-y-1">
+        <div className="flex items-center justify-between gap-1.5">
+          <span className="text-xs font-black text-slate-900 dark:text-white truncate max-w-[38%]" title={finalOrigName}>
+            {finalOrigName}
+          </span>
+          {outMids.length > 0 ? (
+            <span
+              className="shrink-0 rounded-full bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-900/60 px-1.5 text-[9px] font-black text-amber-700 dark:text-amber-300"
+              title={`Via ${outMids.join(' → ')}`}
+            >
+              +{outMids.length} {outMids.length === 1 ? 'stop' : 'stops'} →
+            </span>
+          ) : (
+            <span className="shrink-0 text-[9px] font-bold text-slate-400" title="No stops in between">direct →</span>
+          )}
+          <span className="text-xs font-black text-[#FA634E] truncate max-w-[38%]" title={finalDestName}>
+            {finalDestName}
+          </span>
+        </div>
+        {outMids.length > 0 && (
+          <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300 min-w-0" title={`${finalOrigName} → ${outMids.join(' → ')} → ${finalDestName}`}>
+            <span className="shrink-0 text-slate-400">via</span>
+            <span className="truncate">{outMids.join(' → ')}</span>
+          </div>
+        )}
+        {!retIsPlain && retLeg && (
+          <div
+            className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300 min-w-0"
+            title={retLeg.map((x) => stopName(x.name)).join(' → ')}
+          >
+            <span className="shrink-0 text-slate-400">↺ back</span>
+            <span className="truncate">{retLeg.map((x) => stopName(x.name)).join(' → ')}</span>
+          </div>
+        )}
       </div>
 
       {/* BOTTOM ROW: LINE TYPE & VEHICLE CLASS + ACTION */}
