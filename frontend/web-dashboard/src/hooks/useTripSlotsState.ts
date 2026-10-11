@@ -46,6 +46,10 @@ export interface TripSlot {
   returnDropoffTime?: string;
   /** Return arrival set by hand — the travel-time estimate stops overwriting it. */
   returnDropoffManual?: boolean;
+  /** Monthly round trip: which day of each run (0 = pickup day) — see TripSlotDraft. */
+  dropoffDay?: number;
+  returnPickupDay?: number;
+  returnDropoffDay?: number;
   returnIsOvernight?: boolean;
   returnIntermediateLocations?: string[];
   returnIntermediateLocationIds?: (string | null)[];

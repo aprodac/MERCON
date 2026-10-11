@@ -42,7 +42,7 @@ export default function ExpensesScreen() {
 
       <View className="mt-3 pt-2 border-t border-gray-100 flex-row items-center justify-between">
         <Text style={{ fontSize: 11, color: Colors.gray400 }}>
-          {item.expense_date ? new Date(item.expense_date).toLocaleDateString() : 'No date'}
+          {item.expense_date ? new Date(item.expense_date).toLocaleDateString('en-GB') : 'No date'}
         </Text>
         <View
           style={{

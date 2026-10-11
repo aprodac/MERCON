@@ -58,8 +58,10 @@ export interface ChargeReviewTrip {
     location: { name: string } | null;
     actual_arrival: string | null;
     actual_departure: string | null;
+    leg_index?: number | null;
   }[];
   charges: { id: string; charge_type: string; amount: number | string }[];
+  rate_category?: string | null;
 }
 
 export type { CustomerChargeHabit } from '@mercon/shared-types';

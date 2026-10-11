@@ -1,17 +1,19 @@
 /**
  * Route: /trip-details?id= — one trip for an operator.
  *
- * Map on top (MapLibre), then who / where / status, then three tabs:
+ * Map on top (MapLibre; a running trip opens full screen in the live view,
+ * /trip-live, others in a plain full-screen map), then who / where / status,
+ * then three tabs:
  *   Updates — WhatsApp first: quick sends and the driver's photos, each with Send.
  *   Stops   — every stop with times, lateness, delays and screenshots to check.
  *   Details — pre-trip checks or trip summary, truck & driver, financials, paperwork.
  * The next status step, WhatsApp and "more" stay pinned at the bottom.
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl, ActivityIndicator, Alert, Modal, Linking, StatusBar,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, Check, LayoutList, Maximize2, MessageCircle, MoreHorizontal, Navigation, Phone, Route, Send, X, type LucideIcon } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
@@ -23,7 +25,7 @@ import {
 } from '../../../lib/operator';
 import { PickerSheet, niceName } from '../create/components/ui';
 import { useTripDetails } from './useTripDetails';
-import { ago, digits, hoursText, makeFormatters, mapsLink, nextActionFor, sortedStops, stopName, updateTitle, type QuickKind, type Stop } from './tripDetailsModel';
+import { ago, digits, hoursText, makeFormatters, mapsLink, nextActionFor, sendStatus, sortedStops, stopName, updateTitle, type QuickKind, type Stop } from './tripDetailsModel';
 import { TripMap } from './components/TripMap';
 import { TripHeader } from './components/TripHeader';
 import { StopsTab } from './components/StopsTab';
@@ -33,7 +35,7 @@ import { MediaViewer, type ViewerItem } from './components/MediaViewer';
 import { TripTimesSheet } from './components/TripTimesSheet';
 import { PinSheet } from './components/PinSheet';
 import { ActivitySheet, ChargesSheet, MoreSheet, UploadSheet } from './components/Sheets';
-import { ACTION, INK, MUTED, PAGE, WA, tap } from './components/parts';
+import { ACTION, INK, MUTED, PAGE, WA, WA_INK, WA_LIGHT, tap } from './components/parts';
 import { shareTextToWhatsApp } from '../../dashboard/components/ActiveTripsSection';
 
 /** Under the More sheet's tracking row: has the customer looked at it? */
@@ -47,13 +49,14 @@ const MAP_H = 320;
 export default function TripDetailsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  // Links from the home's "Needs action" cards can open a tab, a message or a picker straight away.
-  const params = useLocalSearchParams<{ id: string; tab?: string; share?: string; update?: string; assign?: string; times?: string }>();
+  // Links from the home's "Needs action" cards can open a tab, a message or a picker straight away;
+  // a driver's update (push or Activity) opens on its stop (`stop`) or on the photos it sent (`photo`).
+  const params = useLocalSearchParams<{ id: string; tab?: string; share?: string; update?: string; assign?: string; times?: string; stop?: string; photo?: string }>();
   const { id } = params;
-  const { trip, overview, updates, whatsappApi, tz, phase, remaining, tracking, trackingUrl, refreshTracking, renewTracking, loading, refreshing, error, refresh, reload } = useTripDetails(id);
+  const { trip, overview, updates, whatsappApi, tz, phase, remaining, tracking, trackingUrl, refreshTracking, loading, refreshing, error, refresh, reload } = useTripDetails(id);
   const f = useMemo(() => makeFormatters(tz), [tz]);
 
-  const [tab, setTab] = useState<Tab>(params.tab === 'stops' ? params.tab : 'details');
+  const [tab, setTab] = useState<Tab>(params.tab === 'stops' || params.stop || params.photo ? 'stops' : 'details');
   const [busy, setBusy] = useState(false);
   const [share, setShare] = useState<ShareTarget | null>(null);
   const [viewer, setViewer] = useState<{ items: ViewerItem[]; index: number; title: string; update?: DriverUpdate } | null>(null);
@@ -83,6 +86,23 @@ export default function TripDetailsScreen() {
       setShare({ type: 'update', update: u });
     }
   }
+  // `stop=<id>`: scroll the Stops tab to that stop and tint it for a few seconds.
+  const scrollRef = useRef<ScrollView>(null);
+  const tabBodyY = useRef(0);
+  const [focusStop, setFocusStop] = useState<string | null>(params.stop ?? null);
+  const scrolledToStop = useRef(false);
+  const onStopLayout = useCallback((stopId: string, y: number) => {
+    if (stopId !== params.stop || scrolledToStop.current) return;
+    scrolledToStop.current = true;
+    // After this frame, so the tab body's own position is known too.
+    setTimeout(() => {
+      scrollRef.current?.scrollTo({ y: Math.max(0, tabBodyY.current + y - insets.top - 80), animated: true });
+    }, 150);
+    setTimeout(() => setFocusStop(null), 4000);
+  }, [params.stop, insets.top]);
+  // `photo=<document id>`: open the viewer on the photo set holding it once the trip's
+  // updates arrive. Photos older than the updates window stay on the stop instead.
+  const [photoLinkDone, setPhotoLinkDone] = useState(false);
   const assignKind = params.assign === 'driver' || params.assign === 'truck' ? params.assign : null;
   const tripLoaded = !!trip;
   useEffect(() => {
@@ -96,6 +116,17 @@ export default function TripDetailsScreen() {
       .catch(() => {});
     return () => { live = false; };
   }, [tripLoaded, assignKind]);
+
+  // Back from the link's page: it may have been replaced or turned off there.
+  const linkManaged = useRef(false);
+  const refreshTrackingRef = useRef(refreshTracking);
+  useEffect(() => { refreshTrackingRef.current = refreshTracking; });
+  useFocusEffect(useCallback(() => {
+    if (linkManaged.current) {
+      linkManaged.current = false;
+      refreshTrackingRef.current();
+    }
+  }, []));
 
   if (loading && !trip) {
     return (
@@ -121,6 +152,7 @@ export default function TripDetailsScreen() {
   const next = nextActionFor(trip.status);
   const position = overview?.unit?.position ? { lat: overview.unit.position.lat, lng: overview.unit.position.lng } : null;
   const gps = overview?.unit?.position;
+  const liveView = phase === 'active' && !!gps;
 
   // ── Actions ────────────────────────────────────────────────────────────────
   const advance = () => {
@@ -199,10 +231,10 @@ export default function TripDetailsScreen() {
   };
 
 
-  const openStopMedia = (st: Stop) => {
-    const ups = updates.filter((u) => u.stop?.id === st.id);
-    const items = ups.flatMap((u) => u.items.map((m) => ({ id: m.id, url: m.url, kind: m.kind, caption: `${updateTitle(u)} · ${f.smart(m.captured_at)}` })));
-    if (items.length) setViewer({ title: stopName(st, stops.indexOf(st)), index: 0, items, update: ups.length === 1 ? ups[0] : undefined });
+  const openPhotos = (u: DriverUpdate, index: number) => {
+    const st = stops.find((x) => x.id === u.stop?.id);
+    const items = u.items.map((m) => ({ id: m.id, url: m.url, kind: m.kind, caption: `${updateTitle(u)} · ${f.smart(m.captured_at)}`, sent: u.sent_ids.includes(m.id) }));
+    if (items.length) setViewer({ title: st ? stopName(st, stops.indexOf(st)) : updateTitle(u), index, items, update: u });
   };
 
   const openDoc = (d: OperatorTripDocument) => {
@@ -213,22 +245,30 @@ export default function TripDetailsScreen() {
     else Linking.openURL(url).catch(() => {});
   };
 
+  if (params.photo && !photoLinkDone) {
+    const u = updates.find((x) => x.items.some((m) => m.id === params.photo));
+    if (u) {
+      setPhotoLinkDone(true);
+      openPhotos(u, Math.max(0, u.items.findIndex((m) => m.id === params.photo)));
+    }
+  }
+
   const quick = (kind: QuickKind) => setShare({ type: 'quick', kind });
 
-  // The customer tracking link: send it, open what the customer sees, or replace it.
+  // The customer tracking link: send it, or manage it (open, expiry, what it shows, history, new link).
   const trackingActions = () => {
     const url = tracking?.url;
     if (!url) return;
     const head = [trip.ref_id, trip.vehicle?.plate_number ?? trip.third_party_vehicle_plate].filter(Boolean).join(' · ');
+    // Three buttons at most — Android shows no more.
     Alert.alert('Customer tracking link', url, [
       { text: 'Send on WhatsApp', onPress: () => { shareTextToWhatsApp(`*${head}*\nTrack your truck live: ${url}`, 'Tracking link').catch(() => {}); } },
-      { text: 'Open the page', onPress: () => { Linking.openURL(url).catch(() => {}); } },
       {
-        text: 'New link…',
-        onPress: () => Alert.alert('Make a new link?', 'The current link stops working for everyone who has it.', [
-          { text: 'Keep it', style: 'cancel' },
-          { text: 'Make new link', style: 'destructive', onPress: () => { renewTracking().catch((e) => Alert.alert('Could not make a new link', getApiErrorMessage(e))); } },
-        ]),
+        text: 'Manage link…',
+        onPress: () => {
+          linkManaged.current = true;
+          router.push({ pathname: '/link-details', params: { kind: 'trip', trip: trip.id } });
+        },
       },
       { text: 'Close', style: 'cancel' },
     ]);
@@ -245,17 +285,19 @@ export default function TripDetailsScreen() {
   const nextIdx = stops.findIndex((st) => !st.actual_arrival);
   const target = phase === 'active' && nextIdx >= 0 ? stops[nextIdx] : stops[stops.length - 1];
   const hasTarget = !!target && Number.isFinite(target.location_lat) && !!(target.location_lat || target.location_lng);
-  const actions: { key: string; label: string; icon: LucideIcon; onPress?: () => void }[] = [
-    { key: 'call', label: 'Call', icon: Phone, onPress: driverPhone ? () => Linking.openURL(`tel:${driverPhone}`).catch(() => {}) : undefined },
-    { key: 'wa', label: 'WhatsApp', icon: MessageCircle, onPress: driverPhone ? () => Linking.openURL(`https://wa.me/${digits(driverPhone)}`).catch(() => {}) : undefined },
-    { key: 'nav', label: 'Directions', icon: Navigation, onPress: hasTarget ? () => Linking.openURL(mapsLink(target.location_lat, target.location_lng)).catch(() => {}) : undefined },
-    { key: 'status', label: 'Send status', icon: Send, onPress: () => quick('status') },
+  // Each has its own colour so they read at a glance; a missing phone / pin says why instead of just fading.
+  const actions: { key: string; label: string; icon: LucideIcon; fg: string; bg: string; onPress?: () => void; off?: string }[] = [
+    { key: 'call', label: 'Call driver', icon: Phone, fg: '#1D4ED8', bg: '#E8EFFD', onPress: driverPhone ? () => Linking.openURL(`tel:${driverPhone}`).catch(() => {}) : undefined, off: 'No phone' },
+    { key: 'wa', label: 'WhatsApp', icon: MessageCircle, fg: WA_INK, bg: WA_LIGHT, onPress: driverPhone ? () => Linking.openURL(`https://wa.me/${digits(driverPhone)}`).catch(() => {}) : undefined, off: 'No phone' },
+    { key: 'nav', label: phase === 'active' && nextIdx >= 0 ? 'To next stop' : 'Directions', icon: Navigation, fg: '#6D28D9', bg: '#F1EBFD', onPress: hasTarget ? () => Linking.openURL(mapsLink(target.location_lat, target.location_lng)).catch(() => {}) : undefined, off: 'No pin' },
+    { key: 'status', label: 'Send status', icon: Send, fg: '#C2410C', bg: '#FFEFE6', onPress: () => quick('status') },
   ];
 
   return (
     <View style={{ flex: 1, backgroundColor: PAGE }}>
       <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
       <ScrollView
+        ref={scrollRef}
         onScroll={(e) => { const v = e.nativeEvent.contentOffset.y > MAP_H - insets.top - 70; if (v !== pastMap) setPastMap(v); }}
         scrollEventThrottle={16}
         contentContainerStyle={{ paddingBottom: (next ? 110 : 32) + insets.bottom }}
@@ -276,19 +318,28 @@ export default function TripDetailsScreen() {
                 </Text>
               </View>
             ) : <View />}
-            <TouchableOpacity style={s.mapBtn} onPress={() => setFullMap(true)} accessibilityLabel="Open full-screen map">
-              <Maximize2 size={16} color={INK} strokeWidth={2.3} />
-            </TouchableOpacity>
+            {liveView ? (
+              // A running trip with a truck on GPS: the live map (2D / 3D / Drive / Route, ETA).
+              <TouchableOpacity style={s.liveBtn} onPress={() => router.push({ pathname: '/trip-live', params: { id: trip.id } })} accessibilityLabel="Open the live map" activeOpacity={0.85}>
+                <Navigation size={14} color={Colors.white} strokeWidth={2.4} />
+                <Text style={s.liveBtnText}>Live view</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={s.mapBtn} onPress={() => setFullMap(true)} accessibilityLabel="Open full-screen map">
+                <Maximize2 size={16} color={INK} strokeWidth={2.3} />
+              </TouchableOpacity>
+            )}
           </View>
           <View style={s.sheetTop}>
             <TripHeader trip={trip} phase={phase} f={f}>
               <View style={s.actions}>
                 {actions.map((a) => (
-                  <TouchableOpacity key={a.key} style={[s.action, !a.onPress && { opacity: 0.35 }]} disabled={!a.onPress} onPress={() => { tap(); a.onPress?.(); }} activeOpacity={0.7}>
-                    <View style={s.actionIcon}>
-                      <a.icon size={19} color={INK} strokeWidth={2.1} />
+                  <TouchableOpacity key={a.key} style={s.action} disabled={!a.onPress} onPress={() => { tap(); a.onPress?.(); }} activeOpacity={0.7}
+                    accessibilityRole="button" accessibilityLabel={a.onPress ? a.label : `${a.label}, ${a.off}`} accessibilityState={{ disabled: !a.onPress }}>
+                    <View style={[s.actionIcon, { backgroundColor: a.onPress ? a.bg : '#F4F4F5', borderColor: a.onPress ? a.fg + '33' : 'transparent' }]}>
+                      <a.icon size={20} color={a.onPress ? a.fg : '#B4B4BC'} strokeWidth={2.3} />
                     </View>
-                    <Text style={s.actionText} numberOfLines={1}>{a.label}</Text>
+                    <Text style={[s.actionText, { color: a.onPress ? a.fg : '#A1A1AA' }]} numberOfLines={1}>{a.onPress ? a.label : a.off}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -314,16 +365,19 @@ export default function TripDetailsScreen() {
         </View>
 
         {/* 2 · tab body */}
-        <View style={{ paddingHorizontal: 16 }}>
+        <View style={{ paddingHorizontal: 16 }} onLayout={(e) => { tabBodyY.current = e.nativeEvent.layout.y; }}>
           {tab === 'stops' ? (
             <StopsTab
               trip={trip}
               phase={phase}
               updates={updates}
               f={f}
-              onOpenStopMedia={openStopMedia}
+              onOpenPhotos={openPhotos}
+              onSendUpdate={(u) => setShare({ type: 'update', update: u })}
               onCheckTimes={() => setCheckingTimes(true)}
               onSetPin={(st) => setPinTarget({ stop: st, label: stopName(st, stops.indexOf(st)) })}
+              focusStopId={focusStop}
+              onStopLayout={params.stop ? onStopLayout : undefined}
             />
           ) : (
             <DetailsTab
@@ -380,6 +434,7 @@ export default function TripDetailsScreen() {
         startIndex={viewer?.index ?? 0}
         title={viewer?.title ?? ''}
         onClose={() => setViewer(null)}
+        status={viewer?.update ? sendStatus(viewer.update) : undefined}
         onSend={viewer?.update ? () => { const u = viewer.update!; setViewer(null); setTimeout(() => setShare({ type: 'update', update: u }), 250); } : undefined}
       />
       <PinSheet target={pinTarget} tripId={trip.id} onClose={() => setPinTarget(null)} onSaved={reload} />
@@ -396,7 +451,7 @@ export default function TripDetailsScreen() {
         tracking={tracking?.enabled && tracking.url ? { sub: trackingSub(tracking.open_count, tracking.last_opened_at), onPress: trackingActions } : null}
       />
       <UploadSheet visible={sheet === 'upload'} onClose={() => setSheet(null)} onPick={upload} />
-      <ActivitySheet visible={sheet === 'activity'} trip={trip} f={f} onClose={() => setSheet(null)} />
+      <ActivitySheet visible={sheet === 'activity'} trip={trip} f={f} halts={overview?.halts ?? null} onClose={() => setSheet(null)} />
       <ChargesSheet visible={sheet === 'charges'} trip={trip} onClose={() => setSheet(null)} onSaved={reload} />
       <PickerSheet
         visible={!!picker}
@@ -442,6 +497,8 @@ const s = StyleSheet.create({
   gpsChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7, ...shadow },
   gpsDot: { width: 8, height: 8, borderRadius: 4 },
   gpsText: { fontSize: 12, fontWeight: '700', color: INK },
+  liveBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 38, borderRadius: 19, paddingHorizontal: 14, backgroundColor: INK, ...shadow },
+  liveBtnText: { fontSize: 13, fontWeight: '700', color: Colors.white },
   mapBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.96)', alignItems: 'center', justifyContent: 'center', ...shadow },
   // The map has a rounded bottom edge; the header card sits just below it.
   sheetTop: { marginTop: 14, paddingHorizontal: 16 },
@@ -453,8 +510,8 @@ const s = StyleSheet.create({
   badgeText: { color: Colors.white, fontSize: 11, fontWeight: '800' },
   actions: { flexDirection: 'row', paddingTop: 14, borderTopWidth: 1, borderTopColor: '#F1F1F3' },
   action: { flex: 1, alignItems: 'center', gap: 6 },
-  actionIcon: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#F4F4F5', alignItems: 'center', justifyContent: 'center' },
-  actionText: { fontSize: 12, fontWeight: '500', color: MUTED },
+  actionIcon: { width: 50, height: 50, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  actionText: { fontSize: 12, fontWeight: '700' },
   tabOn: { backgroundColor: Colors.white, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
   tabText: { fontSize: 14, fontWeight: '600', color: MUTED },
   tabTextOn: { color: INK, fontWeight: '700' },

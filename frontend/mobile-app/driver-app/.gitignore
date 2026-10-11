@@ -38,6 +38,7 @@ yarn-error.*
 
 example
 
-# generated native folders
-/ios
+# generated native folders. ios/ is committed so Xcode Cloud can find the project
+# (its own .gitignore leaves out Pods/ and build/); Xcode Cloud regenerates it
+# before every build — docs/XCODE_CLOUD_SETUP.md
 /android

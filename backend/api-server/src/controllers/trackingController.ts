@@ -103,7 +103,8 @@ function sendGone(res: Response, state: 'not_found' | 'expired' | 'cancelled' | 
  */
 export const getPublicTracking = async (req: Request, res: Response) => {
   try {
-    const result = await loadPublicTracking(prisma, String(req.params.token || ''), { countView: req.query.view === '1', device: deviceLabel(req.headers['user-agent']) });
+    const via = typeof req.query.c === 'string' ? req.query.c : null;
+    const result = await loadPublicTracking(prisma, String(req.params.token || ''), { countView: req.query.view === '1', device: deviceLabel(req.headers['user-agent']), ip: req.ip ?? null, via });
     if (result.state !== 'ok') return sendGone(res, result.state);
     res.json({ success: true, data: result.data });
   } catch (error) {
@@ -115,7 +116,7 @@ export const getPublicTracking = async (req: Request, res: Response) => {
 /** GET /public/fleet/:token — the customer-wide page: every truck of theirs on the road. */
 export const getPublicFleetTracking = async (req: Request, res: Response) => {
   try {
-    const result = await loadCustomerFleetTracking(prisma, String(req.params.token || ''), { countView: req.query.view === '1', device: deviceLabel(req.headers['user-agent']) });
+    const result = await loadCustomerFleetTracking(prisma, String(req.params.token || ''), { countView: req.query.view === '1', device: deviceLabel(req.headers['user-agent']), ip: req.ip ?? null });
     if (result.state !== 'ok') return sendGone(res, result.state);
     res.json({ success: true, data: result.data });
   } catch (error) {

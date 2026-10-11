@@ -77,7 +77,8 @@ export function LiveNow({ units, tz, now, onOpenMap, onOpenTrip, onAll }: {
       <View style={s.card}>
         <TouchableOpacity style={s.map} onPress={() => { tap(); onOpenMap(); }} activeOpacity={0.9} accessibilityRole="button" accessibilityLabel="Open fleet map">
           <View style={StyleSheet.absoluteFill} pointerEvents="none">
-            <FleetMap units={onRoad} padding={{ top: 24, bottom: 24 }} />
+            {/* Every truck with a position, so the map shows even when nothing is on the road. */}
+            <FleetMap units={units} padding={{ top: 24, bottom: 24 }} />
           </View>
           <View style={s.expand} pointerEvents="none"><Maximize2 size={15} color={INK} strokeWidth={2.2} /></View>
         </TouchableOpacity>

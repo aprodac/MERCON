@@ -1,5 +1,5 @@
 # Codemagic Android builds for the two MERCON mobile apps (Expo, prebuilt on the build machine).
-# iOS is built and uploaded from Xcode on the Mac only (docs/IOS_DISTRIBUTION_AND_PUSH.md).
+# iOS is built on Xcode Cloud, started from GitHub Actions (docs/XCODE_CLOUD_SETUP.md).
 # Setup steps (keystore): docs/CODEMAGIC_SETUP.md
 #
 # Workflows (all started manually from the Codemagic UI):

@@ -9,7 +9,6 @@
 import axios from 'axios';
 import Constants from 'expo-constants';
 import { safeSecureStore as SecureStore } from './secure-store';
-import { router } from 'expo-router';
 import { translate } from './language-context';
 import { LanguageMode } from './translations';
 import { getInstallId } from './install-id';
@@ -92,17 +91,42 @@ api.interceptors.request.use(async (config) => {
 // Login attempts themselves are excluded: a 401 there is just "wrong
 // credentials" (handled by auth-context's dual-endpoint signIn), not an
 // expired session, and there's no session to clear yet anyway.
+//
+// This used to call router.replace('/login') on every 401 without clearing the
+// signed-in state, so each failed request (screens refetching, polling, the
+// sign-out cleanup calls) pushed another login screen and it slid in again and
+// again. Now only a 401 for the current token ends the session, only once, and
+// the auth guard in app/_layout.tsx does the single redirect to login.
+let onSessionExpired: (() => Promise<void>) | null = null;
+let expiring: Promise<void> | null = null;
+
+/** Called by AuthProvider so an expired token signs the user out through it. */
+export function setSessionExpiredHandler(handler: (() => Promise<void>) | null) {
+  onSessionExpired = handler;
+}
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const isLoginRequest = LOGIN_PATHS.some((p) => error.config?.url?.includes(p));
-    if (error.response?.status === 401 && !isLoginRequest) {
-      setAuthToken(null);
-      await Promise.all([
-        SecureStore.deleteItemAsync(TOKEN_KEY),
-        SecureStore.deleteItemAsync(SESSION_KEY),
-      ]);
-      router.replace('/login');
+    // Requests sent without a token (already signed out) or with an older
+    // token (finished after a new sign-in) say nothing about this session.
+    const sentToken = String(error.config?.headers?.Authorization ?? '').replace(/^Bearer /, '');
+    const isCurrentSession = !!sentToken && sentToken === inMemoryToken;
+    if (error.response?.status === 401 && !isLoginRequest && isCurrentSession && !expiring) {
+      expiring = (async () => {
+        if (onSessionExpired) {
+          await onSessionExpired();
+        } else {
+          setAuthToken(null);
+          await Promise.all([
+            SecureStore.deleteItemAsync(TOKEN_KEY),
+            SecureStore.deleteItemAsync(SESSION_KEY),
+          ]);
+        }
+      })()
+        .catch(() => {})
+        .finally(() => { expiring = null; });
     }
     return Promise.reject(error);
   },

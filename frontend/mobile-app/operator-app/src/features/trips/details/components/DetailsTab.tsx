@@ -17,6 +17,7 @@ import type { LiveGpsFix, OperatorTripDetail, OperatorTripDocument, TripOverview
 import {
   ON_TIME_GRACE_MIN, TONE, type Tone, ago, billingLabel, canChangeAssignment, formatDuration, lineType, minutesLate, moneyOf, sar, sortedStops,
   type Formatters,
+  tripLegsOf,
 } from '../tripDetailsModel';
 import { Card, Chip, Divider, INK, InfoRow, MUTED, SectionHead } from './parts';
 
@@ -32,10 +33,33 @@ interface Props {
   onOpenDoc: (doc: OperatorTripDocument) => void;
 }
 
+/**
+ * When the trip runs. A round trip gets one line per leg with real dates —
+ * its way back often starts the next day (out Thu 04:00 → 16:53, back Thu
+ * 23:00 → Fri 11:53).
+ */
+function scheduleRows(trip: OperatorTripDetail, f: Formatters): { label: string; value: string }[] {
+  const legs = tripLegsOf(trip);
+  const span = (a?: string | null, b?: string | null) =>
+    a && b ? `${f.dayTime(a)} → ${f.dayKey(a) === f.dayKey(b) ? f.time(b) : f.dayTime(b)}` : a ? f.dayTime(a) : b ? `by ${f.dayTime(b)}` : '—';
+  if (!legs.round) {
+    return [
+      { label: 'Scheduled', value: trip.planned_start ? f.dayTime(trip.planned_start) : '—' },
+      ...(trip.planned_end ? [{ label: 'Due by', value: f.dayTime(trip.planned_end) }] : []),
+    ];
+  }
+  const out = legs.outbound;
+  const back = legs.ret;
+  return [
+    { label: 'Leg 1 · going', value: span(out[0]?.planned_arrival || trip.planned_start, out[out.length - 1]?.planned_arrival) },
+    { label: 'Leg 2 · returning', value: span(back[0]?.planned_arrival, back[back.length - 1]?.planned_arrival || trip.planned_end) },
+  ];
+}
+
 export function DetailsTab({ trip, phase, overview, f, onChange, onCharges, onUpload, onActivity, onOpenDoc }: Props) {
   const paperwork = (trip.documents ?? []).filter((d) => !['POD', 'Waybill', 'Emergency'].includes(d.doc_type ?? ''));
   const info: { label: string; value: string; mono?: boolean }[] = [
-    { label: 'Scheduled', value: trip.planned_start ? f.dayTime(trip.planned_start) : '—' },
+    ...scheduleRows(trip, f),
     { label: 'Line type', value: lineType(trip) },
     { label: 'Billing', value: billingLabel(trip) },
     ...(trip.awb_number ? [{ label: 'AWB', value: trip.awb_number, mono: true }] : []),

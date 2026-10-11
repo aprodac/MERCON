@@ -1,0 +1,72 @@
+name: iOS Build (Xcode Cloud)
+
+# Builds the iOS apps on Apple's Xcode Cloud and sends them to TestFlight —
+# no Mac needed. Anyone with access to this repo can run it:
+#   Actions → "iOS Build (Xcode Cloud)" → Run workflow → pick the branch + app
+#   or: gh workflow run ios-xcode-cloud.yml --ref dev -f app=driver
+#
+# Branch decides the API: main → https://mercon.tech/api, anything else → dev.
+# The build number comes from Xcode Cloud (always higher than the last one).
+# Which TestFlight groups (internal / external) get the build is set in the
+# Xcode Cloud workflow's post-actions, not here.
+#
+# This job only starts the build and waits for its result; the build itself
+# runs on Apple's machines (free plan: 25 hours a month).
+# One-time setup (Xcode Cloud workflows + the ASC_* secrets): docs/XCODE_CLOUD_SETUP.md
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: 'Which app'
+        type: choice
+        options: [driver, operator, both]
+        default: driver
+      wait:
+        description: 'Wait for the build to finish (shows pass/fail here)'
+        type: boolean
+        default: true
+
+jobs:
+  plan:
+    name: Pick apps
+    runs-on: ubuntu-latest
+    outputs:
+      apps: ${{ steps.pick.outputs.apps }}
+    steps:
+      - id: pick
+        run: |
+          case "${{ inputs.app }}" in
+            driver)   echo 'apps=["tech.merconapp.driver"]' >> "$GITHUB_OUTPUT" ;;
+            operator) echo 'apps=["tech.mercon.operator"]' >> "$GITHUB_OUTPUT" ;;
+            both)     echo 'apps=["tech.merconapp.driver","tech.mercon.operator"]' >> "$GITHUB_OUTPUT" ;;
+          esac
+
+  build:
+    name: ${{ matrix.bundle_id }} · ${{ github.ref_name }}
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        bundle_id: ${{ fromJSON(needs.plan.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+
+      - name: Start Xcode Cloud build
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+          XCODE_CLOUD_WORKFLOW: ${{ vars.XCODE_CLOUD_WORKFLOW || 'TestFlight' }}
+        run: >
+          node .github/scripts/xcode-cloud-build.mjs
+          "${{ matrix.bundle_id }}" "${{ github.ref_name }}"
+          ${{ inputs.wait && '--wait' || '' }}

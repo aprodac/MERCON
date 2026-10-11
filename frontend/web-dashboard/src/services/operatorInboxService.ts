@@ -30,6 +30,9 @@ export interface DriverUpdate {
   unsent_count: number;
 }
 
+/** A photo set waits to be forwarded only while none of it has gone out — one photo of a set is usually enough. */
+export const needsSending = (u: Pick<DriverUpdate, 'items' | 'sent_ids'>): boolean => u.items.length > 0 && u.sent_ids.length === 0;
+
 export interface ExpiryItem {
   key: string;
   entity_type: 'Vehicle' | 'Driver' | 'Customer' | 'Company' | 'Other';
@@ -78,6 +81,8 @@ export const operatorInboxService = {
     recipient: ShareRecipient;
     recipient_phone?: string | null;
     channel: ShareChannel;
+    /** 2–4 photos as one combined picture with the message under it (company WhatsApp only). */
+    combine?: boolean;
   }): Promise<ShareResult> {
     const res = await api.post<ApiResponse<ShareResult>>('/operator-inbox/driver-updates/share', body);
     return res.data.data;

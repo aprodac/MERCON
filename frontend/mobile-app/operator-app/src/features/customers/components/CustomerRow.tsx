@@ -31,7 +31,7 @@ export function CustomerRow({ customer: c, permissions, onPress, onEdit, onToggl
 
   return (
     <TouchableOpacity style={s.row} activeOpacity={0.8} onPress={onPress} accessibilityRole="button" accessibilityLabel={`Open ${c.name}`}>
-      <CompanyAvatar name={c.name} size={46} />
+      <CompanyAvatar name={c.name} url={c.logoUrl} size={46} />
       <View style={s.text}>
         <Text style={s.name} numberOfLines={2}>{niceName(c.name)}</Text>
         <View style={s.metaRow}>

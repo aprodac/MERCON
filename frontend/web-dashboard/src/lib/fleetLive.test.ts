@@ -48,15 +48,18 @@ describe('fleet live map helpers', () => {
     expect(eta.arrival!.toISOString()).toBe('2026-09-26T10:45:00.000Z');
     expect(eta.distanceKm).toBe(42);
     expect(eta.lateByMin).toBe(15);
-    expect(punctuality(eta.lateByMin)).toEqual({ label: '15 min late', tone: 'bad' });
-    expect(punctuality(3)).toEqual({ label: 'On time', tone: 'good' });
+    expect(punctuality(eta.lateByMin)).toEqual({ label: '15 min late', late: true });
+    expect(punctuality(3)).toEqual({ label: 'On time', late: false });
   });
 
-  it('without a route there is no ETA, only a straight-line distance', () => {
+  it('without a road route the ETA is an estimate, never a dash, and never says late', () => {
     const eta = computeEta(unit(), null, NOW)!;
-    expect(eta.arrival).toBeNull();
+    expect(eta.approx).toBe(true);
+    expect(eta.arrival).not.toBeNull();
     expect(eta.distanceIsRoad).toBe(false);
     expect(eta.distanceKm).toBeGreaterThan(10);
+    expect(eta.lateByMin).toBeNull();
+    expect(buildEtaShareText(unit(), eta, () => '14:38')).toContain('ETA: around 14:38 (about ');
   });
 
   it('builds a short ETA message for WhatsApp', () => {

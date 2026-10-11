@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { tripEnds } from '@mercon/shared-types';
 import {
   View, Text, StyleSheet, StatusBar, Image, TouchableOpacity, ScrollView, Share, Animated, ActivityIndicator,
 } from 'react-native';
@@ -186,10 +187,13 @@ const TripCompletedScreen = () => {
 
   const sortedStops = [...(activeTrip?.stops ?? [])].sort((x, y) => x.stop_sequence - y.stop_sequence);
   const firstStop = sortedStops[0];
-  const lastStop = sortedStops[sortedStops.length - 1];
+  // A round trip reads "Riyadh → Jeddah · round trip", not Riyadh → Riyadh.
+  const doneEnds = tripEnds(sortedStops as any[], (activeTrip as any)?.rate_category);
+  const lastStop = (doneEnds.round ? (doneEnds.to as typeof sortedStops[number] | null) : null) ?? sortedStops[sortedStops.length - 1];
   const originName = stopLabel(firstStop) || activeTrip?.origin || null;
   const destinationName = stopLabel(lastStop) || activeTrip?.destination || null;
-  const routeText = originName && destinationName ? `${originName} → ${destinationName}` : destinationName || originName;
+  const routeText = (originName && destinationName ? `${originName} → ${destinationName}` : destinationName || originName)
+    + (doneEnds.round ? ` · ${t('label_round_trip_back', 'round trip')}` : '');
 
   const fmtDateTime = (v?: string | null) =>
     v ? new Date(v).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
@@ -229,7 +233,8 @@ const TripCompletedScreen = () => {
     if (!nextTrip) return null;
     const st = [...(nextTrip.stops ?? [])].sort((x, y) => x.stop_sequence - y.stop_sequence);
     const from = stopLabel(st[0]) || nextTrip.origin;
-    const to = stopLabel(st[st.length - 1]) || nextTrip.destination;
+    const nextEnds = tripEnds(st as any[], (nextTrip as any).rate_category);
+    const to = stopLabel((nextEnds.round ? (nextEnds.to as typeof st[number] | null) : null) ?? st[st.length - 1]) || nextTrip.destination;
     const when = nextTrip.planned_start
       ? new Date(nextTrip.planned_start).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false })
       : null;

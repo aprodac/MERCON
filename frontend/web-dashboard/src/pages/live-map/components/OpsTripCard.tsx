@@ -11,6 +11,7 @@ import {
   stopName, stopProgress, type AttentionReason,
 } from '@/lib/liveOps';
 import TripStatusMenu from './TripStatusMenu';
+import { splitLegs } from '@mercon/shared-types';
 
 interface Props {
   trip: Trip;
@@ -50,8 +51,11 @@ const OpsTripCard = forwardRef<HTMLDivElement, Props>(function OpsTripCard(
   ref,
 ) {
   const stops = trip.stops ?? [];
-  const first = stops[0];
-  const last = stops.length > 1 ? stops[stops.length - 1] : null;
+  // A round trip shows its way out and "↺" — not Riyadh → Riyadh.
+  const legs = splitLegs(stops, trip.rate_category);
+  const routeStops = legs.round ? legs.outbound : stops;
+  const first = routeStops[0];
+  const last = routeStops.length > 1 ? routeStops[routeStops.length - 1] : null;
   const progress = stopProgress(trip);
   const active = isActiveTrip(trip);
   const nextIdx = active ? nextStopIndex(stops) : null;
@@ -120,7 +124,12 @@ const OpsTripCard = forwardRef<HTMLDivElement, Props>(function OpsTripCard(
               <span className="min-w-0 truncate">{stopName(last)}</span>
             </>
           )}
-          {stops.length > 2 && <span className="shrink-0 text-[11px] text-muted-foreground">+{stops.length - 2}</span>}
+          {routeStops.length > 2 && <span className="shrink-0 text-[11px] text-muted-foreground">+{routeStops.length - 2}</span>}
+          {legs.round && (
+            <span className="shrink-0 rounded bg-violet-50 px-1 text-[10px] font-semibold text-violet-700 dark:bg-violet-950/50 dark:text-violet-300" title="Round trip">
+              ↺{active && legs.currentLeg ? ` leg ${legs.currentLeg}` : ''}
+            </span>
+          )}
         </div>
       )}
 

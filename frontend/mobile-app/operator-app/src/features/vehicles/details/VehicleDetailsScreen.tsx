@@ -404,7 +404,7 @@ export default function VehicleDetailsScreen() {
                       <TouchableOpacity key={t.id} style={[s.line, i > 0 && s.lineBorder]} activeOpacity={0.6} onPress={() => openTrip(t.id)}>
                         <View style={s.date}>
                           <Text style={s.dateDay}>{d ? d.getDate() : '—'}</Text>
-                          <Text style={s.dateMonth}>{d ? d.toLocaleDateString(undefined, { month: 'short' }) : ''}</Text>
+                          <Text style={s.dateMonth}>{d ? d.toLocaleDateString('en-GB', { month: 'short' }) : ''}</Text>
                         </View>
                         <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
                           <Text style={s.rowTitle} numberOfLines={1}>

@@ -3,6 +3,8 @@ import { prisma } from '../db';
 import { createNotification } from './notificationController';
 import { recordDriverActivity } from '../services/driverPhone/activity';
 import { findDriverVehicle } from '../services/driverVehicle';
+import { driverSender } from '../services/staffAlerts/sender';
+import { publicBaseUrl } from './operatorInboxController';
 import { Role, TripStatus, DocType } from '@prisma/client';
 
 /**
@@ -31,7 +33,7 @@ export const raiseEmergency = async (req: Request, res: Response) => {
   try {
     const driver = await prisma.driver.findUnique({
       where: { id: driverId },
-      select: { first_name: true, last_name: true, ref_id: true, phone_primary: true },
+      select: { first_name: true, last_name: true, ref_id: true, phone_primary: true, avatar_url: true },
     });
     if (!driver) return res.status(404).json({ success: false, error: { message: 'Driver not found' } });
 
@@ -81,9 +83,15 @@ export const raiseEmergency = async (req: Request, res: Response) => {
       select: { id: true },
     });
 
+    // On the phone it comes from the driver (their name and photo), like their trip updates.
+    const push = {
+      title: driverName,
+      body: `🚨 Emergency: ${incident_type}.${tripStr}${phoneStr}${locationStr}${notesStr}${photosStr}`,
+      sender: driverSender(publicBaseUrl(req), { id: driverId, avatar_url: driver.avatar_url }, driverName),
+    };
     await Promise.all(
       staff.map((u) =>
-        createNotification(u.id, '🚨 Driver Emergency', message, 'Emergency', entityType, entityId),
+        createNotification(u.id, '🚨 Driver Emergency', message, 'Emergency', entityType, entityId, push),
       ),
     );
 

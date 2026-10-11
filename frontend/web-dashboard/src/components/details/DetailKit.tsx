@@ -13,6 +13,7 @@
  *   label        text-[10px] font-extrabold uppercase tracking-widest
  *   micro label  text-[9px]  font-extrabold uppercase tracking-widest
  */
+import { splitLegs } from '@mercon/shared-types';
 import type { ElementType, ReactNode } from 'react';
 import {
   ArrowLeft, ArrowRight, Banknote, Calendar, ChevronLeft, ChevronRight, Edit2, FileText, MapPin, MoreVertical, Package, Search, Truck, User,
@@ -129,8 +130,11 @@ export function routeOf(entity: any): { origin: string; destination: string } {
   const stops = Array.isArray(entity?.stops)
     ? [...entity.stops].sort((a, b) => (a.stop_sequence ?? a.sequence ?? 0) - (b.stop_sequence ?? b.sequence ?? 0))
     : [];
-  const pickup = stops.find((s) => s.stop_type === 'Pickup') || stops[0];
-  const dropoff = [...stops].reverse().find((s) => s.stop_type === 'Dropoff') || stops[stops.length - 1];
+  // A round trip's destination is its turn-around point (the way out's last drop), not home.
+  const legs = splitLegs(stops, entity?.rate_category || entity?.line_type);
+  const way = legs.round ? legs.outbound : stops;
+  const pickup = way.find((s) => s.stop_type === 'Pickup') || way[0];
+  const dropoff = [...way].reverse().find((s) => s.stop_type === 'Dropoff') || way[way.length - 1];
   const origin =
     stopLabel(pickup) ||
     clean(entity?.route_origin) ||

@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import gsap from 'gsap';
 import { Minus, EyeOff, X, Sparkles, Loader2, Truck, CalendarCheck } from 'lucide-react';
-import { SUGGESTED_CHARGE_TYPES, SUGGESTED_UNIT_BY_CHARGE_TYPE } from '@mercon/shared-types';
+import { SUGGESTED_CHARGE_TYPES, SUGGESTED_UNIT_BY_CHARGE_TYPE, splitLegs } from '@mercon/shared-types';
 import { surchargeRuleService } from '@/services/quotationService';
 import { customerService } from '@/services/customerService';
 import DriverAvatar from '@/components/ui/DriverAvatar';
@@ -372,10 +372,12 @@ export default function OperationsAssistant() {
   };
   const completedOn = trip?.actual_end || trip?.planned_start;
   const route = (() => {
-    const stops = trip?.stops ?? [];
+    // A round trip: its way out (Riyadh → Jeddah), not first → last stop.
+    const legs = splitLegs(trip?.stops ?? [], trip?.rate_category);
+    const stops = legs.round ? legs.outbound : trip?.stops ?? [];
     const name = (st?: ChargeReviewTrip['stops'][number]) => st?.location?.name || st?.location_name || '—';
     const work = stops.filter((st) => st.stop_type === 'Pickup' || st.stop_type === 'Dropoff');
-    return { from: name(work[0] || stops[0]), to: name(work[work.length - 1] || stops[stops.length - 1]), extra: Math.max(0, work.length - 2) };
+    return { from: name(work[0] || stops[0]), to: `${name(work[work.length - 1] || stops[stops.length - 1])}${legs.round ? ' ↺' : ''}`, extra: Math.max(0, work.length - 2) };
   })();
   const waitingDays = trip ? daysWaiting(trip) : 0;
 

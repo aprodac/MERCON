@@ -10,7 +10,7 @@ import { billingTypeVariants, getLegEndpoints, isRoundTripCategory, lineTypeVari
  */
 
 export const quotationInclude = {
-  customer: { select: { id: true, name: true } },
+  customer: { select: { id: true, name: true, logo_url: true } },
   stops: {
     include: {
       location: { select: { id: true, name: true, lat: true, lng: true } },

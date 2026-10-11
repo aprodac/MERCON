@@ -171,6 +171,7 @@ model User {
   verifiedDocs         Document[]            @relation("VerifiedBy")
   driver               Driver?
   notifications        Notification[]
+  devices              UserDevice[]
   tripStopDelayLogs    TripStop[]            @relation("TripStopDelayLogger")
   tripAssignmentEvents TripAssignmentEvent[]
   tripUpdateShares     TripUpdateShare[]     @relation("TripUpdateShareUser")
@@ -762,6 +763,25 @@ model TripUpdateShare {
   first_opened_at DateTime? @db.Timestamptz
   last_opened_at  DateTime? @db.Timestamptz
   opens           TrackingLinkOpen[]
+  /// Turned off by ops (Links page) — the page then says the link has expired.
+  revokedAt       DateTime? @db.Timestamptz
+  revoked_by      String?   @db.Uuid
+  /// Ops chose the expiry: the link lasts exactly until expiresAt, even past the
+  /// trip's finish (otherwise it also ends TRACKING_AFTER_END_DAYS after the finish).
+  expiry_custom   Boolean   @default(false)
+  /// Ops' own note for the link, e.g. "Sent to the Jeddah warehouse".
+  label           String?
+  // What this link's page shows. The first three override the customer's
+  // tracking_* setting (null = follow the customer); the last three are per link only.
+  show_deadline      Boolean?
+  show_delay_reason  Boolean?
+  show_photos        Boolean?
+  /// The driver's first name and photo.
+  show_driver        Boolean   @default(true)
+  /// The truck's plate number and photo.
+  show_plate         Boolean   @default(true)
+  /// The truck on the map and the road it drove; off = status, stops and ETA only.
+  show_position      Boolean   @default(true)
 
   @@index([tripId, update_key])
   @@map("trip_update_shares")
@@ -778,9 +798,24 @@ model CustomerTrackingLink {
   createdAt      DateTime  @default(now()) @db.Timestamptz
   /// Set when replaced by a new link; the old one then stops working.
   revokedAt      DateTime? @db.Timestamptz
+  revoked_by     String?   @db.Uuid
+  /// Null = never expires (the default for the all-trucks page).
+  expiresAt      DateTime? @db.Timestamptz
+  label          String?
   open_count     Int       @default(0)
   last_opened_at DateTime? @db.Timestamptz
   opens          TrackingLinkOpen[]
+  // What this link's page shows. The first three override the customer's
+  // tracking_* setting (null = follow the customer); the last three are per link only.
+  show_deadline      Boolean?
+  show_delay_reason  Boolean?
+  show_photos        Boolean?
+  /// The driver's first name and photo.
+  show_driver        Boolean   @default(true)
+  /// The truck's plate number and photo.
+  show_plate         Boolean   @default(true)
+  /// The truck on the map and the road it drove; off = status, stops and ETA only.
+  show_position      Boolean   @default(true)
 
   @@index([customerId])
   @@map("customer_tracking_links")
@@ -798,6 +833,10 @@ model TrackingLinkOpen {
   opened_at      DateTime              @default(now()) @db.Timestamptz
   /// e.g. "iPhone · Safari", "Android · Chrome".
   device         String?
+  /// Rough place looked up from the visitor's IP on this server (DB-IP Lite);
+  /// the IP itself is never stored. "Jeddah", "SA".
+  city           String?
+  country        String?
 
   @@index([tripShareId, opened_at])
   @@index([customerLinkId, opened_at])
@@ -815,6 +854,11 @@ model TripLocation {
   accuracy_m Float?
   recordedAt DateTime @db.Timestamptz
   createdAt  DateTime @default(now()) @db.Timestamptz
+  // Which GPS sent it: "driver" (the driver app) or "vehicle" (the truck's
+  // tracker, saved during a trip by services/icces/fleetPoller.ts so a trip
+  // has a path and its stops/breaks even when the phone isn't sending).
+  // Readers that mean the phone filter on "driver".
+  source     String   @default("driver")
 
   @@index([tripId, recordedAt])
 }
@@ -2251,6 +2295,10 @@ model Notification {
   is_read     Boolean @default(false)
   entity_type String? // "Trip", "Driver", "Vehicle"
   entity_id   String? @db.Uuid
+  // Where inside the entity a tap should open, e.g. {"tab":"stops","stopId":"…"}
+  // or {"tab":"stops","documentId":"…"} for the photos a driver sent. Null = the
+  // entity's page as before. Shape: NotificationTarget (notificationController).
+  target      Json?
 
   // Driver notifications only: when the driver tapped the push (opened_at) and
   // when they first saw it in the app (read_at). is_read stays for old clients.
@@ -2304,6 +2352,31 @@ model DriverDevice {
   @@map("driver_devices")
 }
 
+// One row per operator-app install signed in as an Admin or Operator, so
+// staff alerts (emergencies, delays, password resets…) reach their phone as a
+// push. A row follows whoever last signed in on that install.
+model UserDevice {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Random id the app keeps in secure storage for the life of the install.
+  install_id String?  @unique
+  token      String?  @unique
+  platform   String
+  // The API address this install talks to ("https://mercon.tech"), from its
+  // sign-in — where the iOS extension reports that a push arrived.
+  api_base   String?
+  isActive   Boolean  @default(true)
+  lastSeenAt DateTime @default(now()) @db.Timestamptz
+  createdAt  DateTime @default(now()) @db.Timestamptz
+  updatedAt  DateTime @updatedAt @db.Timestamptz
+
+  pushDeliveries PushDelivery[]
+
+  @@index([userId, isActive])
+  @@map("user_devices")
+}
+
 // One push attempt: a driver notification sent to one device (or a NoDevice
 // row when the driver had nowhere to send it). Expo first answers with a
 // ticket; the driverWatch job later fetches the receipt that says whether
@@ -2314,6 +2387,9 @@ model PushDelivery {
   notification   Notification  @relation(fields: [notificationId], references: [id], onDelete: Cascade)
   deviceId       String?       @db.Uuid
   device         DriverDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  // Set instead of deviceId when the notification went to a staff phone.
+  userDeviceId   String?       @db.Uuid
+  userDevice     UserDevice?   @relation(fields: [userDeviceId], references: [id], onDelete: SetNull)
 
   status             String // NoDevice | Sent | Delivered | Failed | Unknown
   expo_ticket_id     String?
@@ -2322,6 +2398,9 @@ model PushDelivery {
   attempts           Int       @default(1)
   sent_at            DateTime  @default(now()) @db.Timestamptz
   receipt_checked_at DateTime? @db.Timestamptz
+  // When the phone itself got it — reported by the operator app's iOS
+  // extension (staff phones only; Android and the driver app don't report).
+  received_at        DateTime? @db.Timestamptz
 
   @@index([notificationId])
   @@index([status, sent_at])
@@ -2512,4 +2591,34 @@ model VehicleCompatibilityRule {
   updatedAt                  DateTime @default(now()) @updatedAt @db.Timestamptz
 
   @@index([serviceVehicleClassCode])
+}
+
+// What the ETA said, and when, for a stop not yet reached — kept to measure
+// how good ETAs are (System health → ETA accuracy): once the truck arrives,
+// predicted vs actual arrival per stop, by how far ahead it was predicted.
+// Written by services/tracking/etaWatcher.ts at most every 10 min per stop;
+// rows older than 120 days are removed there. No relations on purpose: a
+// deleted trip just leaves rows the report no longer joins to.
+model EtaPrediction {
+  id               String   @id @default(uuid()) @db.Uuid
+  tripId           String   @db.Uuid
+  stopId           String   @db.Uuid
+  predictedAt      DateTime @default(now()) @db.Timestamptz
+  predictedArrival DateTime @db.Timestamptz
+  // Road distance left, metres.
+  distanceMeters   Int
+  // True when there was no road route and the ETA was a straight-line estimate.
+  approx           Boolean  @default(false)
+
+  @@index([stopId])
+  @@index([predictedAt])
+}
+
+// Place names for map points ("Route 40, near Al Quwayiyah"), so a break on a
+// trip reads as a place, not coordinates. Looked up once per ~100 m (key:
+// lat,lng to 3 decimals) from OpenStreetMap and kept (services/geo/placeNames.ts).
+model PlaceName {
+  key       String   @id
+  name      String
+  createdAt DateTime @default(now()) @db.Timestamptz
 }

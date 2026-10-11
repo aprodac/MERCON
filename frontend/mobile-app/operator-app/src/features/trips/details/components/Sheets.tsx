@@ -7,7 +7,7 @@ import {
 import { SUGGESTED_CHARGE_TYPES, SUGGESTED_UNIT_BY_CHARGE_TYPE } from '@mercon/shared-types';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
-import { operatorService, type OperatorTripCharge, type OperatorTripDetail, type TripDocKind } from '../../../../lib/operator';
+import { operatorService, type OperatorTripCharge, type OperatorTripDetail, type TripDocKind, type TripHalt } from '../../../../lib/operator';
 import { TONE, activitySteps, canCancel, canEditTrip, sar, type Formatters, type QuickKind } from '../tripDetailsModel';
 import { ACTION, Divider, INK, MUTED, SheetRow } from './parts';
 
@@ -81,8 +81,8 @@ export function UploadSheet({ visible, onClose, onPick }: { visible: boolean; on
 
 // ── Activity log ──────────────────────────────────────────────────────────────
 
-export function ActivitySheet({ visible, trip, f, onClose }: { visible: boolean; trip: OperatorTripDetail; f: Formatters; onClose: () => void }) {
-  const steps = activitySteps(trip, f);
+export function ActivitySheet({ visible, trip, f, onClose, halts }: { visible: boolean; trip: OperatorTripDetail; f: Formatters; onClose: () => void; halts?: TripHalt[] | null }) {
+  const steps = activitySteps(trip, f, halts);
   return (
     <AppModal visible={visible} onClose={onClose} type="bottom-sheet" title="Activity log" maxHeight="85%">
       <ScrollView contentContainerStyle={{ paddingBottom: 12 }}>

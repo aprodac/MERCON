@@ -86,7 +86,7 @@ export const TRANSLATIONS: Record<string, TranslationItem> = {
   action_tap_to_retry: { en: 'Tap to retry', ur: 'دوبارہ کوشش کے لیے ٹیپ کریں' },
 
   // Authentication & Reset
-  label_phone: { en: 'Phone Number', ur: 'موبائل نمبر' },
+  label_phone: { en: 'Phone number', ur: 'موبائل نمبر' },
   placeholder_phone: { en: '50 000 0001', ur: '50 000 0001' },
   label_password: { en: 'Password or License Number', ur: 'پاس ورڈ یا لائسنس نمبر' },
   placeholder_password: { en: 'Enter password or license number', ur: 'پاس ورڈ یا لائسنس نمبر درج کریں' },
@@ -267,6 +267,7 @@ export const TRANSLATIONS: Record<string, TranslationItem> = {
   label_next_return_loading: { en: 'Next: return loading at {place}', ur: 'اگلا: {place} پر واپسی لوڈنگ' },
   action_start_round_2: { en: 'Start Round 2 of 2', ur: 'راؤنڈ 2 از 2 شروع کریں' },
   badge_outbound_finished: { en: 'Outbound Leg Finished · Round Trip', ur: 'روانگی مکمل · راؤنڈ ٹرپ' },
+  label_round_trip_back: { en: 'round trip', ur: 'راؤنڈ ٹرپ' },
   desc_proceed_return: { en: 'Outbound delivery confirmed. Proceed to Return Cargo Loading at:', ur: 'پہلی ڈلیوری کی تصدیق ہو چکی ہے۔ اب واپسی کے سامان کی لوڈنگ شروع کریں:' },
   label_return_point: { en: 'RETURN LOADING POINT', ur: 'واپسی لوڈنگ کا مقام' },
   action_start_return_loading: { en: 'Start Return Loading', ur: 'واپسی لوڈنگ شروع کریں' },

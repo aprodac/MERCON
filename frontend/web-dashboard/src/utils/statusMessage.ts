@@ -7,7 +7,7 @@
  * share and the dashboard share modal. The web has no live road ETA, so a
  * running trip shows its planned arrival — the live link carries the rest.
  */
-import { formatFleetStatusMessage, formatStatusEntry, formatTripStatusMessage, type StatusTrip } from '@mercon/shared-types';
+import { formatFleetStatusMessage, formatStatusEntry, formatTripStatusMessage, splitLegs, type StatusTrip } from '@mercon/shared-types';
 import type { Trip, TripStop } from '@/services/tripService';
 import { formatInDeploymentTz } from '@/lib/datetime';
 
@@ -47,10 +47,14 @@ const notStarted = (t: Trip) => t.status === 'Draft' || t.status === 'Scheduled'
 /** A dashboard trip as the shared status message reads it. */
 export function statusTripOf(t: Trip, tz = DEFAULT_TZ, trackingUrl?: string | null, notes?: string[]): StatusTrip {
   const stops = sortedStops(t);
-  const last = stops[stops.length - 1];
+  // A round trip reads as its way out (RUH → JED), not first → last stop (RUH → RUH, which looked local);
+  // its due time is the end of the leg the truck is on.
+  const legs = splitLegs(stops, t.rate_category);
+  const last = legs.round ? legs.outbound[legs.outbound.length - 1] : stops[stops.length - 1];
+  const legEnd = legs.round && legs.currentLeg === 2 ? stops[stops.length - 1] : last;
   const sameDay = (iso: string) => formatInDeploymentTz(iso, tz, 'yyyy-MM-dd') === formatInDeploymentTz(new Date(), tz, 'yyyy-MM-dd');
   const smart = (iso: string | null | undefined) => (iso ? formatInDeploymentTz(iso, tz, sameDay(iso) ? 'HH:mm' : 'd MMM HH:mm') : null);
-  const planned = last?.planned_arrival || t.planned_end || null;
+  const planned = legEnd?.planned_arrival || t.planned_end || null;
   return {
     from: placeOf(stops[0]),
     to: placeOf(last),

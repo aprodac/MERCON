@@ -22,12 +22,16 @@ import {
   pricingFromQuotation,
   quotationMatchesRoute,
   quotationsForRoute,
+  returnLegDayOffsets,
+  rosterClashes,
   routeLegsFromSlot,
+  slotScheduleFor,
   truckClassOfVehicle,
   validateTripDraft,
   zonedWallTimeToUtcIso,
   type DayAssignmentInput,
   type TripChargeInput,
+  type SlotStopPin,
   type TripSlotDraft,
   type TripValidationIssue,
 } from '@mercon/shared-types';
@@ -115,11 +119,30 @@ function emptySlot(): TripSlotDraft {
 
 /** A stop-fee list as long as its stops (older slots may hold fewer fees). */
 const padFees = (fees: string[] | undefined, n: number) => Array.from({ length: n }, (_, i) => fees?.[i] ?? '');
+/** A pin as the pin sheet hands it over. */
+type PickedStopPin = { lat: number; lng: number; address: string | null; exact: boolean };
+
+/** A search pick is approximate; a pasted link or a hand-placed pin is exact (owner rule 2026-10-03). */
+const stopPinOf = (pin: PickedStopPin): SlotStopPin => ({
+  lat: pin.lat,
+  lng: pin.lng,
+  address: pin.address,
+  precision: pin.exact ? 'EXACT' : 'APPROXIMATE',
+});
+
+/** A stop-pin list as long as its stops; null = the stop uses its saved place's pin. */
+const padPins = (pins: (SlotStopPin | null)[] | undefined, n: number) => Array.from({ length: n }, (_, i) => pins?.[i] ?? null);
 
 const num = (v?: string | number | null) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 };
+
+/** Clears a pickup / drop-off's own pin (address + precision), for when the place itself changes. */
+const NO_TRIP_PIN = {
+  origin: { originAddress: undefined, originPrecision: undefined },
+  destination: { destinationAddress: undefined, destinationPrecision: undefined },
+} as const;
 
 /** The route stored on a quotation, as slot fields. */
 function routeFromQuotation(q: OperatorQuotation): Partial<TripSlotDraft> {
@@ -144,15 +167,19 @@ function routeFromQuotation(q: OperatorQuotation): Partial<TripSlotDraft> {
     originLocationId: origin.locationId ?? null,
     originLat: origin.lat ?? null,
     originLng: origin.lng ?? null,
+    ...NO_TRIP_PIN.origin,
     destination: dest.name,
     destinationName: dest.name,
     destinationLocationId: dest.locationId ?? null,
     destinationLat: dest.lat ?? null,
     destinationLng: dest.lng ?? null,
+    ...NO_TRIP_PIN.destination,
     intermediateLocations: mids.map((m) => m.name),
     intermediateLocationIds: mids.map((m) => m.locationId ?? null),
     intermediateStopFees: mids.map(() => ''),
+    intermediateStopPins: mids.map(() => null),
     returnIntermediateStopFees: retMids.map(() => ''),
+    returnIntermediateStopPins: retMids.map(() => null),
     returnOrigin: ret.length ? ret[0].name : '',
     returnOriginLocationId: ret.length ? ret[0].locationId ?? null : null,
     returnDestination: ret.length > 1 ? ret[ret.length - 1].name : '',
@@ -222,7 +249,31 @@ function recentRoutesFrom(trips: OperatorTrip[]): RecentRoute[] {
   return [...map.values()].sort((a, b) => b.count - a.count || b.lastUsed - a.lastUsed).slice(0, 4);
 }
 
-export function useCreateTrip(params: { customerId?: string; billingType?: string; assignment?: string; vehicleId?: string }) {
+/** Opened from a lane search (Fleet map): its two ends, by name and city-centre coordinates. */
+export interface RoutePreset {
+  from?: string; fromLat?: string; fromLng?: string;
+  to?: string; toLat?: string; toLng?: string;
+}
+
+/** A blank trip, or one starting on a preset lane. A city centre is only approximate — the operator can pick the real site. */
+function initialSlot(p: RoutePreset): TripSlotDraft {
+  const slot = emptySlot();
+  const coord = (v?: string) => (v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : null);
+  if (!p.from?.trim() || !p.to?.trim()) return slot;
+  return {
+    ...slot,
+    origin: p.from.trim(),
+    originName: p.from.trim(),
+    originLat: coord(p.fromLat),
+    originLng: coord(p.fromLng),
+    destination: p.to.trim(),
+    destinationName: p.to.trim(),
+    destinationLat: coord(p.toLat),
+    destinationLng: coord(p.toLng),
+  };
+}
+
+export function useCreateTrip(params: { customerId?: string; billingType?: string; assignment?: string; vehicleId?: string; quotationId?: string } & RoutePreset) {
   const [tz, setTz] = useState('Asia/Riyadh');
   const [today, setToday] = useState(() => dateInZone(Date.now(), 'Asia/Riyadh'));
 
@@ -253,9 +304,10 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
   const [billingType, setBillingType] = useState<'Extra' | 'Monthly'>(params.billingType === 'Monthly' ? 'Monthly' : 'Extra');
   const [vehicleType, setVehicleType] = useState<string>('10 TON');
   // The slot as entered; `slot` below adds the suggested drop-off until the user sets one.
-  const [rawSlot, setSlot] = useState<TripSlotDraft>(() => emptySlot());
+  const [rawSlot, setSlot] = useState<TripSlotDraft>(() => initialSlot(params));
   const [charges, setCharges] = useState<TripChargeInput[]>([]);
   const [dropoffTouched, setDropoffTouched] = useState(false);
+  const [returnDropoffTouched, setReturnDropoffTouched] = useState(false);
   const [routeEstimate, setRouteEstimate] = useState<RouteEstimate | null>(null);
 
   const [assignmentType, setAssignmentType] = useState<AssignmentType>(params.assignment === 'third_party' ? 'third_party' : 'own');
@@ -292,27 +344,75 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
   const eta = routeEstimate && routeEstimate.key === etaKey && routeReady ? routeEstimate : null;
   const travelMinutes = eta ? eta.totalMinutes : null;
 
+  /** Minutes from leaving pickup to reaching the drop-off — not the whole round trip. */
+  const outboundMinutes = useMemo(() => {
+    if (!eta) return null;
+    const end = eta.points.findIndex((p) => p.kind === 'dropoff');
+    if (end < 0) return eta.totalMinutes;
+    let t = 0;
+    for (let i = 0; i < end; i++) t += eta.dwell[i] + eta.legs[i].minutes;
+    return t;
+  }, [eta]);
+
+  /** Round trip: minutes from loading for the way back to arriving home. */
+  const returnMinutes = useMemo(() => {
+    if (!eta || !isRoundTrip) return null;
+    const start = eta.points.findIndex((p) => p.kind === 'returnPickup' || p.alsoReturnPickup);
+    if (start < 0) return null;
+    let t = 0;
+    for (let i = start; i < eta.legs.length; i++) t += (i === start ? 0 : eta.dwell[i]) + eta.legs[i].minutes;
+    return t;
+  }, [eta, isRoundTrip]);
+
   /** A duty trip's length (10 / 12 hours), or null for a trip that runs as long as the drive. */
   const dutyMinutes = useMemo(() => {
     const t = normalizeLineTypeToken(rateCategory);
     return t === '10_HRS' ? 600 : t === '12_HRS' ? 720 : null;
   }, [rateCategory]);
 
-  /** Drop-off follows pickup + duty length or drive time (rounded up to 15 min) until the user sets it. */
+  /**
+   * Drop-off follows pickup + duty length or drive time (rounded up to 15 min)
+   * until the user sets it; a round trip's arrival home follows the return
+   * loading + the drive back the same way. A monthly contract keeps days
+   * ("Day 2"), a single trip keeps dates.
+   */
   const slot = useMemo<TripSlotDraft>(() => {
-    const base = { ...rawSlot, saveAsQuotation: false };
-    if (dropoffTouched || !rawSlot.pickupTime || (!isMonthly && !rawSlot.date)) return isMonthly ? { ...base, dropoffDate: '' } : base;
-    const [h, m] = rawSlot.pickupTime.split(':').map(Number);
-    const total = h * 60 + m + Math.ceil((dutyMinutes ?? travelMinutes ?? 240) / 15) * 15;
-    const hh = String(Math.floor((total % 1440) / 60)).padStart(2, '0');
-    const mm = String(total % 60).padStart(2, '0');
-    return {
-      ...base,
-      dropoffTime: `${hh}:${mm}`,
-      // Monthly: each day's drop-off is that day (or the next morning when earlier than pickup).
-      dropoffDate: isMonthly ? '' : rawSlot.date ? addDaysToDateStr(rawSlot.date, Math.floor(total / 1440)) : rawSlot.date,
+    const base: TripSlotDraft = slotScheduleFor(
+      { ...rawSlot, saveAsQuotation: false, ...(isMonthly ? { dropoffDate: '' } : {}) },
+      isMonthly,
+      isRoundTrip,
+    );
+    const toMin = (t: string) => {
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m;
     };
-  }, [rawSlot, dropoffTouched, travelMinutes, isMonthly, dutyMinutes]);
+    const hhmm = (total: number) => `${String(Math.floor((total % 1440) / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+
+    let out = base;
+    if (!dropoffTouched && rawSlot.pickupTime && (isMonthly || rawSlot.date)) {
+      const total = toMin(rawSlot.pickupTime) + Math.ceil((dutyMinutes ?? outboundMinutes ?? 240) / 15) * 15;
+      out = {
+        ...out,
+        dropoffTime: hhmm(total),
+        ...(isMonthly
+          ? { dropoffDay: isRoundTrip ? Math.floor(total / 1440) : undefined }
+          : { dropoffDate: rawSlot.date ? addDaysToDateStr(rawSlot.date, Math.floor(total / 1440)) : rawSlot.date }),
+      };
+    }
+
+    if (isRoundTrip && !returnDropoffTouched && out.returnPickupTime && returnMinutes != null) {
+      const total = toMin(out.returnPickupTime) + Math.ceil(returnMinutes / 15) * 15;
+      const loadDay = returnLegDayOffsets(out).pickup ?? 0;
+      out = {
+        ...out,
+        returnDropoffTime: hhmm(total),
+        ...(isMonthly
+          ? { returnDropoffDay: loadDay + Math.floor(total / 1440) }
+          : { returnDropoffDate: out.returnPickupDate ? addDaysToDateStr(out.returnPickupDate, Math.floor(total / 1440)) : '' }),
+      };
+    }
+    return out;
+  }, [rawSlot, dropoffTouched, returnDropoffTouched, outboundMinutes, returnMinutes, isMonthly, isRoundTrip, dutyMinutes]);
   const isRound = isRoundTripCategory(rateCategory);
   const toUtcIso = useCallback((date: string, time: string) => zonedWallTimeToUtcIso(date, time, tz), [tz]);
 
@@ -428,6 +528,16 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
 
   const clearQuotation = useCallback(() => setSlot((s) => clearPrice(s, false)), []);
 
+  // Opened from a quotation (Quotations → Create trip): its route, trip type,
+  // billing, truck class and price, once the customer's quotations are here.
+  // Everything stays editable; it's only the starting point.
+  const [quotationPresetDone, setQuotationPresetDone] = useState(false);
+  if (!quotationPresetDone && params.quotationId && quotations.length > 0) {
+    setQuotationPresetDone(true);
+    const q = quotations.find((x) => x.id === params.quotationId);
+    if (q) applyQuotation(q, { fillRoute: true });
+  }
+
   const routeComplete = Boolean(slot.origin.trim() && slot.destination.trim());
 
   /** Quotations that cover exactly this route with this trip type, billing and truck class. */
@@ -531,6 +641,7 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
       [`${which}LocationId`]: loc.locationId ?? null,
       [`${which}Lat`]: loc.lat ?? null,
       [`${which}Lng`]: loc.lng ?? null,
+      ...NO_TRIP_PIN[which],
     }));
   }, []);
 
@@ -543,12 +654,14 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
             intermediateLocations: [...s.intermediateLocations, loc.name],
             intermediateLocationIds: [...(s.intermediateLocationIds || []), loc.locationId ?? null],
             intermediateStopFees: [...padFees(s.intermediateStopFees, s.intermediateLocations.length), ''],
+            intermediateStopPins: [...padPins(s.intermediateStopPins, s.intermediateLocations.length), null],
           }
         : {
             ...s,
             returnIntermediateLocations: [...(s.returnIntermediateLocations || []), loc.name],
             returnIntermediateLocationIds: [...(s.returnIntermediateLocationIds || []), loc.locationId ?? null],
             returnIntermediateStopFees: [...padFees(s.returnIntermediateStopFees, (s.returnIntermediateLocations || []).length), ''],
+            returnIntermediateStopPins: [...padPins(s.returnIntermediateStopPins, (s.returnIntermediateLocations || []).length), null],
           },
     );
   }, []);
@@ -561,12 +674,14 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
             intermediateLocations: s.intermediateLocations.filter((_, i) => i !== index),
             intermediateLocationIds: (s.intermediateLocationIds || []).filter((_, i) => i !== index),
             intermediateStopFees: padFees(s.intermediateStopFees, s.intermediateLocations.length).filter((_, i) => i !== index),
+            intermediateStopPins: padPins(s.intermediateStopPins, s.intermediateLocations.length).filter((_, i) => i !== index),
           }
         : {
             ...s,
             returnIntermediateLocations: (s.returnIntermediateLocations || []).filter((_, i) => i !== index),
             returnIntermediateLocationIds: (s.returnIntermediateLocationIds || []).filter((_, i) => i !== index),
             returnIntermediateStopFees: padFees(s.returnIntermediateStopFees, (s.returnIntermediateLocations || []).length).filter((_, i) => i !== index),
+            returnIntermediateStopPins: padPins(s.returnIntermediateStopPins, (s.returnIntermediateLocations || []).length).filter((_, i) => i !== index),
           },
     );
   }, []);
@@ -593,14 +708,17 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
       originLocationId: r.origin.locationId ?? null,
       originLat: r.origin.lat ?? null,
       originLng: r.origin.lng ?? null,
+      ...NO_TRIP_PIN.origin,
       destination: r.destination.name,
       destinationName: r.destination.name,
       destinationLocationId: r.destination.locationId ?? null,
       destinationLat: r.destination.lat ?? null,
       destinationLng: r.destination.lng ?? null,
+      ...NO_TRIP_PIN.destination,
       intermediateLocations: r.stops.map((m) => m.name),
       intermediateLocationIds: r.stops.map((m) => m.locationId ?? null),
       intermediateStopFees: r.stops.map(() => ''),
+      intermediateStopPins: r.stops.map(() => null),
     }));
   }, []);
 
@@ -636,16 +754,59 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     [customerId],
   );
 
-  /** Pins a saved place that had none; the route's pickup / drop-off use it at once. */
-  const pinSavedLocation = useCallback(async (locationId: string, pin: { lat: number; lng: number; address: string | null; exact: boolean }) => {
-    await operatorService.pinLocation(locationId, pin);
-    setLocations((prev) => prev.map((l) => (l.id === locationId ? { ...l, lat: pin.lat, lng: pin.lng } : l)));
-    setSlot((s) => ({
-      ...s,
-      ...(s.originLocationId === locationId ? { originLat: pin.lat, originLng: pin.lng } : {}),
-      ...(s.destinationLocationId === locationId ? { destinationLat: pin.lat, destinationLng: pin.lng } : {}),
-    }));
-  }, []);
+  /** A saved place with no pin at all gets the one just set for this trip. */
+  const pinPlaceIfUnpinned = useCallback(
+    async (locationId: string | null | undefined, pin: PickedStopPin) => {
+      const place = locationId ? locations.find((l) => l.id === locationId) : undefined;
+      if (!place || (place.lat != null && place.lng != null)) return;
+      await operatorService.pinLocation(place.id, pin);
+      setLocations((prev) =>
+        prev.map((l) => (l.id === place.id ? { ...l, lat: pin.lat, lng: pin.lng, coordinate_precision: pin.exact ? 'EXACT' : 'APPROXIMATE' } : l)),
+      );
+    },
+    [locations],
+  );
+
+  /**
+   * The exact spot of this trip's pickup / drop-off — e.g. the customer's warehouse
+   * in Riyadh while the quotation only says "Riyadh". The place stays the same
+   * (so the quotation still fits); the stop gets the pin. A place with no pin at
+   * all gets this one too. An exact pin also becomes the customer place's pin
+   * when the trip is created, unless that place is already pinned exactly.
+   */
+  const setEndpointPin = useCallback(
+    async (which: 'origin' | 'destination', pin: PickedStopPin) => {
+      await pinPlaceIfUnpinned(which === 'origin' ? slot.originLocationId : slot.destinationLocationId, pin);
+      const own = stopPinOf(pin);
+      setSlot((s) => ({
+        ...s,
+        [`${which}Lat`]: own.lat,
+        [`${which}Lng`]: own.lng,
+        [`${which}Address`]: own.address || undefined,
+        [`${which}Precision`]: own.precision,
+      }));
+    },
+    [pinPlaceIfUnpinned, slot.originLocationId, slot.destinationLocationId],
+  );
+
+  /** The same for a stop in between (leg 0 = outbound, 1 = return), by its index. */
+  const setStopPin = useCallback(
+    async (leg: 0 | 1, index: number, pin: PickedStopPin) => {
+      const ids = leg === 0 ? slot.intermediateLocationIds : slot.returnIntermediateLocationIds;
+      await pinPlaceIfUnpinned(ids?.[index], pin);
+      setSlot((s) => {
+        if (leg === 0) {
+          const pins = padPins(s.intermediateStopPins, s.intermediateLocations.length);
+          pins[index] = stopPinOf(pin);
+          return { ...s, intermediateStopPins: pins };
+        }
+        const pins = padPins(s.returnIntermediateStopPins, (s.returnIntermediateLocations || []).length);
+        pins[index] = stopPinOf(pin);
+        return { ...s, returnIntermediateStopPins: pins };
+      });
+    },
+    [pinPlaceIfUnpinned, slot.intermediateLocationIds, slot.returnIntermediateLocationIds],
+  );
 
   const updateSlot = useCallback((patch: Partial<TripSlotDraft>) => setSlot((s) => ({ ...s, ...patch })), []);
 
@@ -664,12 +825,31 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
   }, [etaKey, etaPoints]);
 
   const setDropoff = useCallback(
-    (patch: { dropoffDate?: string; dropoffTime?: string }) => {
+    (patch: { dropoffDate?: string; dropoffTime?: string; dropoffDay?: number }) => {
       // Start from what's on screen (the suggestion) so changing only the time keeps the date.
-      setSlot((s) => ({ ...s, dropoffDate: slot.dropoffDate, dropoffTime: slot.dropoffTime, ...patch }));
+      setSlot((s) => ({ ...s, dropoffDate: slot.dropoffDate, dropoffTime: slot.dropoffTime, dropoffDay: slot.dropoffDay, ...patch }));
       setDropoffTouched(true);
     },
-    [slot.dropoffDate, slot.dropoffTime],
+    [slot.dropoffDate, slot.dropoffTime, slot.dropoffDay],
+  );
+
+  /** Round trip: when the truck loads for the way back. Empty clears the whole return leg's times. */
+  const setReturnPickup = useCallback((patch: { returnPickupDate?: string; returnPickupTime: string; returnPickupDay?: number }) => {
+    if (!patch.returnPickupTime) {
+      setSlot((s) => ({ ...s, returnPickupDate: '', returnPickupTime: '', returnPickupDay: undefined, returnDropoffDate: '', returnDropoffTime: '', returnDropoffDay: undefined }));
+      setReturnDropoffTouched(false);
+      return;
+    }
+    setSlot((s) => ({ ...s, ...patch }));
+  }, []);
+
+  /** Round trip: when the truck is back home — set by hand, so the drive estimate stops moving it. */
+  const setReturnDropoff = useCallback(
+    (patch: { returnDropoffDate?: string; returnDropoffTime: string; returnDropoffDay?: number }) => {
+      setSlot((s) => ({ ...s, returnDropoffDate: slot.returnDropoffDate, returnDropoffDay: slot.returnDropoffDay, ...patch }));
+      setReturnDropoffTouched(true);
+    },
+    [slot.returnDropoffDate, slot.returnDropoffDay],
   );
 
   /* ── Fleet ── */
@@ -949,6 +1129,26 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     [customerId, slot, vehicleType, rateCategory, billingType, assignmentType, driverId, coDriverId, vehicleId, thirdPartyProviderId, thirdPartyDriverName, thirdPartyDriverPhone, thirdPartyVehiclePlate, thirdPartyCost, awbNumber, dayAssignments, isMonthly, selectedDates, charges, toUtcIso, today],
   );
 
+  /**
+   * A monthly contract's runs: how long one run takes, and the operating days
+   * whose run starts while the same driver or truck is still on an earlier one
+   * (a 32-hour round trip booked every day with one crew).
+   */
+  const runCheck = useMemo(() => {
+    if (!isMonthly || selectedDates.length === 0 || !slot.pickupTime) return { minutes: null as number | null, clashDates: [] as string[] };
+    try {
+      const rows = buildRows();
+      const first = rows[0];
+      const minutes = first?.planned_end ? Math.round((Date.parse(first.planned_end) - Date.parse(first.planned_start)) / 60000) : null;
+      const clashDates = assignmentType === 'third_party'
+        ? []
+        : [...new Set(rosterClashes(rows).map((c) => dateInZone(Date.parse(rows[c.second].planned_start), tz)))].sort();
+      return { minutes, clashDates };
+    } catch {
+      return { minutes: null, clashDates: [] };
+    }
+  }, [isMonthly, selectedDates.length, slot.pickupTime, buildRows, assignmentType, tz]);
+
   const pastTripCount = useMemo(() => {
     if (allIssues.length > 0) return 0;
     try {
@@ -1097,7 +1297,8 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     setReturnEndpoint,
     createLocation,
     createPinnedLocation,
-    pinSavedLocation,
+    setEndpointPin,
+    setStopPin,
     setStopFee,
     routeComplete,
     charges,
@@ -1105,6 +1306,11 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     // schedule
     setDropoff,
     dropoffTouched,
+    setReturnPickup,
+    setReturnDropoff,
+    returnDropoffTouched,
+    isRoundTrip,
+    runCheck,
     travelMinutes,
     eta,
     etaPending: routeReady && !eta,

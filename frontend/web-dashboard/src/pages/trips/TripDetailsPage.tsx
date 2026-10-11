@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { haltActivityLabel, insertByTime, splitLegs } from '@mercon/shared-types';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Copy, Check, CornerUpLeft, Smartphone, XCircle, AlertTriangle, MoreHorizontal, MapPin, ArrowRight,
@@ -40,7 +41,7 @@ import { DriverPhoneLine, TripDriverTrailList, currentAcknowledgement } from '@/
 import { driverPhoneKey } from '@/components/drivers/phone/DriverPhoneSheet';
 import { driverPhoneService } from '@/services/driverPhoneService';
 import { useModuleEnabled } from '@/components/auth/RequireModule';
-import { Banner, FinancialSummary, PaperworkSection, PreTripChecks, TripSummary, TruckDriverOverlay } from '@/components/trips/details/TripDetailsBits';
+import { Banner, FinancialSummary, PaperworkSection, PreTripChecks, TimeOnRoad, TripSummary, TruckDriverOverlay } from '@/components/trips/details/TripDetailsBits';
 import { statusChip, tripPhaseOf } from '@/components/trips/details/tripStatus';
 import { fleetLiveService } from '@/services/fleetLiveService';
 import { buildEtaShareText, formatDuration, timeAgo, type EtaInfo } from '@/lib/fleetLive';
@@ -205,6 +206,8 @@ export default function TripDetailsPage() {
     queryKey: ['trip-overview', tripEntityId],
     queryFn: () => fleetLiveService.getTripOverview(tripEntityId!),
     enabled: !!tripEntityId && !!trip,
+    // A running trip's breaks and time on the road keep moving.
+    refetchInterval: (q) => (q.state.data?.phase === 'active' ? 60_000 : false),
   });
 
   // Mutations
@@ -430,23 +433,41 @@ export default function TripDetailsPage() {
   // One short phrase beside the status: what matters about the trip right now.
   const headingTo = stopsArr.find((s: any) => !s.actual_arrival);
   const delayReason = headingTo?.delay_note || (headingTo?.delay_reason ? String(headingTo.delay_reason).replace(/([a-z])([A-Z])/g, '$1 $2') : null);
+  // Round trip: the way out and the way back (with leg_index, else split at the first drop-off).
+  const tripLegs = splitLegs(stopsArr as any[], trip.rate_category);
+  const legSpan = (legStops: any[], startFallback?: string | null, endFallback?: string | null) => {
+    const a = legStops[0]?.planned_arrival || startFallback;
+    const b = legStops[legStops.length - 1]?.planned_arrival || endFallback;
+    const fmt = (iso: string) => formatInDeploymentTz(iso, tz, 'EEE d MMM, hh:mm a');
+    if (a && b) {
+      const sameDay = formatInDeploymentTz(a, tz, 'yyyy-MM-dd') === formatInDeploymentTz(b, tz, 'yyyy-MM-dd');
+      return `${fmt(a)} → ${sameDay ? formatInDeploymentTz(b, tz, 'hh:mm a') : fmt(b)}`;
+    }
+    return a ? fmt(a) : b ? `by ${fmt(b)}` : '—';
+  };
+
   const statePhrase = (() => {
     if (phase === 'planned') {
       if (!trip.planned_start) return null;
       const ms = new Date(trip.planned_start).getTime() - Date.now();
       return ms > 0 ? `Starts in ${formatDuration(ms / 1000)}` : 'Start time has passed';
     }
-    if (phase === 'active') return headingTo ? `Heading to ${resolveStopName(headingTo, 'the next stop')}` : 'At the last stop';
+    if (phase === 'active') {
+      const leg = tripLegs.currentLeg === 1 ? 'Leg 1 going · ' : tripLegs.currentLeg === 2 ? 'Leg 2 returning · ' : '';
+      return headingTo ? `${leg}Heading to ${resolveStopName(headingTo, 'the next stop')}` : 'At the last stop';
+    }
     if (phase === 'done') return trip.actual_end ? `Finished ${formatDateTime(trip.actual_end)}` : null;
     return null;
   })();
 
   // Dynamically build real activity steps from trip metadata and actual stops
-  const activitySteps: { label: string; time: string | null; done: boolean }[] = [
+  const at = (iso: string | null | undefined) => (iso ? new Date(iso).getTime() : null);
+  const activitySteps: { label: string; time: string | null; done: boolean; at: number | null; tone?: 'break' | 'break-now' }[] = [
     {
       label: 'Trip created',
       time: trip.createdAt ? formatInDeploymentTz(trip.createdAt, tz, 'dd MMM yyyy, hh:mm a') : null,
       done: true,
+      at: at(trip.createdAt),
     },
   ];
 
@@ -455,6 +476,7 @@ export default function TripDetailsPage() {
       label: 'Trip started (In Transit)',
       time: formatInDeploymentTz(trip.actual_start, tz, 'dd MMM yyyy, hh:mm a'),
       done: true,
+      at: at(trip.actual_start),
     });
   }
 
@@ -471,6 +493,7 @@ export default function TripDetailsPage() {
         ? formatInDeploymentTz(stop.planned_arrival, tz, 'dd MMM yyyy, hh:mm a')
         : null,
       done: isArrived,
+      at: isArrived ? at(stop.actual_arrival) : null,
     });
 
     if (stop.delay_reason) {
@@ -480,6 +503,7 @@ export default function TripDetailsPage() {
           ? formatInDeploymentTz(stop.delay_logged_at, tz, 'dd MMM yyyy, hh:mm a')
           : null,
         done: true,
+        at: at(stop.delay_logged_at),
       });
     }
 
@@ -488,6 +512,7 @@ export default function TripDetailsPage() {
         label: `Departed ${stopName}`,
         time: formatInDeploymentTz(stop.actual_departure, tz, 'dd MMM yyyy, hh:mm a'),
         done: true,
+        at: at(stop.actual_departure),
       });
     }
   });
@@ -500,7 +525,21 @@ export default function TripDetailsPage() {
       ? formatInDeploymentTz(trip.planned_end, tz, 'dd MMM yyyy, hh:mm a')
       : null,
     done: trip.status === 'Completed',
+    at: trip.status === 'Completed' ? at(trip.actual_end) : null,
   });
+
+  // Every stop and break on the way, from the GPS history (overview `halts`), in time order.
+  const stopNames = new Map<string, string>((trip.stops || []).map((st: any, i: number) => [st.id, resolveStopName(st, `Stop ${i + 1}`)]));
+  const activityLog = insertByTime(
+    activitySteps,
+    (overview?.halts ?? []).map((h) => ({
+      label: haltActivityLabel(h, h.stop_id ? stopNames.get(h.stop_id) : null),
+      time: `${formatInDeploymentTz(h.from, tz, 'dd MMM yyyy, hh:mm a')} – ${h.ongoing ? 'now' : formatInDeploymentTz(h.to, tz, 'hh:mm a')}`,
+      done: true,
+      at: at(h.from),
+      tone: h.kind === 'break' ? (h.ongoing ? 'break-now' as const : 'break' as const) : undefined,
+    })),
+  );
 
   return (
     <DashboardLayout active="Trips" title="Trip Details">
@@ -569,7 +608,10 @@ export default function TripDetailsPage() {
                       {statePhrase && <span className="text-sm text-muted-foreground">{statePhrase}</span>}
                     </div>
                     <p className="mt-0.5 truncate text-sm font-medium text-foreground">{trip.customer?.name ?? 'No customer'}</p>
-                    <RouteChain names={stopsArr.map((st: any, i: number) => resolveStopName(st, `Stop ${i + 1}`))} />
+                    <RouteChain
+                      names={(tripLegs.round ? tripLegs.outbound : stopsArr).map((st: any) => resolveStopName(st, `Stop ${stopsArr.indexOf(st) + 1}`))}
+                      back={tripLegs.round ? resolveStopName(tripLegs.ret[tripLegs.ret.length - 1] ?? stopsArr[0], '') : undefined}
+                    />
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
@@ -681,7 +723,15 @@ export default function TripDetailsPage() {
               </div>
 
               <dl className="flex flex-wrap gap-x-5 gap-y-2.5">
-                <Fact icon={CalendarClock} tone="blue" label="Scheduled" value={`${fullScheduledDateText}, ${scheduledTimeStr}`} />
+                {tripLegs.round ? (
+                  // A round trip's way back often starts the next day — each leg with its real dates.
+                  <>
+                    <Fact icon={CalendarClock} tone="blue" label="Leg 1 · going" value={legSpan(tripLegs.outbound, trip.planned_start, null)} />
+                    <Fact icon={CalendarClock} tone="blue" label="Leg 2 · returning" value={legSpan(tripLegs.ret, null, trip.planned_end)} />
+                  </>
+                ) : (
+                  <Fact icon={CalendarClock} tone="blue" label="Scheduled" value={`${fullScheduledDateText}, ${scheduledTimeStr}`} />
+                )}
                 <Fact icon={Repeat} tone="violet" label="Line type" value={tripType} />
                 <Fact icon={Receipt} tone="amber" label="Billing" value={billingTypeLabel} />
                 {trip.awb_number && <Fact icon={FileText} tone="slate" label="AWB" value={trip.awb_number} mono />}
@@ -764,6 +814,7 @@ export default function TripDetailsPage() {
                   : phase === 'cancelled' ? <Banner tone="muted">Cancelled{trip.updatedAt ? ` on ${formatDateTime(trip.updatedAt)}` : ''}. The planned route is shown for reference.</Banner>
                   : trip.status === 'Delayed' ? <Banner tone="danger"><strong>Delayed.</strong> {delayReason ?? 'No reason reported yet.'}</Banner>
                   : null}
+                  {phase === 'active' || phase === 'done' ? <TimeOnRoad overview={overview} formatTime={formatTime} /> : null}
                   {trip.media_purged && (
                     <Banner tone="muted">
                       {trip.media_purged.count} photo{trip.media_purged.count === 1 ? '' : 's'}/video{trip.media_purged.count === 1 ? '' : 's'} from this trip
@@ -798,15 +849,15 @@ export default function TripDetailsPage() {
           </SheetHeader>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {activitySteps.map((step, idx) => (
+            {activityLog.map((step, idx) => (
               <div key={idx} className="relative flex items-start gap-3">
                 <div className="relative flex flex-col items-center shrink-0 w-3.5">
                   <div
                     className={`w-2.5 h-2.5 rounded-full mt-1 ${
-                      step.done ? 'bg-emerald-600' : 'bg-slate-300'
+                      step.tone === 'break-now' ? 'bg-amber-500' : step.tone === 'break' ? 'bg-slate-400' : step.done ? 'bg-emerald-600' : 'bg-slate-300'
                     }`}
                   />
-                  {idx !== activitySteps.length - 1 && (
+                  {idx !== activityLog.length - 1 && (
                     <div className="w-[1px] bg-[#E5E7EB] absolute top-3 bottom-[-16px]" />
                   )}
                 </div>
@@ -1151,8 +1202,8 @@ function CustomerMark({ name, logoUrl }: { name?: string | null; logoUrl?: strin
   );
 }
 
-/** "Airport → Medina → Jeddah", shortened to first → +N → last when long. */
-function RouteChain({ names }: { names: string[] }) {
+/** "Airport → Medina → Jeddah", shortened to first → +N → last when long; a round trip adds "round trip · back to …". */
+function RouteChain({ names, back }: { names: string[]; back?: string }) {
   if (names.length === 0) return null;
   const shown = names.length <= 3 ? names : [names[0], `+${names.length - 2} stops`, names[names.length - 1]];
   return (
@@ -1164,6 +1215,11 @@ function RouteChain({ names }: { names: string[] }) {
           <span className={cn('truncate', n.startsWith('+') ? 'rounded-md bg-muted px-1.5' : 'text-foreground')}>{n}</span>
         </span>
       ))}
+      {back !== undefined && (
+        <span className="ml-1 rounded-md bg-violet-50 px-1.5 font-medium text-violet-700 dark:bg-violet-950/50 dark:text-violet-300">
+          ↺ round trip{back ? ` · back to ${back}` : ''}
+        </span>
+      )}
     </div>
   );
 }

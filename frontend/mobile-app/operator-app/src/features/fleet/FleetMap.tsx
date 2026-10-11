@@ -1,21 +1,32 @@
 /**
  * Trucks on one MapLibre map — the phone version of the web's FleetCommandMap.
  *
- *   Marker colour: delayed trip → red · on a trip → ink · free → white.
- *   Trucks close together on screen merge into a numbered group (red badge =
- *   how many in it are delayed). Tapping a group zooms in until they part;
- *   trucks parked in the same yard never part, so their list opens instead.
+ *   Markers match the web live map: a white disc with a glyph coloured by the
+ *   trip — on trip blue · delayed red · scheduled violet · free green. The
+ *   glyph's shape is the movement: an arrow turned to the heading (moving), a
+ *   rounded square (stopped), a hollow grey ring with its age (GPS gone
+ *   quiet). A small dark badge says which GPS is live: truck, phone or both.
+ *   Trucks close together on screen merge into a numbered group whose bar
+ *   shows the mix (on trip · scheduled · free); delayed trucks and the picked
+ *   one always stand alone. Tapping a group zooms in until it splits and
+ *   lists its trucks in the sheet. Between refreshes a
+ *   moving truck glides to its new spot instead of jumping. The basemap uses
+ *   the web's Apple Maps-style palette (mapStyle.ts).
  *   Pins are native Markers with their own onPress — a touchable inside a map
  *   annotation never gets the tap — and draw PNG icons, which annotations
- *   show reliably where SVG icons came out blank.
- *   A truck whose GPS has gone quiet is drawn faded, whatever its colour
- *   (independent of delay, same as Home). A moving truck shows its heading.
- *   Zoomed in, trucks carry their plate — most urgent first, skipping any
- *   label that would overlap another. The selected truck gets its road route
+ *   show reliably where SVG icons came out blank. On iOS a marker re-drawn
+ *   after a tap fires the map's own onPress at the same spot, which used to
+ *   undo the pick at once; so a map tap is hit-tested against the pins
+ *   (handleMapPress) and both paths go through one dedup'd pressTarget.
+ *   Trucks carry their plate at every zoom — most urgent first, skipping any
+ *   label that would overlap another. Picking a truck frames it with its next
+ *   stop, flat (street level only when 3D is on), and on the Fleet map page
+ *   (isolate) hides every other truck and group until it's closed. The selected truck gets its road route
  *   to the next stop (real roads when routing is up, dashed straight line
  *   otherwise), a faint line through the rest of the trip (only when it
  *   follows real roads), a grey breadcrumb trail of where it has driven on
- *   this trip, and its trip's numbered stops. While following, the
+ *   this trip, its trip's numbered stops, and a small pause marker with the
+ *   minutes wherever it took a break on the way. While following, the
  *   camera moves with the truck as fresh positions arrive; dragging the map
  *   stops that until recenter().
  *
@@ -24,65 +35,100 @@
  *   Driver view   low behind the selected truck, facing where it's going
  *   Trip overview flat and north-up, framing the truck and every stop
  *   Fit all · Face north · Zoom in / out; light or dark basemap.
+ * Lane search ("riyadh to jeddah"): a green A and red B pin, the road
+ * between them in violet, the trucks that matter to the lane framed, and
+ * free trucks near A ringed green.
  * Used full-screen on the Fleet map page and as a small, non-interactive
  * preview on Home. Falls back to a plain panel on builds without MapLibre.
  */
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { View, Text, Image, StyleSheet, TurboModuleRegistry, useWindowDimensions } from 'react-native';
+import { Animated, Easing, View, Text, Image, StyleSheet, useWindowDimensions } from 'react-native';
 import { MapPin } from 'lucide-react-native';
 import Supercluster from 'supercluster';
-import type { LiveUnit } from '../../lib/operator';
-import { isDelayed, isFree, isSilent, located, unitPriority } from './fleetModel';
-import { quietOfflineTileErrors } from '../../lib/mapLogs';
+import type { LiveUnit, TripHalt } from '../../lib/operator';
+import { bearingBetween, feedsApart, isDelayed, isFree, isLongStop, isSilent, lateMin, lateText, located, minText, shortAgo, stoppedMin, tripProgress, unitPriority } from './fleetModel';
+import { MAP_BG, MAP_STYLES, loadMapStyle, readyMapStyle, type MapTheme, type StyleJson } from './mapStyle';
+import { ML } from '../../lib/maplibre';
 
-const hasNativeMap = (() => {
-  try {
-    return !!TurboModuleRegistry.get('MLRNNetworkModule');
-  } catch {
-    return false;
-  }
-})();
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const ML: typeof import('@maplibre/maplibre-react-native') | null = hasNativeMap ? require('@maplibre/maplibre-react-native') : null;
-quietOfflineTileErrors(ML);
+export { MAP_STYLES, type MapTheme };
 
-/** OpenFreeMap vector basemaps, the same pair as the web live map. */
-export const MAP_STYLES = {
-  light: 'https://tiles.openfreemap.org/styles/liberty',
-  dark: 'https://tiles.openfreemap.org/styles/dark',
-} as const;
-export type MapTheme = keyof typeof MAP_STYLES;
+/** How long the map waits for its coloured style before opening on the plain one. */
+const STYLE_WAIT_MS = 1500;
+/** Matches the camera's follow animation, so a followed truck and the map move together. */
+const GLIDE_MS = 1200;
+/** Further than this (≈5 km) is a jump — a tracker back online — not driving: snap. */
+const GLIDE_MAX_DEG = 0.05;
+/** A group's mix bar, left to right (delayed trucks are never grouped). */
+const MIX_ORDER = ['active', 'upcoming', 'free'] as const;
+type Mix = Record<(typeof MIX_ORDER)[number], number>;
 
-export type UnitState = 'delayed' | 'silent' | 'moving' | 'free';
+/** What a marker's colour means — the trip, not the GPS (web `liveMapStyle.ts` TONE). */
+export type UnitTone = 'active' | 'delayed' | 'upcoming' | 'free';
 
-export const STATE_STYLE: Record<UnitState, { color: string; label: string }> = {
-  delayed: { color: '#FA634E', label: 'Delayed' },
-  silent: { color: '#9898A4', label: 'No GPS' },
-  moving: { color: '#3E3C3D', label: 'On a trip' },
-  free: { color: '#FFFFFF', label: 'Free' },
+export const TONE: Record<UnitTone, { color: string; label: string }> = {
+  active: { color: '#2563EB', label: 'On trip' },
+  delayed: { color: '#E11D48', label: 'Delayed' },
+  upcoming: { color: '#7C3AED', label: 'Scheduled' },
+  free: { color: '#059669', label: 'Free' },
 };
 
-/** One label for a card: delayed wins, then silent, then trip / free. */
-export function unitState(u: LiveUnit, now = Date.now()): UnitState {
-  return isDelayed(u) ? 'delayed' : isSilent(u, now) ? 'silent' : isFree(u) ? 'free' : 'moving';
+export function unitTone(u: LiveUnit): UnitTone {
+  if (!u.trip) return 'free';
+  return u.trip.phase === 'delayed' ? 'delayed' : u.trip.phase === 'upcoming' ? 'upcoming' : 'active';
 }
 
-const ICONS = {
-  truckInk: require('./icons/truck-ink.png'),
-  truckWhite: require('./icons/truck-white.png'),
-  // Drawn pointing north, so the heading is the rotation.
-  navInk: require('./icons/nav-ink.png'),
-  navWhite: require('./icons/nav-white.png'),
+/** Grey of a truck whose GPS has gone quiet (its ring, the No GPS chip). */
+export const SILENT_COLOR = '#94A3B8';
+
+export type UnitState = 'delayed' | 'silent' | 'moving' | 'upcoming' | 'free';
+
+export const STATE_STYLE: Record<UnitState, { color: string; label: string }> = {
+  delayed: TONE.delayed,
+  silent: { color: SILENT_COLOR, label: 'No GPS' },
+  moving: TONE.active,
+  upcoming: TONE.upcoming,
+  free: TONE.free,
 };
+
+/** One label for a card: delayed wins, then silent, then trip / scheduled / free. */
+export function unitState(u: LiveUnit, now = Date.now()): UnitState {
+  if (isDelayed(u)) return 'delayed';
+  if (isSilent(u, now)) return 'silent';
+  if (u.trip?.phase === 'upcoming') return 'upcoming';
+  return isFree(u) ? 'free' : 'moving';
+}
+
+export const ICONS = {
+  // Drawn pointing north, so the heading is the rotation; tinted to the trip's colour.
+  nav: require('./icons/nav-white.png'),
+  // The live-GPS badge: truck tracker, driver's phone.
+  truck: require('./icons/truck-white.png'),
+  person: require('./icons/person-white.png'),
+};
+
+/** Lane search: start, end and the road between them. */
+export const LANE_A = '#16A34A';
+export const LANE_B = '#D92D20';
+const LANE_VIOLET = '#7C5CFC';
 
 /** Trucks closer than this many screen pixels merge into a group. */
 const GROUP_RADIUS_PX = 50;
 /** From this zoom up every truck is drawn on its own. */
 const GROUP_MAX_ZOOM = 14;
-/** From this zoom up trucks carry their plate. */
-const LABEL_MIN_ZOOM = 8;
+/** Picking a truck zooms in at least this far — street level, like the web map. */
+const PICK_ZOOM = 14;
+/** Picking a truck tilts the map this much (the web's 55°). */
+export const PICK_PITCH = 55;
+/** A map tap this close (screen px) to a pin or group counts as tapping it. */
+const HIT_PX = 30;
+/** The same pin pressed again this soon is the echo of one tap (marker + map both report it). */
+const ECHO_MS = 800;
+/** The time of a tap (read in press handlers, never while rendering). */
+const tapTime = () => Date.now();
 
-type GroupProps = { key: string; delayed: number };
+type Target = { kind: 'unit'; key: string } | { kind: 'group'; id: number; lng: number; lat: number };
+
+type GroupProps = { key: string } & Mix;
 
 type Bounds = [number, number, number, number];
 type LngLat = [number, number];
@@ -119,14 +165,14 @@ function pickLabels(
 ): Set<string> {
   type Box = [number, number, number, number];
   const hit = (a: Box, b: Box) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
-  const pinBox = (p: { x: number; y: number }): Box => [p.x - 18, p.y - 18, p.x + 18, p.y + 18];
+  const pinBox = (p: { x: number; y: number }): Box => [p.x - 21, p.y - 21, p.x + 21, p.y + 21];
   const pins = items.map((i) => ({ key: i.key, box: pinBox(i) }));
   const groups = others.map(pinBox);
   const taken: Box[] = [];
   const out = new Set<string>();
   for (const i of [...items].sort((a, b) => b.priority - a.priority)) {
     const w = i.text.length * 7 + 12;
-    const box: Box = [i.x - w / 2, i.y + 18, i.x + w / 2, i.y + 38];
+    const box: Box = [i.x - w / 2, i.y + BOX / 2, i.x + w / 2, i.y + BOX / 2 + 20];
     if (taken.some((t) => hit(t, box)) || groups.some((g) => hit(g, box)) || pins.some((p) => p.key !== i.key && hit(p.box, box))) continue;
     taken.push(box);
     out.add(i.key);
@@ -134,20 +180,32 @@ function pickLabels(
   return out;
 }
 
-/** Compass bearing from a to b, degrees clockwise from north. */
-function bearingBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
-  const toRad = (x: number) => (x * Math.PI) / 180;
-  const y = Math.sin(toRad(b.lng - a.lng)) * Math.cos(toRad(b.lat));
-  const x = Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) - Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(toRad(b.lng - a.lng));
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+/** A truck's label: its plate, plus how long ago it was seen when its GPS has gone quiet. */
+function labelText(u: LiveUnit, now: number): string {
+  const age = isSilent(u, now) ? shortAgo(u.position?.recorded_at, now) : '';
+  return age ? `${u.vehicle!.plate_number} · ${age}` : u.vehicle!.plate_number;
+}
+
+/** A circle as a 64-point polygon — MapLibre has no geodesic circle (web FleetCommandMap `circlePolygon`). */
+function circleOf(a: { lat: number; lng: number; km: number }): GeoJSON.Feature {
+  const pts: LngLat[] = [];
+  const latR = a.km / 110.574;
+  const lngR = a.km / (111.32 * Math.cos((a.lat * Math.PI) / 180));
+  for (let i = 0; i <= 64; i++) {
+    const t = (i / 64) * 2 * Math.PI;
+    pts.push([a.lng + lngR * Math.cos(t), a.lat + latR * Math.sin(t)]);
+  }
+  return { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [pts] } };
 }
 
 /** The camera state the page shows controls for. */
-export interface MapView { zoom: number; pitch: number; bearing: number }
+export interface MapView { zoom: number; pitch: number; bearing: number; center?: LngLat }
 export type FocusMode = 'none' | 'driver' | 'overview';
 
 export interface FleetMapHandle {
   fitAll(): void;
+  /** Frame these trucks (a group's list → "Zoom to these"). */
+  fitKeys(keys: string[]): void;
   zoomBy(delta: number): void;
   faceNorth(): void;
   set3D(on: boolean): void;
@@ -170,9 +228,9 @@ interface Props {
   /** Road route from the selected truck to its next stop; null → dashed straight line. */
   routeLine?: LngLat[] | null;
   /** A place to frame (city search): its centre and radius in km. */
-  focus?: { lat: number; lng: number; km: number } | null;
-  /** Extra space kept clear at the top/bottom (overlaid controls, the card). */
-  padding?: { top: number; bottom: number };
+  focus?: { lat: number; lng: number; km: number; label?: string } | null;
+  /** Extra space kept clear at the top/bottom (overlaid controls, the card), and on the right when the page's control column is wider. */
+  padding?: { top: number; bottom: number; right?: number };
   onViewChange?: (v: MapView) => void;
   /** A group of trucks that sit on the same spot was tapped — show them as a list. */
   onGroupPress?: (keys: string[]) => void;
@@ -184,15 +242,35 @@ interface Props {
   follow?: boolean;
   /** The user moved the map by hand (the page turns follow off). */
   onUserMove?: () => void;
+  /** A lane search: its two ends and the road between them (null → straight dashed line). */
+  lane?: { from: { label: string; lat: number; lng: number }; to: { label: string; lat: number; lng: number }; line: LngLat[] | null } | null;
+  /** Trucks drawn with a green ring (free near the lane's start). */
+  ringed?: Set<string>;
+  /** Where to open instead of framing every truck (the view saved from last time). */
+  initialCamera?: { center: LngLat; zoom: number } | null;
+  /** A long press on the map — "trucks near here". */
+  onLongPress?: (at: { lat: number; lng: number }) => void;
+  /** With a truck picked, draw only that truck (its trip and stops), not the rest of the fleet. */
+  isolate?: boolean;
+  /** The picked truck's breaks on the way (where it stood still away from its stops). */
+  halts?: TripHalt[] | null;
 }
 
 export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   units, selected, onSelect, interactive = false, theme = 'light', tilted = false, focusMode = 'none',
   routeLine, focus, padding = { top: 40, bottom: 40 }, onViewChange, onGroupPress, restLine, trail, follow = true, onUserMove,
+  initialCamera, onLongPress, lane, ringed, isolate = false, halts,
 }, ref) {
   const { height } = useWindowDimensions();
   const points = useMemo(() => units.filter(located), [units]);
-  const bounds = useMemo(() => boundsOf(points.map((u) => u.position!)), [points]);
+  // A lane's ends count as points too, so its map shows even with no truck on it.
+  const bounds = useMemo(() => boundsOf([...points.map((u) => u.position!), ...(lane ? [lane.from, lane.to] : [])]), [points, lane]);
+  const laneKey = lane ? `${lane.from.lat},${lane.from.lng}>${lane.to.lat},${lane.to.lng}` : null;
+  const laneFeature = useMemo<GeoJSON.Feature | null>(() => {
+    if (!lane) return null;
+    const coords = lane.line && lane.line.length > 1 ? lane.line : [[lane.from.lng, lane.from.lat], [lane.to.lng, lane.to.lat]];
+    return { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } };
+  }, [lane]);
   const sel = points.find((u) => u.key === selected) ?? null;
   const camera = useRef<any>(null);
   const mapRef = useRef<any>(null);
@@ -200,7 +278,31 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   const [view, setView] = useState<MapView>({ zoom: 5, pitch: 0, bearing: 0 });
   // What's on screen when the camera settles — drives grouping.
   const [area, setArea] = useState<{ bbox: Bounds; zoom: number } | null>(null);
-  const pad = { top: padding.top, bottom: padding.bottom, left: 50, right: 50 };
+  // The right side keeps clear of the page's control column.
+  const pad = { top: padding.top, bottom: padding.bottom, left: 40, right: padding.right ?? (interactive ? 76 : 50) };
+  // The camera as last reported — a tilted map has to be laid flat before a fit (fitFlat).
+  const tiltRef = useRef({ pitch: 0, bearing: 0 });
+  // The clock for "no GPS for 30 min" and the age tags; ticks so they don't go stale on an open map.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+
+  // The basemap opens already coloured; on a theme switch the old style stays up until the new one is ready.
+  const [loaded, setLoaded] = useState<{ theme: MapTheme; style: StyleJson | string } | null>(null);
+  const style = loaded?.theme === theme ? loaded.style : readyMapStyle(theme) ?? loaded?.style ?? null;
+  useEffect(() => {
+    if (readyMapStyle(theme)) return;
+    let alive = true;
+    // Don't wait for ever: after a moment the plain style is used, and kept for this map.
+    const plain = () => alive && setLoaded((cur) => (cur?.theme === theme ? cur : { theme, style: MAP_STYLES[theme] }));
+    const timer = setTimeout(plain, STYLE_WAIT_MS);
+    loadMapStyle(theme)
+      .then((st) => alive && setLoaded((cur) => (cur?.theme === theme ? cur : { theme, style: st })))
+      .catch(plain);
+    return () => { alive = false; clearTimeout(timer); };
+  }, [theme]);
 
   // The selected truck's trip: its stops (numbered) and where it's heading.
   const stops = useMemo(() => (sel?.trip?.stops ?? []).filter((s) => s.lat != null && s.lng != null && !(s.lat === 0 && s.lng === 0)), [sel]);
@@ -209,27 +311,31 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
     if (!sel?.position || !next || next.lat == null || next.lng == null) return null;
     const coords = routeLine && routeLine.length > 1 ? routeLine : [[sel.position.lng, sel.position.lat], [next.lng, next.lat]];
     return { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } };
-  }, [sel?.position, next, routeLine]);
+  }, [sel, next, routeLine]);
 
   // Group nearby trucks; the picked one always stands on its own.
   const groupIndex = useMemo(() => {
-    const index = new Supercluster<GroupProps, { delayed: number }>({
+    const index = new Supercluster<GroupProps, Mix>({
       radius: GROUP_RADIUS_PX,
       maxZoom: GROUP_MAX_ZOOM,
-      map: (p) => ({ delayed: p.delayed }),
-      reduce: (acc, p) => { acc.delayed += p.delayed; },
+      map: (p) => ({ active: p.active, upcoming: p.upcoming, free: p.free }),
+      reduce: (acc, p) => { acc.active += p.active; acc.upcoming += p.upcoming; acc.free += p.free; },
     });
-    index.load(points.filter((u) => u.key !== selected).map((u) => ({
-      type: 'Feature' as const,
-      properties: { key: u.key, delayed: isDelayed(u) ? 1 : 0 },
-      geometry: { type: 'Point' as const, coordinates: [u.position!.lng, u.position!.lat] },
-    })));
+    // A late truck is what this map is looked at for, so it never hides in a group.
+    index.load(points.filter((u) => u.key !== selected && !isDelayed(u)).map((u) => {
+      const t = unitTone(u);
+      return {
+        type: 'Feature' as const,
+        properties: { key: u.key, active: +(t === 'active'), upcoming: +(t === 'upcoming'), free: +(t === 'free') },
+        geometry: { type: 'Point' as const, coordinates: [u.position!.lng, u.position!.lat] },
+      };
+    }));
     return index;
   }, [points, selected]);
 
   const { groups, singles } = useMemo(() => {
-    const out = { groups: [] as { id: number; lng: number; lat: number; count: number; delayed: number }[], singles: [] as LiveUnit[] };
-    if (focusMode !== 'none' && sel) { out.singles = [sel]; return out; }
+    const out = { groups: [] as { id: number; lng: number; lat: number; count: number; mix: Mix }[], singles: [] as LiveUnit[] };
+    if ((focusMode !== 'none' || isolate) && sel) { out.singles = [sel]; return out; }
     const byKey = new globalThis.Map(points.map((u) => [u.key, u]));
     const bbox = area?.bbox ?? bounds;
     if (!bbox) return out;
@@ -237,37 +343,96 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
     const [w, s, e, n] = bbox;
     const dx = (e - w) * 0.2;
     const dy = (n - s) * 0.2;
-    for (const f of groupIndex.getClusters([w - dx, Math.max(-85, s - dy), e + dx, Math.min(85, n + dy)], Math.floor(area?.zoom ?? zoomRef.current))) {
+    for (const f of groupIndex.getClusters([w - dx, Math.max(-85, s - dy), e + dx, Math.min(85, n + dy)], Math.floor(area?.zoom ?? view.zoom))) {
       const [lng, lat] = f.geometry.coordinates;
-      const p = f.properties as Partial<GroupProps> & { cluster?: boolean; cluster_id?: number; point_count?: number; delayed: number };
-      if (p.cluster) out.groups.push({ id: p.cluster_id!, lng, lat, count: p.point_count!, delayed: p.delayed });
+      const p = f.properties as Partial<GroupProps> & { cluster?: boolean; cluster_id?: number; point_count?: number };
+      if (p.cluster) out.groups.push({ id: p.cluster_id!, lng, lat, count: p.point_count!, mix: { active: p.active ?? 0, upcoming: p.upcoming ?? 0, free: p.free ?? 0 } });
       else if (p.key && byKey.has(p.key)) out.singles.push(byKey.get(p.key)!);
     }
+    for (const u of points) if (isDelayed(u) && u.key !== selected) out.singles.push(u);
     if (sel) out.singles.push(sel);
     return out;
-  }, [groupIndex, points, area, bounds, focusMode, sel]);
+  }, [groupIndex, points, area, bounds, focusMode, isolate, sel, selected, view.zoom]);
 
   // Plates on the trucks standing alone, once zoomed in far enough to read them.
   const labelled = useMemo(() => {
-    const zoom = area?.zoom ?? 0;
-    if (zoom < LABEL_MIN_ZOOM) return new Set(selected ? [selected] : []);
+    if (!area) return new Set(selected ? [selected] : []);
+    const { zoom } = area;
     const items = singles.filter((u) => u.vehicle?.plate_number).map((u) => {
       const [x, y] = toScreen(u.position!, zoom, view.bearing);
-      return { key: u.key, x, y, text: u.vehicle!.plate_number, priority: unitPriority(u) + (u.key === selected ? 100 : 0) };
+      return { key: u.key, x, y, text: labelText(u, now), priority: unitPriority(u) + (u.key === selected ? 100 : 0) };
     });
     const others = groups.map((g) => {
       const [x, y] = toScreen(g, zoom, view.bearing);
       return { x, y };
     });
     return pickLabels(items, others);
-  }, [singles, groups, area?.zoom, view.bearing, selected]);
+  }, [singles, groups, area, view.bearing, selected, now]);
 
   const pressGroup = (g: { id: number; lng: number; lat: number }) => {
-    const keys = groupIndex.getLeaves(g.id, Infinity).map((f) => (f.properties as GroupProps).key);
-    const zoom = groupIndex.getClusterExpansionZoom(g.id);
-    // Trucks in one yard stay together at every zoom — list them instead of zooming forever.
-    if (zoom > GROUP_MAX_ZOOM && onGroupPress) { onGroupPress(keys); return; }
-    camera.current?.easeTo?.({ center: [g.lng, g.lat], zoom: Math.min(zoom + 0.5, 16), padding: pad, duration: 600 });
+    let keys: string[] = [];
+    let zoom = GROUP_MAX_ZOOM;
+    try {
+      keys = groupIndex.getLeaves(g.id, Infinity).map((f) => (f.properties as GroupProps).key);
+      zoom = groupIndex.getClusterExpansionZoom(g.id);
+    } catch {
+      return; // the group was regrouped since it was drawn
+    }
+    // Zoom in until the group splits (trucks on one spot: as far as the street), and list them.
+    const set = new Set(keys);
+    const b = boundsOf(points.filter((u) => set.has(u.key)).map((u) => u.position!), 0.002, 0.004);
+    const target = Math.min(Math.max(zoom + 0.5, zoomRef.current + 1), 16);
+    if (b && zoom > GROUP_MAX_ZOOM) fitFlat(b, 700);
+    else camera.current?.easeTo?.({ center: [g.lng, g.lat], zoom: target, padding: pad, duration: 700 });
+    onGroupPress?.(keys);
+  };
+
+  // One tap can arrive twice (the marker's onPress and the map's); act on it once.
+  const lastPress = useRef<{ id: string; at: number }>({ id: '', at: 0 });
+  const pressTarget = (t: Target) => {
+    const id = t.kind === 'unit' ? `u:${t.key}` : `g:${t.id}`;
+    const at = tapTime();
+    if (lastPress.current.id === id && at - lastPress.current.at < ECHO_MS) return;
+    lastPress.current = { id, at };
+    if (t.kind === 'unit') onSelect?.(t.key);
+    else pressGroup(t);
+  };
+
+  // A tap on the map: the pin or group under the finger if there is one, else clear the pick.
+  const handleMapPress = async (point: [number, number]) => {
+    const cands: { t: Target; lng: number; lat: number }[] = [
+      ...groups.map((g) => ({ t: { kind: 'group' as const, id: g.id, lng: g.lng, lat: g.lat }, lng: g.lng, lat: g.lat })),
+      ...singles.map((u) => ({ t: { kind: 'unit' as const, key: u.key }, lng: u.position!.lng, lat: u.position!.lat })),
+    ];
+    let best: { t: Target; d: number } | null = null;
+    try {
+      const pts: [number, number][] = await Promise.all(cands.map((c) => mapRef.current.project([c.lng, c.lat])));
+      pts.forEach((p, i) => {
+        const d = Math.hypot(p[0] - point[0], p[1] - point[1]);
+        if (d <= HIT_PX && (!best || d < best.d)) best = { t: cands[i].t, d };
+      });
+    } catch {
+      // projection unavailable — treat as an empty-map tap
+    }
+    if (best) { pressTarget((best as { t: Target }).t); return; }
+    // The echo of a pin tap that missed (the camera already moved off it) must not undo the pick.
+    if (tapTime() - lastPress.current.at < ECHO_MS) return;
+    onSelect?.(null);
+  };
+
+  /**
+   * Frame these bounds flat and north-up. On iOS a fit is worked out for the
+   * camera's current tilt and only then flattened, so from driver view (70°)
+   * or 3D it landed zoomed into the wrong street; lay the map flat first.
+   */
+  const fitFlat = (b: Bounds, duration: number) => {
+    const cam = camera.current;
+    if (!cam) return;
+    if (tiltRef.current.pitch > 1 || Math.abs(tiltRef.current.bearing) > 1) {
+      try { cam.setStop?.({ pitch: 0, bearing: 0, padding: pad, duration: 0 })?.catch?.(() => {}); } catch { /* map not ready */ }
+      tiltRef.current = { pitch: 0, bearing: 0 };
+    }
+    cam.fitBounds(b, { padding: pad, pitch: 0, bearing: 0, duration, easing: 'ease' });
   };
 
   const headingOf = (u: LiveUnit): number => {
@@ -280,12 +445,29 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   const flyToSelected = (u: LiveUnit, pitch: number) => {
     camera.current?.easeTo?.({
       center: [u.position!.lng, u.position!.lat],
-      zoom: Math.max(zoomRef.current, 12.5),
+      zoom: Math.max(zoomRef.current, PICK_ZOOM),
       pitch,
       bearing: pitch > 0 && u.motion === 'moving' && u.position?.heading_deg != null ? u.position.heading_deg : 0,
       padding: pad,
-      duration: 900,
+      duration: 1400,
     });
+  };
+
+  /**
+   * A picked truck: flat, framing it and its next stop so it's plain where it's
+   * heading. 3D on → close up and tilted as before. No usable next stop → the
+   * truck at town level.
+   */
+  const frameSelected = (u: LiveUnit, tilt: boolean) => {
+    if (tilt) { flyToSelected(u, PICK_PITCH); return; }
+    const nx = u.trip && u.trip.next_stop_index != null ? u.trip.stops[u.trip.next_stop_index] : null;
+    const to = nx && nx.lat != null && nx.lng != null && !(nx.lat === 0 && nx.lng === 0) ? { lat: nx.lat, lng: nx.lng } : null;
+    // A stop thousands of km away is a wrong pin (the card says so) — don't fly the map there.
+    if (to && Math.abs(to.lat - u.position!.lat) + Math.abs(to.lng - u.position!.lng) < 20) {
+      const b = boundsOf([u.position!, to], 0.05, 0.05);
+      if (b) { fitFlat(b, 1000); return; }
+    }
+    camera.current?.easeTo?.({ center: [u.position!.lng, u.position!.lat], zoom: Math.max(Math.min(zoomRef.current, 13), 11), pitch: 0, bearing: 0, padding: pad, duration: 1000 });
   };
 
   const driverView = () => {
@@ -304,12 +486,17 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   const tripOverview = () => {
     if (!sel?.position) return;
     const b = boundsOf([sel.position, ...stops.map((s) => ({ lat: s.lat!, lng: s.lng! }))], 0.02, 0.05);
-    if (b) camera.current?.fitBounds(b, { padding: pad, pitch: 0, bearing: 0, duration: 1000 });
+    if (b) fitFlat(b, 1000);
   };
 
   useImperativeHandle(ref, () => ({
     fitAll() {
-      if (bounds) camera.current?.fitBounds(bounds, { padding: pad, pitch: 0, bearing: 0, duration: 800 });
+      if (bounds) fitFlat(bounds, 800);
+    },
+    fitKeys(keys: string[]) {
+      const set = new Set(keys);
+      const b = boundsOf(points.filter((u) => set.has(u.key)).map((u) => u.position!), 0.005, 0.01);
+      if (b) fitFlat(b, 900);
     },
     zoomBy(delta: number) {
       camera.current?.zoomTo(Math.max(3, Math.min(19, zoomRef.current + delta)), { duration: 250 });
@@ -318,7 +505,7 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
       mapRef.current?.getCenter().then((center: LngLat) => camera.current?.easeTo({ center, bearing: 0, pitch: 0, duration: 600 })).catch(() => {});
     },
     set3D(on: boolean) {
-      if (sel?.position) { flyToSelected(sel, on ? 55 : 0); return; }
+      if (sel?.position) { frameSelected(sel, on); return; }
       mapRef.current?.getCenter()
         .then((center: LngLat) => camera.current?.easeTo({ center, pitch: on ? 55 : 0, zoom: on ? Math.max(zoomRef.current, 6) : zoomRef.current, duration: 700 }))
         .catch(() => {});
@@ -328,22 +515,25 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
       if (!sel?.position) return;
       if (focusMode === 'driver') driverView();
       else if (focusMode === 'overview') tripOverview();
-      else flyToSelected(sel, tilted ? 55 : 0);
+      else frameSelected(sel, tilted);
     },
     tripOverview,
   }));
 
-  // Picking a truck flies to it (tilted when 3D is on); a city search frames the city.
+  // Picking a truck flies to it (tilted when 3D is on); a lane frames both ends and its trucks; a city search frames the city.
   useEffect(() => {
     if (!interactive || !camera.current) return;
-    if (sel?.position) flyToSelected(sel, tilted ? 55 : 0);
-    else if (focus) {
+    if (sel?.position) frameSelected(sel, tilted);
+    else if (lane) {
+      const b = boundsOf([lane.from, lane.to, ...points.map((u) => u.position!)], 0.2, 0.3);
+      if (b) fitFlat(b, 800);
+    } else if (focus) {
       const d = focus.km / 111;
-      camera.current.fitBounds([focus.lng - d, focus.lat - d, focus.lng + d, focus.lat + d], { padding: pad, pitch: 0, bearing: 0, duration: 700 });
+      fitFlat([focus.lng - d, focus.lat - d, focus.lng + d, focus.lat + d], 700);
     }
     // Only a new selection or search moves the camera, not padding/tilt changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [interactive, sel?.key, focus?.lat, focus?.lng, focus?.km]);
+  }, [interactive, sel?.key, focus?.lat, focus?.lng, focus?.km, laneKey]);
 
   // Follow the selected truck as fresh positions arrive (a new pick is handled above).
   const followLat = sel?.position?.lat;
@@ -365,16 +555,11 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   }, [followLat, followLng, sel?.key, follow, interactive]);
 
   if (!ML || !bounds) {
-    return (
-      <View style={[StyleSheet.absoluteFill, st.fallback]}>
-        <MapPin size={22} color="#52525B" />
-        <Text style={st.fallbackText}>{!ML ? 'Map needs the latest app update' : 'No truck locations match'}</Text>
-      </View>
-    );
+    return <Fallback text={!ML ? 'Map needs the latest app update' : 'No truck locations match'} />;
   }
-
+  if (!style) return <View style={[StyleSheet.absoluteFill, { backgroundColor: MAP_BG[theme] }]} />;
   const { Map, Camera, GeoJSONSource, Layer, ViewAnnotation, Marker } = ML;
-  const now = Date.now();
+  const apart = sel && feedsApart(sel) && sel.vehicle_gps && sel.driver_gps ? { v: sel.vehicle_gps, d: sel.driver_gps } : null;
   const dark = theme === 'dark';
   // Markers stand upright but a heading arrow turns with the map.
   const mapBearing = view.bearing;
@@ -383,7 +568,8 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
     <Map
       ref={mapRef}
       style={StyleSheet.absoluteFill}
-      mapStyle={MAP_STYLES[theme]}
+      // Our style JSON is the fetched MapLibre style, recoloured.
+      mapStyle={style as string | MapStyleSpec}
       logo={false}
       compass={false}
       scaleBar={false}
@@ -393,10 +579,12 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
       doubleTapZoom={interactive}
       touchRotate={interactive}
       touchPitch={interactive}
-      onPress={interactive && onSelect ? () => onSelect(null) : undefined}
+      onPress={interactive && onSelect ? (e) => { handleMapPress(e.nativeEvent.point).catch(() => {}); } : undefined}
+      onLongPress={interactive && onLongPress ? (e) => onLongPress({ lng: e.nativeEvent.lngLat[0], lat: e.nativeEvent.lngLat[1] }) : undefined}
       onRegionDidChange={(e) => {
-        const v = { zoom: e.nativeEvent.zoom, pitch: e.nativeEvent.pitch, bearing: e.nativeEvent.bearing };
+        const v = { zoom: e.nativeEvent.zoom, pitch: e.nativeEvent.pitch, bearing: e.nativeEvent.bearing, center: e.nativeEvent.center };
         zoomRef.current = v.zoom;
+        tiltRef.current = { pitch: v.pitch, bearing: v.bearing };
         setView(v);
         setArea({ bbox: e.nativeEvent.bounds, zoom: v.zoom });
         onViewChange?.(v);
@@ -404,7 +592,7 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
       }}
     >
       {interactive ? (
-        <Camera ref={camera} initialViewState={{ bounds, padding: pad }} />
+        <Camera ref={camera} initialViewState={initialCamera ? { center: initialCamera.center, zoom: initialCamera.zoom } : { bounds, padding: pad }} />
       ) : (
         <Camera bounds={bounds} padding={{ top: padding.top, bottom: padding.bottom, left: 30, right: 30 }} duration={0} />
       )}
@@ -423,6 +611,28 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
         </GeoJSONSource>
       ) : null}
 
+      {laneFeature ? (
+        <GeoJSONSource id="lane" data={laneFeature}>
+          <Layer id="lane-casing" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }} paint={{ 'line-color': LANE_VIOLET, 'line-width': 12, 'line-opacity': 0.18, 'line-blur': 2 }} />
+          {/* Separate layers, not a toggled prop: a dash set once on a native layer isn't cleared by dropping it. */}
+          {lane?.line && lane.line.length > 1 ? (
+            <Layer key="road" id="lane-road" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }} paint={{ 'line-color': LANE_VIOLET, 'line-width': 4, 'line-opacity': 0.75 }} />
+          ) : (
+            <Layer key="straight" id="lane-straight" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }} paint={{ 'line-color': LANE_VIOLET, 'line-width': 3, 'line-opacity': 0.75, 'line-dasharray': [2, 1.5] }} />
+          )}
+        </GeoJSONSource>
+      ) : null}
+      {lane ? (
+        <>
+          <ViewAnnotation id="lane-a" lngLat={[lane.from.lng, lane.from.lat]} anchor="bottom">
+            <View style={st.laneEnd}><View style={[st.lanePin, { backgroundColor: LANE_A }]}><Text style={st.lanePinText}>A</Text></View><View style={[st.laneTip, { borderTopColor: LANE_A }]} /></View>
+          </ViewAnnotation>
+          <ViewAnnotation id="lane-b" lngLat={[lane.to.lng, lane.to.lat]} anchor="bottom">
+            <View style={st.laneEnd}><View style={[st.lanePin, { backgroundColor: LANE_B }]}><Text style={st.lanePinText}>B</Text></View><View style={[st.laneTip, { borderTopColor: LANE_B }]} /></View>
+          </ViewAnnotation>
+        </>
+      ) : null}
+
       {toNext ? (
         <GeoJSONSource id="to-next" data={toNext}>
           <Layer id="to-next-casing" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }} paint={{ 'line-color': dark ? '#FF8A78' : '#FA634E', 'line-width': 12, 'line-opacity': 0.2, 'line-blur': 2 }} />
@@ -434,6 +644,50 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
           )}
         </GeoJSONSource>
       ) : null}
+
+      {/* A place search: its catchment circle and centre, under the trucks */}
+      {focus ? (
+        <GeoJSONSource id="near-area" data={circleOf(focus)}>
+          <Layer id="near-area-fill" type="fill" paint={{ 'fill-color': '#0EA5E9', 'fill-opacity': 0.08 }} />
+          <Layer id="near-area-line" type="line" paint={{ 'line-color': '#0284C7', 'line-width': 1.5, 'line-opacity': 0.8, 'line-dasharray': [3, 2] }} />
+        </GeoJSONSource>
+      ) : null}
+      {focus ? (
+        <ViewAnnotation id="near-centre" lngLat={[focus.lng, focus.lat]} anchor="bottom">
+          <View style={{ alignItems: 'center' }}>
+            {focus.label ? <Text style={st.placeLabel} numberOfLines={1}>{focus.label} · {focus.km} km</Text> : null}
+            <View style={st.placePin}><View style={st.placePinDot} /></View>
+          </View>
+        </ViewAnnotation>
+      ) : null}
+
+      {/* Tracker and phone over a kilometre apart: both spots, joined, so it's plain the driver isn't with the truck. */}
+      {apart ? (
+        <GeoJSONSource id="feeds-apart" data={{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [[apart.v.lng, apart.v.lat], [apart.d.lng, apart.d.lat]] } }}>
+          <Layer id="feeds-apart-line" type="line" layout={{ 'line-cap': 'round' }} paint={{ 'line-color': '#D97706', 'line-width': 3, 'line-dasharray': [1.5, 1.5] }} />
+        </GeoJSONSource>
+      ) : null}
+      {apart
+        ? (['v', 'd'] as const).map((k) => (
+          <ViewAnnotation key={`feed-${k}`} id={`feed-${k}`} lngLat={[apart[k].lng, apart[k].lat]} anchor="center">
+            <View style={st.feedSpot}>
+              <Image source={k === 'v' ? ICONS.truck : ICONS.person} style={{ width: 12, height: 12 }} fadeDuration={0} />
+            </View>
+          </ViewAnnotation>
+        ))
+        : null}
+
+      {/* Breaks on the way: where, and how long. */}
+      {sel && halts
+        ? halts.map((h) => (
+          <ViewAnnotation key={`halt-${h.from}`} id={`halt-${h.from}`} lngLat={[h.lng, h.lat]} anchor="center">
+            <View style={[st.halt, h.ongoing && st.haltNow]}>
+              <Text style={st.haltIcon}>II</Text>
+              <Text style={st.haltText}>{h.minutes < 60 ? `${h.minutes}m` : `${Math.floor(h.minutes / 60)}h${h.minutes % 60 ? ` ${h.minutes % 60}m` : ''}`}</Text>
+            </View>
+          </ViewAnnotation>
+        ))
+        : null}
 
       {stops.map((s, i) => {
         const done = !!s.actual_arrival;
@@ -448,81 +702,265 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
       })}
 
       {groups.map((g) => (
-        <Marker key={`group-${g.id}`} id={`group-${g.id}`} lngLat={[g.lng, g.lat]} anchor="center" onPress={interactive ? () => pressGroup(g) : undefined}>
-          <View style={[st.group, g.count >= 10 && st.groupBig, g.delayed > 0 && st.groupDelayed]}>
+        <Marker key={`group-${g.id}`} id={`group-${g.id}`} lngLat={[g.lng, g.lat]} anchor="center" onPress={interactive ? () => pressTarget({ kind: 'group', id: g.id, lng: g.lng, lat: g.lat }) : undefined}>
+          <View style={[st.group, g.count >= 10 && st.groupBig]}>
             <Text style={st.groupText}>{g.count}</Text>
-            {g.delayed > 0 ? <View style={st.groupBadge}><Text style={st.groupBadgeText}>{g.delayed}</Text></View> : null}
+            {/* How the group splits — the web's coloured ring, as a bar */}
+            <View style={st.mix}>
+              {MIX_ORDER.filter((t) => g.mix[t] > 0).map((t) => (
+                <View key={t} style={{ flex: g.mix[t], backgroundColor: TONE[t].color }} />
+              ))}
+            </View>
           </View>
         </Marker>
       ))}
 
-      {singles.map((u) => {
-        const free = isFree(u);
-        const color = isDelayed(u) ? STATE_STYLE.delayed.color : free ? '#FFFFFF' : STATE_STYLE.moving.color;
-        const on = selected === u.key;
-        const silent = isSilent(u, now);
-        const heading = u.position?.heading_deg;
-        const moving = u.motion === 'moving' && heading != null && !silent;
-        const size = on ? 18 : 15;
-        const icon = moving ? (free ? ICONS.navInk : ICONS.navWhite) : free ? ICONS.truckInk : ICONS.truckWhite;
+      {singles.map((u) => (
+        <UnitMarker
+          key={u.key}
+          Marker={Marker}
+          unit={u}
+          selected={selected === u.key}
+          dimmed={!!selected && selected !== u.key}
+          ringed={!!ringed?.has(u.key)}
+          plate={labelled.has(u.key) ? u.vehicle?.plate_number ?? null : null}
+          now={now}
+          mapBearing={mapBearing}
+          onPress={interactive && onSelect ? () => pressTarget({ kind: 'unit', key: u.key }) : undefined}
+        />
+      ))}
+    </Map>
+  );
+});
+
+function Fallback({ text }: { text: string }) {
+  return (
+    <View style={[StyleSheet.absoluteFill, st.fallback]}>
+      <MapPin size={22} color="#52525B" />
+      <Text style={st.fallbackText}>{text}</Text>
+    </View>
+  );
+}
+
+/**
+ * Where a truck is drawn: eased from its last fix to the new one, so trucks
+ * drive across the map on each refresh instead of teleporting (web `useGlide`).
+ */
+function useGlide(lng: number, lat: number): LngLat {
+  const [shown, setShown] = useState<LngLat>([lng, lat]);
+  const shownRef = useRef(shown);
+  useEffect(() => {
+    const from = shownRef.current;
+    if (from[0] === lng && from[1] === lat) return;
+    let raf = 0;
+    const far = Math.abs(from[0] - lng) > GLIDE_MAX_DEG || Math.abs(from[1] - lat) > GLIDE_MAX_DEG;
+    const start = Date.now();
+    const step = () => {
+      const t = far ? 1 : Math.min(1, (Date.now() - start) / GLIDE_MS);
+      const e = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2; // ease-in-out
+      shownRef.current = [from[0] + (lng - from[0]) * e, from[1] + (lat - from[1]) * e];
+      setShown(shownRef.current);
+      if (t < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [lng, lat]);
+  return shown;
+}
+
+type MarkerComponent = NonNullable<typeof ML>['Marker'];
+type MapStyleSpec = Exclude<React.ComponentProps<NonNullable<typeof ML>['Map']>['mapStyle'], string>;
+
+/** Each truck sits centred in a box this size; the stop ring and the halo stay inside it. */
+const BOX = 52;
+
+/** The selected truck's halo: a soft ring in its colour, breathing out. */
+function Pulse({ color }: { color: string }) {
+  const [v] = useState(() => new Animated.Value(0));
+  useEffect(() => {
+    const loop = Animated.loop(Animated.timing(v, { toValue: 1, duration: 1600, easing: Easing.out(Easing.quad), useNativeDriver: true }));
+    loop.start();
+    return () => loop.stop();
+  }, [v]);
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[st.halo, {
+        backgroundColor: color,
+        opacity: v.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0] }),
+        transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) }],
+      }]}
+    />
+  );
+}
+
+/** How far along its stops a running trip is: a dot per stop around the pin, reached ones filled. */
+function StopRing({ done, total, radius, color }: { done: number; total: number; radius: number; color: string }) {
+  const n = Math.min(total, 12);
+  // Past 12 stops the dots stand for a share of the trip, not one stop each.
+  const filled = Math.round((done / total) * n);
+  return (
+    <>
+      {Array.from({ length: n }, (_, i) => {
+        const a = ((-90 + (i * 360) / n) * Math.PI) / 180;
         return (
-          <Marker
-            key={u.key}
-            id={`unit-${u.key}`}
-            lngLat={[u.position!.lng, u.position!.lat]}
-            // Pinned by the pin's centre, so a plate label below doesn't shift it.
-            anchor="top"
-            offset={[0, -(on ? 21 : 16)]}
-            onPress={interactive && onSelect ? () => onSelect(u.key) : undefined}
-          >
-            <View style={{ alignItems: 'center' }}>
-              <View style={[st.pin, { backgroundColor: color }, free && st.pinFree, on && st.pinOn]}>
-                <Image
-                  source={icon}
-                  style={{ width: size, height: size, transform: moving ? [{ rotate: `${heading! - mapBearing}deg` }] : [] }}
-                  fadeDuration={0}
-                />
-                {/* No signal: a small grey badge, so the pin itself stays readable */}
-                {silent ? <View style={st.silent} /> : null}
-              </View>
-              {labelled.has(u.key) && u.vehicle?.plate_number ? (
-                <View style={[st.label, !on && st.labelQuiet]}><Text style={[st.labelText, !on && st.labelTextQuiet]}>{u.vehicle.plate_number}</Text></View>
-              ) : null}
-            </View>
-          </Marker>
+          <View
+            key={i}
+            pointerEvents="none"
+            style={[st.ringDot, {
+              left: BOX / 2 + radius * Math.cos(a) - 2.5,
+              top: BOX / 2 + radius * Math.sin(a) - 2.5,
+              backgroundColor: i < filled ? color : '#CBD5E1',
+            }]}
+          />
         );
       })}
-    </Map>
+    </>
+  );
+}
+
+/**
+ * One truck: white disc with its glyph, the live-GPS badge (amber when the
+ * tracker and phone disagree), a dot ring for its trip's stops, and below it
+ * the plate (or age) with a red "+40m" when late and an amber stop time when
+ * it has stood still too long. Others fade while one is picked.
+ */
+const UnitMarker = React.memo(function UnitMarker({ Marker, unit: u, selected: on, dimmed, ringed, plate, now, mapBearing, onPress }: {
+  Marker: MarkerComponent;
+  unit: LiveUnit;
+  selected: boolean;
+  dimmed: boolean;
+  ringed: boolean;
+  plate: string | null;
+  now: number;
+  mapBearing: number;
+  onPress?: () => void;
+}) {
+  const at = useGlide(u.position!.lng, u.position!.lat);
+  const tone = TONE[unitTone(u)];
+  const silent = isSilent(u, now);
+  const heading = u.position?.heading_deg;
+  const moving = u.motion === 'moving' && heading != null && !silent;
+  const feed = silent ? 'none' : u.feed ?? 'none';
+  const age = silent ? shortAgo(u.position?.recorded_at, now) : '';
+  const late = lateMin(u, now);
+  const stopped = isLongStop(u, now) ? stoppedMin(u, now) : null;
+  const progress = tripProgress(u);
+  const apart = feedsApart(u);
+  return (
+    <Marker
+      id={`unit-${u.key}`}
+      lngLat={at}
+      // Pinned by the box's centre, so the chips below don't shift it.
+      anchor="top"
+      offset={[0, -BOX / 2]}
+      onPress={onPress}
+    >
+      <View style={[{ alignItems: 'center' }, dimmed && { opacity: 0.35 }]}>
+        <View style={st.box}>
+          {on ? <Pulse color={tone.color} /> : null}
+          {progress ? <StopRing done={progress.done} total={progress.total} radius={on ? 24 : 21} color={tone.color} /> : null}
+          <View style={[st.pin, silent && st.pinSilent, ringed && st.pinRinged, on && st.pinOn, on && { borderColor: tone.color }]}>
+            {moving ? (
+              <Image
+                source={ICONS.nav}
+                style={{ width: 18, height: 18, tintColor: tone.color, transform: [{ rotate: `${heading! - mapBearing}deg` }] }}
+                fadeDuration={0}
+              />
+            ) : silent ? (
+              <View style={st.ring} />
+            ) : (
+              <View style={[st.square, { backgroundColor: tone.color }]} />
+            )}
+            {feed !== 'none' ? (
+              <View style={[st.feed, apart && st.feedApart]}>
+                {feed === 'vehicle' || feed === 'both' ? <Image source={ICONS.truck} style={st.feedIcon} fadeDuration={0} /> : null}
+                {feed === 'driver' || feed === 'both' ? <Image source={ICONS.person} style={st.feedIcon} fadeDuration={0} /> : null}
+              </View>
+            ) : null}
+          </View>
+        </View>
+        {plate ? (
+          <View style={[st.label, !on && st.labelQuiet]}>
+            <Text style={[st.labelText, !on && st.labelTextQuiet]}>
+              {plate}
+              {age ? <Text style={st.labelAge}>{` · ${age}`}</Text> : null}
+            </Text>
+          </View>
+        ) : age ? (
+          <Text style={st.age}>{age}</Text>
+        ) : null}
+        {late != null || stopped != null ? (
+          <View style={st.chips}>
+            {late != null ? <Text style={[st.chip, st.chipLate]}>{lateText(late)}</Text> : null}
+            {stopped != null ? <Text style={[st.chip, st.chipStop]}>{`Stopped ${minText(stopped)}`}</Text> : null}
+          </View>
+        ) : null}
+      </View>
+    </Marker>
   );
 });
 
 const st = StyleSheet.create({
   fallback: { backgroundColor: '#EFEFF1', alignItems: 'center', justifyContent: 'center', gap: 8 },
   fallbackText: { fontSize: 13, fontWeight: '600', color: '#52525B' },
+  // White disc; the glyph inside carries the colour (web LiveUnitMarker).
   pin: {
-    width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 2.5, borderColor: '#FFFFFF',
-    shadowColor: '#000', shadowOpacity: 0.22, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3,
+    width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF',
+    borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+    shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 4,
   },
-  pinFree: { borderColor: '#3E3C3D', borderWidth: 2 },
-  pinOn: { width: 42, height: 42, borderRadius: 21, borderWidth: 3 },
-  silent: { position: 'absolute', top: -3, right: -3, width: 11, height: 11, borderRadius: 6, backgroundColor: '#9898A4', borderWidth: 2, borderColor: '#FFFFFF' },
-  label: { marginTop: 3, backgroundColor: '#3E3C3D', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  pinSilent: { backgroundColor: 'rgba(255,255,255,0.85)', shadowOpacity: 0.18, shadowRadius: 2, elevation: 2 },
+  pinOn: { width: 38, height: 38, borderRadius: 19, borderWidth: 3 },
+  pinRinged: { borderColor: LANE_A, borderWidth: 3 },
+  laneEnd: { alignItems: 'center' },
+  lanePin: {
+    width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', borderWidth: 2.5, borderColor: '#FFFFFF',
+    shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 4,
+  },
+  lanePinText: { fontSize: 14, fontWeight: '800', color: '#FFFFFF' },
+  laneTip: { width: 0, height: 0, marginTop: -2, borderLeftWidth: 6, borderRightWidth: 6, borderTopWidth: 8, borderLeftColor: 'transparent', borderRightColor: 'transparent' },
+  box: { width: BOX, height: BOX, alignItems: 'center', justifyContent: 'center' },
+  halo: { position: 'absolute', width: BOX, height: BOX, borderRadius: BOX / 2 },
+  ringDot: { position: 'absolute', width: 5, height: 5, borderRadius: 2.5, borderWidth: 0.5, borderColor: '#FFFFFF' },
+  feedApart: { backgroundColor: '#D97706' },
+  placeLabel: { maxWidth: 200, marginBottom: 3, fontSize: 11, fontWeight: '700', color: '#FFFFFF', backgroundColor: '#0369A1', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, overflow: 'hidden' },
+  placePin: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#0284C7', borderWidth: 3, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 3 },
+  placePinDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFFFFF' },
+  feedSpot: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#D97706', borderWidth: 2, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
+  chips: { flexDirection: 'row', gap: 3, marginTop: 2 },
+  chip: { fontSize: 10, fontWeight: '800', color: '#FFFFFF', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 5, overflow: 'hidden' },
+  chipLate: { backgroundColor: '#E11D48' },
+  chipStop: { backgroundColor: '#D97706' },
+  square: { width: 12, height: 12, borderRadius: 4 },
+  ring: { width: 12, height: 12, borderRadius: 6, borderWidth: 3, borderColor: SILENT_COLOR },
+  feed: {
+    position: 'absolute', right: -7, bottom: -4, flexDirection: 'row', gap: 1, paddingHorizontal: 3, paddingVertical: 2,
+    borderRadius: 8, backgroundColor: '#3E3C3D', borderWidth: 2, borderColor: '#FFFFFF',
+  },
+  feedIcon: { width: 9, height: 9 },
+  label: { marginTop: -4, backgroundColor: '#3E3C3D', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   labelText: { fontSize: 11, fontWeight: '700', color: '#FFFFFF', fontFamily: 'monospace' },
   labelQuiet: { backgroundColor: 'rgba(255,255,255,0.95)', borderWidth: 1, borderColor: '#E4E4E7' },
   labelTextQuiet: { color: '#3E3C3D', fontWeight: '600' },
+  labelAge: { fontFamily: undefined, fontWeight: '500', color: '#94A3B8' },
+  age: { marginTop: -4, fontSize: 9, fontWeight: '600', color: '#64748B' },
   group: {
-    minWidth: 38, height: 38, borderRadius: 19, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: '#3E3C3D', borderWidth: 3, borderColor: '#FFFFFF',
+    // White like the trucks, the count dark, the mix bar under it (web ClusterMarker).
+    minWidth: 40, height: 40, borderRadius: 20, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
     shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 4,
   },
   groupBig: { minWidth: 46, height: 46, borderRadius: 23 },
-  groupDelayed: { borderColor: '#FA634E' },
-  groupText: { fontSize: 14, fontWeight: '800', color: '#FFFFFF', fontVariant: ['tabular-nums'] },
-  groupBadge: {
-    position: 'absolute', top: -6, right: -6, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4,
-    backgroundColor: '#FA634E', borderWidth: 2, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center',
+  groupText: { fontSize: 14, fontWeight: '800', color: '#1E293B', fontVariant: ['tabular-nums'], marginTop: -2 },
+  mix: { position: 'absolute', bottom: 7, width: 20, height: 3.5, borderRadius: 2, overflow: 'hidden', flexDirection: 'row', backgroundColor: '#E2E8F0' },
+  halt: {
+    flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, height: 20, borderRadius: 10,
+    backgroundColor: '#FFFFFF', borderWidth: 1.5, borderColor: '#9898A4',
   },
-  groupBadgeText: { fontSize: 10, fontWeight: '800', color: '#FFFFFF' },
+  haltNow: { borderColor: '#D97706' },
+  haltIcon: { fontSize: 8, fontWeight: '900', color: '#52525B', letterSpacing: -1 },
+  haltText: { fontSize: 10, fontWeight: '800', color: '#3F3F46', fontVariant: ['tabular-nums'] },
   stop: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#71717A', alignItems: 'center', justifyContent: 'center' },
   stopDone: { backgroundColor: '#3E3C3D', borderColor: '#FFFFFF' },
   stopNext: { backgroundColor: '#FA634E', borderColor: '#FFFFFF' },

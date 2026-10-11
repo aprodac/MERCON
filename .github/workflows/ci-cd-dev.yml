@@ -60,6 +60,11 @@ jobs:
           REPO_URL="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
           if [ -d .git ]; then
             git remote set-url origin "$REPO_URL"
+            # replace-prod-from-dev.yml checks out only the migrations folder in
+            # this same workspace (actions/checkout sparse-checkout) and git keeps
+            # that setting — every deploy after it ran without scripts/ and
+            # failed at client-secrets.sh (2026-10-05). Always check out everything.
+            git sparse-checkout disable 2>/dev/null || git config core.sparseCheckout false
             git fetch --force --prune origin "$GITHUB_SHA" || git fetch --force --prune origin dev
             git checkout --force "$GITHUB_SHA" || git checkout --force origin/dev
             git clean -fdx

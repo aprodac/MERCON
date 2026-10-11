@@ -1258,6 +1258,7 @@ export * from './quotationMatching';
 export * from './quotationSearch';
 export * from './monthlyRotation';
 export * from './tripRoute';
+export * from './tripLegs';
 
 
 
@@ -1275,3 +1276,4 @@ export * from './assistantConfig';
 export * from './saudiPlate';
 export * from './quotationRef';
 export * from './statusMessage';
+export * from './fleetRules';

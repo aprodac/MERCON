@@ -1,6 +1,7 @@
 /**
  * Add / edit a quotation. `/quotation-edit` with no id creates one
- * (POST /quotations); with `?id=` it edits (PUT /quotations/:id) — the same
+ * (POST /quotations); with `?id=` it edits (PUT /quotations/:id); with
+ * `?copyFrom=` it creates a new one pre-filled from that quotation (Duplicate) — the same
  * fields and payload as the web dashboard's Add / Edit Quotation page, one
  * rate line at a time.
  *
@@ -59,24 +60,27 @@ const money = (v: string) => v.replace(/[^0-9.]/g, '');
 
 export default function QuotationEditScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id?: string }>();
+  const { id, copyFrom } = useLocalSearchParams<{ id?: string; copyFrom?: string }>();
   const isNew = !id;
+  const sourceId = id || copyFrom;
   const [quotation, setQuotation] = useState<OperatorQuotationDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!id) return;
+    if (!sourceId) return;
     let live = true;
-    operatorService.quotationById(id)
+    operatorService.quotationById(sourceId)
       .then((q) => { if (live) setQuotation(q); })
       .catch((e) => { if (live) setLoadError(getApiErrorMessage(e)); });
     return () => { live = false; };
-  }, [id]);
+  }, [sourceId]);
 
   const body = () => {
-    if (isNew) return <QuotationForm onDone={() => router.back()} />;
+    if (isNew && !copyFrom) return <QuotationForm onDone={() => router.back()} />;
     if (loadError) return <Text style={formStyles.errorText}>{loadError}</Text>;
     if (!quotation) return <ActivityIndicator color={Colors.primary} style={{ marginTop: 48 }} />;
+    // Duplicate: a new quotation starting from this one's route, truck and price.
+    if (isNew) return <QuotationForm key={`copy-${quotation.id}`} template={quotation} onDone={() => router.back()} />;
     return <QuotationForm key={quotation.id} quotation={quotation} onDone={() => router.back()} />;
   };
 
@@ -84,8 +88,8 @@ export default function QuotationEditScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.gray100 }} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={Colors.white} />
       <FormHeader
-        title={isNew ? 'New quotation' : 'Edit quotation'}
-        subtitle={isNew ? 'Route, truck and price for one customer' : quotation?.name ?? undefined}
+        title={copyFrom ? 'Duplicate quotation' : isNew ? 'New quotation' : 'Edit quotation'}
+        subtitle={copyFrom ? 'Change the truck, route or price, then save' : isNew ? 'Route, truck and price for one customer' : quotation?.name ?? undefined}
         onBack={() => router.back()}
       />
       {body()}
@@ -93,14 +97,16 @@ export default function QuotationEditScreen() {
   );
 }
 
-function QuotationForm({ quotation, onDone }: { quotation?: OperatorQuotationDetail; onDone: () => void }) {
+function QuotationForm({ quotation, template, onDone }: { quotation?: OperatorQuotationDetail; template?: OperatorQuotationDetail; onDone: () => void }) {
+  /** Where the fields start from: the quotation being edited, or the one being duplicated. */
+  const src = quotation ?? template;
   const queryClient = useQueryClient();
   const isNew = !quotation;
   const { customers } = useOperatorCustomers();
 
-  const [customerId, setCustomerId] = useState(quotation?.customerId ?? '');
+  const [customerId, setCustomerId] = useState(src?.customerId ?? '');
   const [stops, setStops] = useState<StopDraft[]>(() => {
-    const existing = [...(quotation?.stops ?? [])].sort((a, b) => a.sequence - b.sequence);
+    const existing = [...(src?.stops ?? [])].sort((a, b) => a.sequence - b.sequence);
     if (existing.length >= 2) {
       return existing.map((s) => ({
         key: s.id,
@@ -112,20 +118,20 @@ function QuotationForm({ quotation, onDone }: { quotation?: OperatorQuotationDet
     }
     return [newStop('Pickup'), newStop('Dropoff')];
   });
-  const [truckClass, setTruckClass] = useState(quotation?.vehicle_class || quotation?.source_vehicle_label || '10 TON');
-  const [lineType, setLineType] = useState(quotation?.line_type || 'SINGLE_TRIP');
+  const [truckClass, setTruckClass] = useState(src?.vehicle_class || src?.source_vehicle_label || '10 TON');
+  const [lineType, setLineType] = useState(src?.line_type || 'SINGLE_TRIP');
   const [billing, setBilling] = useState<Billing>(
-    quotation ? (normalizeBillingTypeToken(quotation.operation_type) === 'Monthly' ? 'MONTHLY' : 'EXTRA') : 'EXTRA',
+    src ? (normalizeBillingTypeToken(src.operation_type) === 'Monthly' ? 'MONTHLY' : 'EXTRA') : 'EXTRA',
   );
   const [basis, setBasis] = useState<Basis>(
-    quotation?.pricing_basis === 'PER_MONTH' ? 'PER_MONTH' : quotation?.pricing_basis === 'PER_TRIP' ? 'PER_TRIP'
-      : quotation && normalizeBillingTypeToken(quotation.operation_type) === 'Monthly' ? 'PER_MONTH' : 'PER_TRIP',
+    src?.pricing_basis === 'PER_MONTH' ? 'PER_MONTH' : src?.pricing_basis === 'PER_TRIP' ? 'PER_TRIP'
+      : src && normalizeBillingTypeToken(src.operation_type) === 'Monthly' ? 'PER_MONTH' : 'PER_TRIP',
   );
-  const [rate, setRate] = useState(quotation ? String(Number(quotation.rate) || '') : '');
-  const [payout, setPayout] = useState(quotation?.driver_payout != null ? String(Number(quotation.driver_payout)) : '');
-  const [validFrom, setValidFrom] = useState(toDDMMYYYY(quotation?.valid_from));
-  const [validTo, setValidTo] = useState(toDDMMYYYY(quotation?.valid_to));
-  const [isActive, setIsActive] = useState(quotation?.is_active ?? true);
+  const [rate, setRate] = useState(src ? String(Number(src.rate) || '') : '');
+  const [payout, setPayout] = useState(src?.driver_payout != null ? String(Number(src.driver_payout)) : '');
+  const [validFrom, setValidFrom] = useState(toDDMMYYYY(src?.valid_from));
+  const [validTo, setValidTo] = useState(toDDMMYYYY(src?.valid_to));
+  const [isActive, setIsActive] = useState(src?.is_active ?? true);
 
   const [locations, setLocations] = useState<OperatorLocation[]>([]);
   const [picker, setPicker] = useState<{ kind: 'customer' } | { kind: 'stop'; key: string } | { kind: 'line' } | null>(null);
@@ -141,7 +147,7 @@ function QuotationForm({ quotation, onDone }: { quotation?: OperatorQuotationDet
     return () => { live = false; };
   }, [customerId]);
 
-  const customerName = quotation?.customer?.name ?? customers.find((c) => c.id === customerId)?.name ?? '';
+  const customerName = (customerId === src?.customerId ? src?.customer?.name : undefined) ?? customers.find((c) => c.id === customerId)?.name ?? '';
   // Truck classes and line types saved on the web's taxonomy may not be in the default lists; keep them selectable.
   const truckOptions = useMemo(() => Array.from(new Set<string>([...TRUCK_CLASSES, truckClass].filter(Boolean))), [truckClass]);
   // Older quotations store the trip type as words ("Single Trip"); that spelling is kept unless the operator picks another type.
@@ -204,7 +210,7 @@ function QuotationForm({ quotation, onDone }: { quotation?: OperatorQuotationDet
       pricing_basis: basis,
       rate: rateNum,
       driver_payout: payout ? payoutNum : null,
-      currency: quotation?.currency || 'SAR',
+      currency: src?.currency || 'SAR',
       valid_from: toIsoDay(validFrom),
       valid_to: toIsoDay(validTo),
       stops: stops.map((s, i) => ({

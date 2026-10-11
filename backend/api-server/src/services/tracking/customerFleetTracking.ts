@@ -7,18 +7,20 @@
  *
  * Each truck is the same customer view as the trip page (`buildTripTracking`,
  * cached per trip), cut down to a card, with the trip's own tracking token so
- * the customer can open the full page. The same per-customer settings apply.
+ * the customer can open the full page. The same per-customer settings apply,
+ * with this link's own view settings (LinkView) on top.
  */
 import type { PrismaClient } from '@prisma/client';
 import { logger } from '../../utils/logger';
 import { newShareToken } from '../operatorInbox';
 import {
-  CUSTOMER_TRACKING_SELECT, TRACKING_META_SELECT, buildTripTracking, ensureTrackingLink, lateMinutes, loadTrackingContext, teamWhatsApp,
+  CUSTOMER_TRACKING_SELECT, LINK_VIEW_SELECT, TRACKING_META_SELECT, buildTripTracking, ensureTrackingLink, lateMinutes, loadTrackingContext, teamWhatsApp,
   optionsOf, placeName, routeLabel, type PublicTracking, type TrackingBrand, type TrackingCustomerSettings, type TrackingOptions, type TrackingTripMeta,
 } from './customerTracking';
 import { publicImage } from './publicImages';
 import { whatsAppGroupUrl } from '@mercon/shared-types';
 import { localDateToUtc } from '../../controllers/financeReportsController';
+import { logLinkOpen } from './linkOpens';
 
 /** Scheduled trips show up this long before they're due to start. */
 export const UPCOMING_WINDOW_MS = 24 * 60 * 60_000;
@@ -156,6 +158,7 @@ export function toFleetTruck(token: string, t: PublicTracking): FleetTruck {
 export function toDeliveredTrip(
   token: string,
   trip: TrackingTripMeta & { stops: Array<{ location_name: string | null; location_address: string | null }> },
+  options?: Pick<TrackingOptions, 'show_plate'>,
 ): DeliveredTrip {
   const third = trip.is_third_party ? trip.subcontract : null;
   const names = trip.stops
@@ -165,7 +168,7 @@ export function toDeliveredTrip(
   return {
     token,
     ref: trip.ref_id,
-    plate: third ? third.vehiclePlate : trip.vehicle?.plate_number ?? null,
+    plate: options && !options.show_plate ? null : third ? third.vehiclePlate : trip.vehicle?.plate_number ?? null,
     type: (third ? third.vehicleType : null) || trip.vehicle_type || trip.vehicle?.asset_type || null,
     route_label: routeLabel(names),
     started_at: trip.actual_start?.toISOString() ?? null,
@@ -265,28 +268,28 @@ export type FleetLookup =
 export async function loadCustomerFleetTracking(
   db: PrismaClient,
   token: string,
-  opts: { now?: Date; countView?: boolean; device?: string | null } = {},
+  opts: { now?: Date; countView?: boolean; device?: string | null; ip?: string | null } = {},
 ): Promise<FleetLookup> {
   const now = opts.now ?? new Date();
   if (token.length < 16 || token.length > 64) return { state: 'not_found' };
   const link = await db.customerTrackingLink.findUnique({
     where: { token },
-    select: { id: true, revokedAt: true, customer: { select: { id: true, name: true, logo_url: true, deletedAt: true, ...CUSTOMER_TRACKING_SELECT } } },
+    select: { id: true, revokedAt: true, expiresAt: true, ...LINK_VIEW_SELECT, customer: { select: { id: true, name: true, logo_url: true, deletedAt: true, ...CUSTOMER_TRACKING_SELECT } } },
   });
   if (!link || link.customer.deletedAt) return { state: 'not_found' };
-  if (link.revokedAt) return { state: 'expired' };
+  if (link.revokedAt || (link.expiresAt && link.expiresAt <= now)) return { state: 'expired' };
   if (!link.customer.tracking_enabled) return { state: 'disabled' };
 
   if (opts.countView) {
     db.customerTrackingLink
       .update({ where: { id: link.id }, data: { open_count: { increment: 1 }, last_opened_at: now } })
       .catch((err) => logger.warn({ err }, '[tracking] could not record a customer page open'));
-    db.trackingLinkOpen
-      .create({ data: { customerLinkId: link.id, opened_at: now, device: opts.device ?? null } })
-      .catch((err) => logger.warn({ err }, '[tracking] could not log a customer page open'));
+    logLinkOpen(db, { customerLinkId: link.id }, now, opts.device ?? null, opts.ip ?? null);
   }
 
-  const cached = fleetCache.get(link.customer.id);
+  // Per link: two links of one customer can show different things.
+  const options = optionsOf(link.customer, link);
+  const cached = fleetCache.get(link.id);
   if (cached && now.getTime() - cached.at < FLEET_TTL_MS) return { state: 'ok', data: cached.data };
 
   const [ctx, trips, finished] = await Promise.all([
@@ -315,7 +318,7 @@ export async function loadCustomerFleetTracking(
   const worker = async () => {
     for (let trip = queue.shift(); trip; trip = queue.shift()) {
       const [tracking, tripLink] = await Promise.all([
-        buildTripTracking(db, trip.id, trip as unknown as TrackingTripMeta & { customer: TrackingCustomerSettings | null }, ctx, now),
+        buildTripTracking(db, trip.id, trip as unknown as TrackingTripMeta & { customer: TrackingCustomerSettings | null }, ctx, now, link),
         ensureTrackingLink(db, trip.id, { userId: null, now }),
       ]);
       if (tracking && tripLink?.token) trucks.push(toFleetTruck(tripLink.token, tracking));
@@ -324,7 +327,6 @@ export async function loadCustomerFleetTracking(
   await Promise.all(Array.from({ length: FLEET_CONCURRENCY }, worker));
 
   // Delivered trips need no live data or routing — just their link, when, and the delivery photo.
-  const options = optionsOf(link.customer);
   const [photos, month] = await Promise.all([
     options.show_photos ? deliveryPhotos(db, finished.map((t) => t.id)) : Promise.resolve(new Map<string, { url: string; count: number }>()),
     loadMonthSummary(db, link.customer.id, ctx.timezone, options, now).catch((err) => {
@@ -337,7 +339,7 @@ export async function loadCustomerFleetTracking(
     const tripLink = await ensureTrackingLink(db, trip.id, { userId: null, now });
     if (!tripLink?.token) continue;
     const pod = photos.get(trip.id);
-    delivered.push({ ...toDeliveredTrip(tripLink.token, trip), pod_url: pod?.url ?? null, pod_count: pod?.count ?? 0 });
+    delivered.push({ ...toDeliveredTrip(tripLink.token, trip, options), pod_url: pod?.url ?? null, pod_count: pod?.count ?? 0 });
   }
 
   // "Ask" on this page: the customer's group, else the team member behind their latest trip, else the company number.
@@ -359,7 +361,7 @@ export async function loadCustomerFleetTracking(
     generated_at: now.toISOString(),
   };
   if (fleetCache.size > 200) fleetCache.clear();
-  fleetCache.set(link.customer.id, { at: now.getTime(), data });
+  fleetCache.set(link.id, { at: now.getTime(), data });
   return { state: 'ok', data };
 }
 
@@ -382,11 +384,23 @@ export async function ensureCustomerTrackingLink(
   if (!customer) return null;
   if (!customer.tracking_enabled) return { enabled: false, token: null, created: false, open_count: 0, last_opened_at: null };
 
+  const live = { customerId, revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] };
+  // A new link keeps the old one's label, expiry and view settings.
+  let carried: Record<string, unknown> = {};
   if (opts.renew) {
-    await db.customerTrackingLink.updateMany({ where: { customerId, revokedAt: null }, data: { revokedAt: now } });
+    const prev = await db.customerTrackingLink.findFirst({
+      where: { customerId },
+      orderBy: { createdAt: 'desc' },
+      select: { label: true, expiresAt: true, ...LINK_VIEW_SELECT },
+    });
+    if (prev) {
+      const { expiresAt, ...rest } = prev;
+      carried = expiresAt && expiresAt <= now ? rest : { ...rest, expiresAt };
+    }
+    await db.customerTrackingLink.updateMany({ where: { customerId, revokedAt: null }, data: { revokedAt: now, revoked_by: opts.userId } });
   } else {
     const existing = await db.customerTrackingLink.findFirst({
-      where: { customerId, revokedAt: null },
+      where: live,
       orderBy: { createdAt: 'desc' },
       select: { token: true, open_count: true, last_opened_at: true },
     });
@@ -395,7 +409,7 @@ export async function ensureCustomerTrackingLink(
     }
   }
   const row = await db.customerTrackingLink.create({
-    data: { customerId, token: newShareToken(), created_by: opts.userId },
+    data: { customerId, token: newShareToken(), created_by: opts.userId, ...carried },
     select: { token: true },
   });
   return { enabled: true, token: row.token, created: true, open_count: 0, last_opened_at: null };

@@ -25,7 +25,7 @@ import { TripCard } from './TripCard';
 import { AppTopBar } from '@/components/AppTopBar';
 import { useNow, useTripList, SCHEDULE_AFTER, SCHEDULE_BEFORE, type View as ListView } from './useTripList';
 import {
-  dayLabel, dayRange, driverNameOf, driverPhoneOf, groupByDay, needsAttention, phaseOf, tripDayIso, type TimeFmt,
+  dayLabel, dayRange, driverNameOf, driverPhoneOf, finishedDayIso, groupByDay, needsAttention, phaseOf, tripDayIso, type TimeFmt,
 } from './tripListModel';
 
 const INK = '#3E3C3D';
@@ -133,7 +133,8 @@ export default function TripsScreen() {
   }, [data.window, f, selectedDay]);
 
   // ── History ───────────────────────────────────────────────────────────────
-  const historySections = useMemo(() => groupByDay(data.history, f, todayKey, true), [data.history, f, todayKey]);
+  // Grouped by the day each trip finished, not the day it was planned.
+  const historySections = useMemo(() => groupByDay(data.history, f, todayKey, true, finishedDayIso), [data.history, f, todayKey]);
 
   const renderCard = (t: OperatorTrip, showDay = false) => (
     <TripCard trip={t} f={f} now={now} showDay={showDay} onPress={open} onLongPress={setActionsFor} />

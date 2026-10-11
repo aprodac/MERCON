@@ -1,7 +1,8 @@
 /**
  * Data for the Trips page, one query per view:
  *   now      — every open trip (draft → delayed); refreshes every 30 s
- *   schedule — all trips in a 3-week window around today, for the date strip
+ *   schedule — open trips (not yet finished) in a 3-week window around today,
+ *              for the date strip; finished/cancelled ones live in History
  *   history  — finished / cancelled trips, page by page
  *   search   — the server's word search across all trips
  */
@@ -16,6 +17,7 @@ export type View = 'now' | 'delayed' | 'schedule' | 'history';
 export const SCHEDULE_BEFORE = 7;
 export const SCHEDULE_AFTER = 13;
 const HISTORY_PAGE = 30;
+const OPEN_STATUSES = 'Draft,Scheduled,Loading,InTransit,Delayed';
 
 async function fetchTrips(params: Record<string, string | number>): Promise<{ trips: OperatorTrip[]; total: number }> {
   const { data } = await api.get('/trips', { params });
@@ -46,7 +48,7 @@ export function useTripList(view: View, search: string, now: number, scope?: Rec
 
   const openQ = useQuery({
     queryKey: ['trips', 'open', scopeKey ?? 'all'],
-    queryFn: () => fetchTrips({ status: 'Draft,Scheduled,Loading,InTransit,Delayed', per_page: 300, ...filter }),
+    queryFn: () => fetchTrips({ status: OPEN_STATUSES, per_page: 300, ...filter }),
     refetchInterval: view === 'now' || view === 'delayed' ? 30_000 : false,
     enabled: view === 'now' || view === 'delayed' || view === 'schedule',
   });
@@ -62,7 +64,7 @@ export function useTripList(view: View, search: string, now: number, scope?: Rec
 
   const schedule = useQuery({
     queryKey: ['trips', 'window', todayKey, scopeKey ?? 'all'],
-    queryFn: () => fetchTrips({ start_date: windowStart.toISOString(), end_date: new Date(windowEnd.getTime() - 1).toISOString(), per_page: 500, ...filter }),
+    queryFn: () => fetchTrips({ status: OPEN_STATUSES, start_date: windowStart.toISOString(), end_date: new Date(windowEnd.getTime() - 1).toISOString(), per_page: 500, ...filter }),
     enabled: view === 'schedule',
     refetchInterval: view === 'schedule' ? 60_000 : false,
   });

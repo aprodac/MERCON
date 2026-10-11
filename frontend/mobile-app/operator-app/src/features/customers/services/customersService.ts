@@ -147,6 +147,7 @@ export function toCustomerListItem(
     id: raw.id,
     name: raw.name,
     phone: raw.contact_phone,
+    logoUrl: raw.logo_url ?? null,
     isActive: raw.isActive,
     createdAt: raw.createdAt,
     status: customerDisplayStatus(raw),
@@ -240,5 +241,5 @@ export function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+  return d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
 }

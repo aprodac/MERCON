@@ -6,7 +6,7 @@
  * Same rules as the web's Operator Inbox (components/dashboard/inbox).
  */
 import type { AppNotification } from '@mercon/mobile-shared/lib/notifications';
-import type { DriverUpdate, ExpiryItem, LiveUnit, OperatorInvoice, OperatorTripDocument } from '../../../lib/operator';
+import { needsSending, type DriverUpdate, type ExpiryItem, type LiveUnit, type OperatorInvoice, type OperatorTripDocument } from '../../../lib/operator';
 
 export type Urgency = 'now' | 'today' | 'watch';
 export type ActionGroup = 'trips' | 'whatsapp' | 'documents' | 'money';
@@ -67,6 +67,8 @@ export interface ActionSources {
     is_third_party?: boolean;
     carrier_name?: string | null;
     status: string;
+    /** Stops in order, as the trips list sends them — used by the Fleet map's lane search. */
+    stops?: { location_lat?: number | null; location_lng?: number | null; location?: { lat?: number | null; lng?: number | null } | null }[] | null;
   }[];
   updates: DriverUpdate[];
   expiries: ExpiryItem[];
@@ -240,9 +242,9 @@ export function buildActions(src: ActionSources): ActionItem[] {
     });
   }
 
-  // 6 · Driver photos nobody has sent to the customer yet.
+  // 6 · Driver photo sets nobody has sent any of to the customer yet (one photo of a set is enough).
   for (const u of src.updates) {
-    if (u.unsent_count <= 0) continue;
+    if (!needsSending(u)) continue;
     const unsent = u.items.filter((m) => !u.sent_ids.includes(m.id));
     out.push({
       // An update key is only unique within its trip ("<stop>:<stage>").

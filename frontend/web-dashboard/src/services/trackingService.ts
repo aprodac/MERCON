@@ -17,6 +17,10 @@ export interface TrackingOptions {
   show_deadline: boolean;
   show_delay_reason: boolean;
   show_photos: boolean;
+  /** Per link (Links page): false hides the driver / plate / the truck on the map. */
+  show_driver?: boolean;
+  show_plate?: boolean;
+  show_position?: boolean;
 }
 
 export interface PublicTrackingPhoto {
@@ -172,8 +176,10 @@ export interface CustomerTrackingLink {
 
 export const trackingService = {
   /** The customer-facing trip page's data. No login. `view` counts a page load (not a refresh). */
-  async getPublic(token: string, view = false): Promise<PublicTracking> {
-    const res = await api.get<ApiResponse<PublicTracking>>(`/public/track/${encodeURIComponent(token)}`, { params: view ? { view: 1 } : undefined });
+  /** `via`: the customer-wide page's token when opened from it — that link's view settings apply too. */
+  async getPublic(token: string, view = false, via?: string | null): Promise<PublicTracking> {
+    const params = { ...(view ? { view: 1 } : {}), ...(via ? { c: via } : {}) };
+    const res = await api.get<ApiResponse<PublicTracking>>(`/public/track/${encodeURIComponent(token)}`, { params });
     return res.data.data;
   },
 

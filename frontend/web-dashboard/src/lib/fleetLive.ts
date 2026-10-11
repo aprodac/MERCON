@@ -2,8 +2,28 @@
  * Pure helpers behind the dashboard's live fleet map — naming, filtering,
  * ETA maths and the WhatsApp ETA message. Kept out of the component so they
  * can be tested without a map.
+ *
+ * The rules themselves (on trip / delayed / free, the ETA and its estimate,
+ * truck speed, what counts as late) are the shared ones in
+ * @mercon/shared-types fleetRules — the operator app and the API's late
+ * alerts use the very same code. Only the web's own shapes are added here.
  */
+import {
+  bearingBetween,
+  liveStopLabel as stopLabel,
+  computeEta as sharedComputeEta,
+  formatDriveTime,
+  formatKm,
+  haversineKm,
+  isDelayed,
+  isFree,
+  nextStop as sharedNextStop,
+  onTrip,
+  type EtaInfo,
+} from '@mercon/shared-types';
 import type { LiveStop, LiveUnit } from '@/services/fleetLiveService';
+
+export { bearingBetween, formatKm, haversineKm, LATE_GRACE_MIN, MOTION_LABEL, phoneMissing, punctuality, trackerMissing, truckDriveSeconds, TRUCK_MAX_KPH as TRUCK_MAX_AVG_KMH, type EtaInfo } from '@mercon/shared-types';
 
 export type LiveFilter = 'all' | 'on_trip' | 'delayed' | 'free' | 'offline';
 
@@ -23,9 +43,9 @@ export function isOffline(u: LiveUnit): boolean {
 export function matchesFilter(u: LiveUnit, f: LiveFilter): boolean {
   switch (f) {
     case 'all': return true;
-    case 'on_trip': return !!u.trip && u.trip.phase !== 'upcoming';
-    case 'delayed': return u.trip?.phase === 'delayed';
-    case 'free': return !u.trip || u.trip.phase === 'upcoming';
+    case 'on_trip': return onTrip(u);
+    case 'delayed': return isDelayed(u);
+    case 'free': return isFree(u);
     case 'offline': return isOffline(u);
   }
 }
@@ -42,35 +62,12 @@ export function unitTitle(u: LiveUnit): string {
   return u.vehicle?.plate_number ?? u.driver?.name ?? 'Unknown';
 }
 
-export function nextStop(u: LiveUnit): LiveStop | null {
-  const i = u.trip?.next_stop_index;
-  return i == null ? null : u.trip!.stops[i] ?? null;
-}
+export const nextStop = (u: LiveUnit): LiveStop | null => sharedNextStop(u);
 
-export function stopLabel(s: LiveStop): string {
-  return s.name || s.address || `Stop ${s.sequence}`;
-}
+export { stopLabel };
 
-export function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
-  const toRad = (x: number) => (x * Math.PI) / 180;
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
-  return 2 * 6371 * Math.asin(Math.sqrt(h));
-}
-
-export function formatKm(km: number): string {
-  if (km < 1) return `${Math.round(km * 1000)} m`;
-  return km < 10 ? `${km.toFixed(1)} km` : `${Math.round(km)} km`;
-}
-
-export function formatDuration(seconds: number): string {
-  const mins = Math.max(1, Math.round(seconds / 60));
-  if (mins < 60) return `${mins} min`;
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return m ? `${h} h ${m} min` : `${h} h`;
-}
+/** Drive time as "45 min" · "2 h 5 min" · "3 d 4 h" (shared fleetRules). */
+export const formatDuration = formatDriveTime;
 
 export function timeAgo(iso: string | null | undefined, now = Date.now()): string {
   if (!iso) return 'never';
@@ -81,57 +78,9 @@ export function timeAgo(iso: string | null | undefined, now = Date.now()): strin
   return `${Math.floor(s / 86400)}d ago`;
 }
 
-export interface EtaInfo {
-  /** Arrival instant at the next stop, from road drive time. Null when routing is unavailable. */
-  arrival: Date | null;
-  durationSeconds: number | null;
-  /** Road distance when routed, straight-line otherwise. */
-  distanceKm: number | null;
-  distanceIsRoad: boolean;
-  /** Minutes late against the stop's planned arrival; negative = early. Null when either side is unknown. */
-  lateByMin: number | null;
-}
-
-/**
- * The routing provider times a car; a loaded truck averages less. Same cap as the
- * customer tracking page (backend `customerTracking.ts`), so the ETA an operator
- * sends and the one the customer's link shows agree.
- */
-export const TRUCK_MAX_AVG_KMH = 80;
-
-export function truckDriveSeconds(distanceMeters: number, providerSeconds: number): number {
-  return Math.round(Math.max(providerSeconds, distanceMeters / (TRUCK_MAX_AVG_KMH / 3.6)));
-}
-
-export function computeEta(
-  u: LiveUnit,
-  route: { distanceMeters: number; durationSeconds: number } | null,
-  now = Date.now(),
-): EtaInfo | null {
-  const stop = nextStop(u);
-  if (!stop || !u.position) return null;
-  const driveSeconds = route ? truckDriveSeconds(route.distanceMeters, route.durationSeconds) : null;
-  const arrival = driveSeconds != null ? new Date(now + driveSeconds * 1000) : null;
-  const distanceKm = route
-    ? route.distanceMeters / 1000
-    : stop.lat != null && stop.lng != null
-      ? haversineKm(u.position, { lat: stop.lat, lng: stop.lng })
-      : null;
-  const lateByMin =
-    arrival && stop.planned_arrival
-      ? Math.round((arrival.getTime() - new Date(stop.planned_arrival).getTime()) / 60000)
-      : null;
-  return { arrival, durationSeconds: driveSeconds, distanceKm, distanceIsRoad: !!route, lateByMin };
-}
-
-/** Five minutes of slack before an arrival counts as late. */
-export const LATE_GRACE_MIN = 5;
-
-export function punctuality(lateByMin: number | null): { label: string; tone: 'good' | 'bad' } | null {
-  if (lateByMin == null) return null;
-  if (lateByMin <= LATE_GRACE_MIN) return { label: 'On time', tone: 'good' };
-  return { label: `${formatDuration(lateByMin * 60)} late`, tone: 'bad' };
-}
+/** ETA to the next stop — the shared rule; `now` should be the route's `computedAt`. */
+export const computeEta = (u: LiveUnit, route: { distanceMeters: number; durationSeconds: number } | null, now = Date.now()): EtaInfo | null =>
+  sharedComputeEta(u, route, now);
 
 /** The WhatsApp ETA message, ending with the trip's customer tracking link when there is one. */
 export function buildEtaShareText(u: LiveUnit, eta: EtaInfo | null, formatTime: (d: Date) => string, trackingUrl?: string | null): string {
@@ -139,7 +88,10 @@ export function buildEtaShareText(u: LiveUnit, eta: EtaInfo | null, formatTime: 
   const head = [u.trip?.ref_id, u.vehicle?.plate_number].filter(Boolean).join(' · ') || unitTitle(u);
   const lines = [`*${head}*`];
   if (stop) lines.push(`Next stop: ${stopLabel(stop)}`);
-  if (eta?.arrival && eta.durationSeconds != null) {
+  if (eta?.arrival && eta.durationSeconds != null && eta.approx) {
+    // No road route: say it's an estimate rather than promise a minute.
+    lines.push(`ETA: around ${formatTime(eta.arrival)} (about ${formatDuration(eta.durationSeconds)}, estimate)`);
+  } else if (eta?.arrival && eta.durationSeconds != null) {
     const dist = eta.distanceKm != null ? ` · ${formatKm(eta.distanceKm)}` : '';
     lines.push(`ETA: ${formatTime(eta.arrival)} (in ${formatDuration(eta.durationSeconds)})${dist}`);
   } else if (eta?.distanceKm != null) {
@@ -268,14 +220,6 @@ export function stopNumbersLabel(numbers: number[]): string {
 /** "3h" / "12m" — for the small age tag under an offline marker. */
 export function shortAgo(iso: string | null | undefined, now = Date.now()): string {
   return timeAgo(iso, now).replace(' ago', '');
-}
-
-/** Compass bearing in degrees (0 = north, clockwise) from a to b. */
-export function bearingBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
-  const toRad = (x: number) => (x * Math.PI) / 180;
-  const y = Math.sin(toRad(b.lng - a.lng)) * Math.cos(toRad(b.lat));
-  const x = Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) - Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(toRad(b.lng - a.lng));
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
 /**

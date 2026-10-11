@@ -36,6 +36,28 @@ If uploads grow past 1.5 GB, the bundle leaves them out and the run fails
 with a message. At that point move uploads to real object storage (S3, B2 or
 R2 with `restic`/`rclone`); GitHub artifact storage is not meant for that size.
 
+## Server snapshot (whole VPS, one click)
+
+System health → **Server snapshot** → *Take snapshot now* (superadmins only,
+recorded in the audit log). It asks Hostinger for a snapshot of the whole
+production server; the site stays up meanwhile. Hostinger keeps **one**
+snapshot per server — a new one replaces the last. Take one before a big
+release or a server upgrade. **Restoring is only in hPanel** (VPS → Snapshot &
+backups), on purpose: rolling the whole server back is not a one-click job.
+
+Setup (once):
+1. hPanel → Account → **API** → create a token. It can manage the whole
+   Hostinger account, so give it an expiry and keep it only as a secret.
+2. GitHub → Settings → Secrets and variables → Actions → secret
+   **`HOSTINGER_API_TOKEN`**.
+3. Optional: variable **`HOSTINGER_VM`** — defaults to production's hostname
+   `srv1752379.hstgr.cloud`; a VM id works too.
+4. Next production deploy picks them up. Without the token the card just says
+   it isn't set up.
+
+Code: `backend/api-server/src/services/hostinger/vpsSnapshot.ts`
+(`npm run test:server-snapshot`).
+
 ## Restore
 
 ### Database only (the usual case)

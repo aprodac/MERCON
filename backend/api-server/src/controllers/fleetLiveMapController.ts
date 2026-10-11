@@ -5,6 +5,8 @@ import { loadLiveUnits, loadTripMedia } from '../services/fleetLiveMap';
 import { linkInlineImage } from '../services/inlineImages';
 import { loadTripOverview } from '../services/tripOverview';
 import { getDrivingRouteThrough, MAX_ROUTE_POINTS, RoutingUnavailableError, type GeoPoint } from '../services/routing/routeProvider';
+import { getRouteAhead } from '../services/routing/routeAhead';
+import type { LiveUnit } from '../services/fleetLiveMap';
 
 /** GET /vehicles/live-map — every truck and on-trip driver with both GPS feeds. */
 export const getFleetLiveMap = async (_req: Request, res: Response) => {
@@ -53,6 +55,50 @@ export const getFleetLiveRoute = async (req: Request, res: Response) => {
     if (error instanceof RoutingUnavailableError) {
       return res.status(503).json({ success: false, error: { message: 'Routing is temporarily unavailable' } });
     }
+    res.status(500).json({ success: false, error: { message: 'Internal server error' } });
+  }
+};
+
+/**
+ * Every screen watching a truck asks about it every ~15 s; one fleet load
+ * serves them all for a few seconds.
+ */
+const UNITS_TTL_MS = 5_000;
+let unitsCache: { at: number; units: Promise<LiveUnit[]> } | null = null;
+function liveUnitsShared(): Promise<LiveUnit[]> {
+  const now = Date.now();
+  if (!unitsCache || now - unitsCache.at > UNITS_TTL_MS) {
+    const units = loadLiveUnits(prisma);
+    unitsCache = { at: now, units };
+    units.catch(() => { if (unitsCache?.units === units) unitsCache = null; });
+  }
+  return unitsCache.units;
+}
+
+/**
+ * GET /vehicles/live-map/trips/:id/route-ahead — the road from the trip's
+ * truck to its next stop, as every screen should show it: one route kept per
+ * trip (services/routing/routeAhead.ts), trimmed to what's still ahead,
+ * re-routed only when the truck leaves it. `data: null` when there is nothing
+ * to route (no truck position, no next stop with a location).
+ */
+export const getFleetLiveRouteAhead = async (req: Request, res: Response) => {
+  try {
+    const tripId = req.params.id as string;
+    const unit = (await liveUnitsShared()).find((u) => u.trip?.id === tripId);
+    const t = unit?.trip;
+    const stop = t && t.next_stop_index != null ? t.stops[t.next_stop_index] : null;
+    const pos = unit?.position;
+    if (!pos || !stop || stop.lat == null || stop.lng == null || (stop.lat === 0 && stop.lng === 0)) {
+      return res.json({ success: true, data: null });
+    }
+    const ahead = await getRouteAhead(tripId, pos, { id: stop.id, lat: stop.lat, lng: stop.lng });
+    res.json({ success: true, data: ahead });
+  } catch (error) {
+    if (error instanceof RoutingUnavailableError) {
+      return res.status(503).json({ success: false, error: { message: 'Routing is temporarily unavailable' } });
+    }
+    logger.error({ err: error }, 'route ahead failed');
     res.status(500).json({ success: false, error: { message: 'Internal server error' } });
   }
 };

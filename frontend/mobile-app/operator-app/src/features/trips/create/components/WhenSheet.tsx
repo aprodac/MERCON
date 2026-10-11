@@ -142,12 +142,19 @@ function nowIn(tz: string): { date: string; time: string } {
 export interface WhenValue {
   date: string;
   time: string;
+  /** Monthly contracts: which day of each run (0 = the pickup day), when the sheet offers days. */
+  day?: number;
 }
+
+/** Day 1 … Day N chips offered with `days` in time mode. */
+const DAY_CHOICES = 4;
 
 /**
  * `mode="datetime"` picks a day and a time; `mode="time"` only a time
- * (monthly contracts). `from` is the pickup when choosing a drop-off: the
- * sheet then shows the trip length and offers "+ hours" quick picks.
+ * (monthly contracts) — plus "Day 1 / Day 2 …" chips when `days` is set, for
+ * a round trip that runs over several days. `from` is the previous event
+ * (the pickup, or the outbound arrival for a return): the sheet then shows
+ * the time between them and offers "+ hours" quick picks.
  */
 export function WhenSheet({
   visible,
@@ -157,6 +164,8 @@ export function WhenSheet({
   today,
   tz,
   from,
+  fromLabel = 'pickup',
+  days: withDays = false,
   onDone,
   onClose,
 }: {
@@ -167,6 +176,10 @@ export function WhenSheet({
   today: string;
   tz: string;
   from?: WhenValue;
+  /** What `from` is, for "… after pickup". */
+  fromLabel?: string;
+  /** Time mode: also choose the day of the run (value.day / from.day). */
+  days?: boolean;
   onDone: (v: WhenValue) => void;
   onClose: () => void;
 }) {
@@ -183,18 +196,24 @@ export function WhenSheet({
   const [draft, setDraft] = useState<WhenValue>(value);
   // Reset the draft each time the sheet opens.
   const [openedFor, setOpenedFor] = useState<string | null>(null);
-  const openKey = visible ? `${value.date}|${value.time}` : null;
+  const dayMode = mode === 'time' && withDays;
+  const openKey = visible ? `${value.date}|${value.time}|${value.day ?? ''}` : null;
   if (openKey !== openedFor) {
     setOpenedFor(openKey);
-    if (visible) setDraft({ date: value.date || today, time: value.time || '08:00' });
+    if (visible) setDraft({ date: value.date || today, time: value.time || '08:00', ...(dayMode ? { day: value.day ?? 0 } : {}) });
   }
 
   const { h, m } = splitTime(draft.time);
   const dayIndex = Math.max(0, days.findIndex((d) => d.date === (draft.date || today)));
   const minuteIndex = Math.min(MINUTES.length - 1, Math.round(m / MINUTE_STEP));
 
-  const length = from && mode === 'datetime' ? minutesBetween(from.date, from.time, draft.date, draft.time) : null;
-  const lengthTimeOnly = from && mode === 'time' ? ((minutesBetween('2000-01-01', from.time, '2000-01-01', draft.time) + 1440) % 1440 || 1440) : null;
+  const ofDay = (v: WhenValue) => (v.day ?? 0) * 1440 + splitTime(v.time).h * 60 + splitTime(v.time).m;
+  const length = from && mode === 'datetime'
+    ? minutesBetween(from.date, from.time, draft.date, draft.time)
+    : from && dayMode
+      ? ofDay(draft) - ofDay(from)
+      : null;
+  const lengthTimeOnly = from && mode === 'time' && !dayMode ? ((minutesBetween('2000-01-01', from.time, '2000-01-01', draft.time) + 1440) % 1440 || 1440) : null;
 
   const addToFrom = (hours: number) => {
     if (!from) return;
@@ -204,6 +223,7 @@ export function WhenSheet({
     setDraft({
       date: mode === 'datetime' ? addDaysToDateStr(from.date, Math.floor(total / 1440)) : draft.date,
       time: joinTime(Math.floor((total % 1440) / 60), total % 60),
+      ...(dayMode ? { day: (from.day ?? 0) + Math.floor(total / 1440) } : {}),
     });
   };
 
@@ -222,17 +242,38 @@ export function WhenSheet({
   return (
     <AppModal visible={visible} onClose={onClose} type="bottom-sheet" title={title} maxHeight="90%">
       <View style={styles.summary}>
-        <Text style={styles.summaryValue}>{mode === 'datetime' ? `${fmtDay(draft.date)} · ${draft.time}` : draft.time}</Text>
+        <Text style={styles.summaryValue}>
+          {mode === 'datetime' ? `${fmtDay(draft.date)} · ${draft.time}` : dayMode ? `Day ${(draft.day ?? 0) + 1} · ${draft.time}` : draft.time}
+        </Text>
         {length !== null ? (
           <Text style={[styles.summarySub, invalid && { color: Colors.danger }]}>
-            {invalid ? 'Before the pickup — move it later' : `${fmtDuration(length)} after pickup`}
+            {invalid ? `Before the ${fromLabel} — move it later` : `${fmtDuration(length)} after ${fromLabel}`}
           </Text>
         ) : lengthTimeOnly !== null ? (
           <Text style={styles.summarySub}>
-            {fmtDuration(lengthTimeOnly)} after pickup{splitTime(draft.time).h * 60 + splitTime(draft.time).m <= splitTime(from!.time).h * 60 + splitTime(from!.time).m ? ' · next morning' : ''}
+            {fmtDuration(lengthTimeOnly)} after {fromLabel}{splitTime(draft.time).h * 60 + splitTime(draft.time).m <= splitTime(from!.time).h * 60 + splitTime(from!.time).m ? ' · next morning' : ''}
           </Text>
         ) : null}
       </View>
+
+      {dayMode ? (
+        <View style={styles.quickRow}>
+          {Array.from({ length: Math.max(DAY_CHOICES, (draft.day ?? 0) + 1) }, (_, d) => {
+            const on = (draft.day ?? 0) === d;
+            return (
+              <TouchableOpacity
+                key={`day${d}`}
+                onPress={() => (tap(), setDraft((v) => ({ ...v, day: d })))}
+                style={[styles.quick, on && styles.dayOn]}
+                activeOpacity={0.7}
+                accessibilityState={{ selected: on }}
+              >
+                <Text style={[styles.quickText, on && styles.dayOnText]}>{`Day ${d + 1}`}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ) : null}
 
       <View style={styles.quickRow}>
         {quick.map((q) => (
@@ -279,6 +320,8 @@ const styles = StyleSheet.create({
   quickRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 6, marginVertical: Spacing.sm },
   quick: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: Radius.full, backgroundColor: Colors.gray100 },
   quickText: { fontSize: 13, fontWeight: '600', color: Colors.charcoal },
+  dayOn: { backgroundColor: Colors.primary },
+  dayOnText: { color: Colors.white },
   wheels: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: Spacing.sm, marginTop: Spacing.xs },
   band: { position: 'absolute', left: 0, right: 0, top: PAD, height: ROW, borderRadius: 12, backgroundColor: Colors.gray100 },
   row: { height: ROW, justifyContent: 'center', paddingHorizontal: 8 },

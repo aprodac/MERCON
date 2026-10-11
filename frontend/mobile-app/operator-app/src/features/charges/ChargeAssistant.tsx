@@ -17,6 +17,7 @@ import {
 } from './chargeReviewApi';
 import { CompanyAvatar, initialsOf, niceName, shortName } from '../trips/create/components/ui';
 import { DriverAvatar } from '../drivers/components/DriverAvatar';
+import { splitLegs } from '../trips/tripLegs';
 
 const BRAND = '#FA634E';
 const INK = '#2D2B2C';
@@ -31,12 +32,14 @@ const sar = (n: number) => `SAR ${n.toLocaleString('en-US', { maximumFractionDig
 const pick = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
 const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 
-/** First pickup → last drop, and how many work stops sit in between. */
+/** First pickup → last drop (a round trip: its way out), and how many work stops sit in between. */
 function routeOf(trip: ChargeReviewTrip) {
-  const stops = trip.stops ?? [];
+  const all = trip.stops ?? [];
+  const legs = splitLegs(all, trip.rate_category);
+  const stops = legs.round ? legs.outbound : all;
   const name = (st?: ChargeReviewTrip['stops'][number]) => niceName(st?.location?.name || st?.location_name) || '—';
   const work = stops.filter((st) => st.stop_type === 'Pickup' || st.stop_type === 'Dropoff');
-  return { from: name(work[0] || stops[0]), to: name(work[work.length - 1] || stops[stops.length - 1]), extra: Math.max(0, work.length - 2) };
+  return { from: name(work[0] || stops[0]), to: name(work[work.length - 1] || stops[stops.length - 1]), extra: Math.max(0, work.length - 2), round: legs.round };
 }
 
 const SNOOZE = [{ label: '15 min', minutes: 15 }, { label: '1 hour', minutes: 60 }, { label: '4 hours', minutes: 240 }, { label: 'Tomorrow', minutes: 1440 }];
@@ -236,6 +239,7 @@ export function ChargeAssistant({ userName }: { userName?: string }) {
                         <View style={[s.dot, { backgroundColor: INK }]} />
                         <Text style={s.place} numberOfLines={1}>{route.from}</Text>
                         <View style={s.routeLine}>
+                          {route.round ? <View style={s.extraPill}><Text style={s.extraText}>⇄ round trip</Text></View> : null}
                           {route.extra > 0 && <View style={s.extraPill}><Text style={s.extraText}>+{route.extra}</Text></View>}
                         </View>
                         <View style={[s.dot, { backgroundColor: BRAND }]} />

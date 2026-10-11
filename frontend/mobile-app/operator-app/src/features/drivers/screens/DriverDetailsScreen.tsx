@@ -234,7 +234,7 @@ export default function DriverDetailsScreen() {
                       <TouchableOpacity key={x.key} style={[s.line, i > 0 && s.lineBorder]} activeOpacity={0.6} onPress={() => openTrip(x.tripId)}>
                         <View style={s.date}>
                           <Text style={s.dateDay}>{d.getDate()}</Text>
-                          <Text style={s.dateMonth}>{d.toLocaleDateString(undefined, { month: 'short' })}</Text>
+                          <Text style={s.dateMonth}>{d.toLocaleDateString('en-GB', { month: 'short' })}</Text>
                         </View>
                         <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
                           <Text style={s.rowTitle} numberOfLines={1}>{niceName(x.title)}</Text>
@@ -285,7 +285,7 @@ export default function DriverDetailsScreen() {
                   <TouchableOpacity key={t.id} style={[s.line, i > 0 && s.lineBorder]} activeOpacity={0.6} onPress={() => openTrip(t.id)}>
                     <View style={s.date}>
                       <Text style={s.dateDay}>{d.getDate()}</Text>
-                      <Text style={s.dateMonth}>{d.toLocaleDateString(undefined, { month: 'short' })}</Text>
+                      <Text style={s.dateMonth}>{d.toLocaleDateString('en-GB', { month: 'short' })}</Text>
                     </View>
                     <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
                       <Text style={s.rowTitle} numberOfLines={1}>{niceName(t.customer?.name ?? '') || 'No customer'}</Text>
@@ -338,7 +338,7 @@ function Figure({ value, label, accent }: { value: string; label: string; accent
 /** "Sep 2025" */
 function monthYear(iso: string): string {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
 }
 
 /** One line for an expiry: the date, plus how long is left only when it is close or past. */

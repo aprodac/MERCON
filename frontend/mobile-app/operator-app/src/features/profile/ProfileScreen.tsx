@@ -86,7 +86,7 @@ export default function ProfileScreen() {
   const confirmSignOut = () => {
     Alert.alert('Sign out?', 'You will need to log in again.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: async () => { await signOut(); router.replace('/login'); } },
+      { text: 'Sign out', style: 'destructive', onPress: () => signOut() },
     ]);
   };
 

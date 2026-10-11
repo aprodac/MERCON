@@ -19,10 +19,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import {
   Map as MapIcon,
-  Bell, Building2, CreditCard, FileText, FolderOpen, House, Plus, Route, Search, SquareUserRound, Tag, Truck, UserCog, Users, Wrench, X,
+  Bell, BellRing, Building2, CreditCard, FileText, FolderOpen, House, Link2, Plus, Route, Search, SquareUserRound, Tag, Truck, UserCog, Users, Wrench, X,
   type LucideIcon,
 } from 'lucide-react-native';
 import { useNotifications } from '@/features/notifications/hooks/useNotifications';
+import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
 import { operatorService } from '@/lib/operator';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { TONE, type Tone } from '@/features/trips/details/tripDetailsModel';
@@ -50,6 +51,8 @@ interface MenuItem {
   badges?: BadgeKey[];
   /** Icon tile colour; defaults to the group's. `brand` = MERCON orange. */
   tone?: Tone | 'brand';
+  /** Only Admins see it (the server refuses everyone else too). */
+  adminOnly?: boolean;
 }
 
 interface MenuGroup {
@@ -96,6 +99,7 @@ const GROUPS: MenuGroup[] = [
     items: [
       { Icon: FolderOpen, label: 'Documents', route: '/documents', badges: ['documents'], keywords: 'compliance files licence expiry papers' },
       { Icon: SquareUserRound, label: 'Customers', route: '/customers', keywords: 'clients contacts' },
+      { Icon: Link2, label: 'Customer links', route: '/links', keywords: 'tracking links share whatsapp expiry opened revoke' },
     ],
   },
   {
@@ -103,6 +107,7 @@ const GROUPS: MenuGroup[] = [
     tone: 'gray',
     items: [
       { Icon: UserCog, label: 'User management', route: '/user-management', keywords: 'users accounts drivers passwords logins admin operator' },
+      { Icon: BellRing, label: 'Push log', route: '/push-log', adminOnly: true, keywords: 'notifications alerts delivered failed delay phones audit' },
     ],
   },
 ];
@@ -206,11 +211,12 @@ export function OperatorSidebarDrawer({ visible, onClose, side = 'right' }: Oper
     }
   }, [visible, hidden, mounted, slideAnim, backdropAnim]);
 
+  const { role } = useAuth();
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return GROUPS;
-    return GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => `${i.label} ${i.keywords ?? ''}`.toLowerCase().includes(q)) })).filter((g) => g.items.length);
-  }, [query]);
+    const visible = (i: MenuItem) => (!i.adminOnly || role === 'Admin') && (!q || `${i.label} ${i.keywords ?? ''}`.toLowerCase().includes(q));
+    return GROUPS.map((g) => ({ ...g, items: g.items.filter(visible) })).filter((g) => g.items.length);
+  }, [query, role]);
 
   const go = (route: string) => {
     onClose();

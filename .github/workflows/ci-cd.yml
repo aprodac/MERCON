@@ -96,6 +96,16 @@ jobs:
           # back to Nominatim, so a missing key degrades one feature rather
           # than failing the deploy.
           VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
+          # Our own route server (docker-compose.yml `osrm`, installed by
+          # build-osrm.yml). Until it's installed the API falls back to the
+          # public OSRM demo on its own, so this is safe from the first deploy.
+          # A repo variable OSRM_BASE_URL overrides it.
+          OSRM_BASE_URL: ${{ vars.OSRM_BASE_URL || 'http://osrm:5000' }}
+          # "Take snapshot now" on System health. Token: repo secret (hPanel →
+          # Account → API); without it the button stays off. The server: repo
+          # variable HOSTINGER_VM, or production's hostname by default.
+          HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
+          HOSTINGER_VM: ${{ vars.HOSTINGER_VM || 'srv1752379.hstgr.cloud' }}
         run: |
           cd "$DEPLOY_DIR"
           echo "Rebuilding backend and frontend services..."

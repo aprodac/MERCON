@@ -14,7 +14,15 @@ export interface AppNotification {
   is_read: boolean;
   entity_type?: string | null;
   entity_id?: string | null;
+  /** Where inside a trip a tap opens (staff only): a stop, or the photos a driver sent. */
+  target?: NotificationTarget | null;
   createdAt: string;
+}
+
+export interface NotificationTarget {
+  tab?: 'stops' | 'details';
+  stopId?: string;
+  documentId?: string;
 }
 
 /** lucide icon component for a notification type. */

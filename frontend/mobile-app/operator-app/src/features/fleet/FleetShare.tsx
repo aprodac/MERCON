@@ -6,9 +6,12 @@
  *   TripShareFromMap  the trip page's own share sheet (same message, same
  *                     recipients: customer group / contact, driver, our team,
  *                     another number) for the truck's trip.
+ *   TripShareFlow     the two together for one truck (the Fleet map's sheet,
+ *                     a trip's live view): pick what, then send it.
  *   BulkStatusSheet   several picked trucks → one message per customer
  *                     (statusShare.ts), each sent to that customer's WhatsApp
- *                     number or group, or all of them as one message (our team).
+ *                     group (or, on request, their number), or all of them as
+ *                     one message (our team).
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Linking, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -19,6 +22,8 @@ import { useTripDetails } from '../trips/details/useTripDetails';
 import { makeFormatters, waLink, type QuickKind } from '../trips/details/tripDetailsModel';
 import { shareTextToWhatsApp } from '../dashboard/components/ActiveTripsSection';
 import { buildStatusMessages, type CustomerStatusMessage } from '../share/statusShare';
+import type { LiveUnit } from '../../lib/operator';
+import { isDelayed } from './fleetModel';
 
 const INK = '#3E3C3D';
 const MUTED = '#6B6B76';
@@ -26,8 +31,11 @@ const LINE = '#E9E9EC';
 const RED = '#D92D20';
 const WA = '#25D366';
 
-export function ShareKindSheet({ visible, title, delayed, onPick, onClose }: {
+export function ShareKindSheet({ visible, title, delayed, onPick, onClose, customer, onCustomerPage }: {
   visible: boolean; title: string; delayed: boolean; onPick: (kind: QuickKind) => void; onClose: () => void;
+  /** The trip's customer — offers their all-trucks live page as well. */
+  customer?: { id: string; name: string } | null;
+  onCustomerPage?: (c: { id: string; name: string }) => void;
 }) {
   const rows: { kind: QuickKind; label: string; detail: string; icon: typeof MessageCircle; hot?: boolean }[] = [
     { kind: 'status', label: 'Status update', detail: 'Driver, truck, status, ETA and the live link', icon: MessageCircle },
@@ -46,8 +54,44 @@ export function ShareKindSheet({ visible, title, delayed, onPick, onClose }: {
             </View>
           </TouchableOpacity>
         ))}
+        {customer && onCustomerPage ? (
+          <TouchableOpacity style={s.kindRow} onPress={() => onCustomerPage(customer)} activeOpacity={0.7}>
+            <View style={s.kindIcon}><Users size={18} color={INK} /></View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.kindLabel}>All their trucks</Text>
+              <Text style={s.kindDetail}>One live page with every truck of {customer.name} on the road</Text>
+            </View>
+          </TouchableOpacity>
+        ) : null}
       </View>
     </AppModal>
+  );
+}
+
+/** WhatsApp about one truck's trip: what to send, then the trip page's share sheet for it. */
+export function TripShareFlow({ unit, open, onClose, onCustomerPage }: {
+  unit: LiveUnit; open: boolean; onClose: () => void;
+  /** Offers the customer's all-trucks live page as well. */
+  onCustomerPage?: (c: { id: string; name: string }) => void;
+}) {
+  const [kind, setKind] = useState<QuickKind | null>(null);
+  const t = unit.trip;
+  if (!t) return null;
+  // One sheet closes before the next opens (two modals at once don't show on iOS).
+  const after = (go: () => void) => { onClose(); setTimeout(go, 300); };
+  return (
+    <>
+      <ShareKindSheet
+        visible={open}
+        title={`WhatsApp · ${unit.vehicle?.plate_number ?? t.ref_id ?? 'truck'}`}
+        delayed={isDelayed(unit)}
+        customer={onCustomerPage && t.customer_id ? { id: t.customer_id, name: t.customer_name ?? 'Customer' } : null}
+        onCustomerPage={onCustomerPage ? (c) => after(() => onCustomerPage(c)) : undefined}
+        onPick={(k) => after(() => setKind(k))}
+        onClose={onClose}
+      />
+      {kind ? <TripShareFromMap tripId={t.id} kind={kind} onClose={() => setKind(null)} /> : null}
+    </>
   );
 }
 
@@ -106,8 +150,9 @@ export function BulkStatusSheet({ tripIds, positions, onClose }: {
   }, []);
 
   const keyOf = (m: CustomerStatusMessage) => m.customerId ?? m.customerName;
-  const send = (m: CustomerStatusMessage) => {
-    Linking.openURL(waLink(m.phone, m.text))
+  // The customer's group by default: WhatsApp opens its chat picker with the message filled in.
+  const send = (m: CustomerStatusMessage, toContact = false) => {
+    Linking.openURL(waLink(toContact ? m.phone : null, m.text))
       .then(() => setSent((prev) => new Set(prev).add(keyOf(m))))
       .catch(() => Alert.alert('Could not open WhatsApp'));
   };
@@ -137,8 +182,13 @@ export function BulkStatusSheet({ tripIds, positions, onClose }: {
                   <View style={{ flex: 1 }}>
                     <Text style={s.customer} numberOfLines={1}>{m.customerName}</Text>
                     <Text style={s.kindDetail} numberOfLines={1}>
-                      {m.tripIds.length} truck{m.tripIds.length === 1 ? '' : 's'} · to {m.phone ?? m.group ?? 'pick the chat in WhatsApp'}
+                      {m.tripIds.length} truck{m.tripIds.length === 1 ? '' : 's'} · to {m.group ? `${m.group} group` : 'customer group · pick it in WhatsApp'}
                     </Text>
+                    {m.phone ? (
+                      <TouchableOpacity onPress={() => send(m, true)} hitSlop={6} accessibilityLabel={`Send to ${m.customerName}'s contact instead`}>
+                        <Text style={s.alt}>or send to contact {m.phone}</Text>
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
                   <TouchableOpacity style={[s.send, done && s.sendDone]} onPress={() => send(m)} accessibilityLabel={`Send to ${m.customerName}`}>
                     {done ? <Check size={15} color={INK} /> : <MessageCircle size={15} color="#FFFFFF" />}
@@ -165,6 +215,7 @@ export function BulkStatusSheet({ tripIds, positions, onClose }: {
 }
 
 const s = StyleSheet.create({
+  alt: { fontSize: 12, fontWeight: '700', color: '#2449A8', marginTop: 3 },
   kindRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
   kindIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#F1F1F3', alignItems: 'center', justifyContent: 'center' },
   kindLabel: { fontSize: 15, fontWeight: '700', color: INK },

@@ -59,7 +59,8 @@ export function routePoints(slot: TripSlotDraft, isRound: boolean, locations: Op
   const pts: RoutePoint[] = [];
   pts.push({ name: slot.origin, kind: 'pickup', coords: coordsOf(slot.origin, slot.originLocationId, slot.originLat, slot.originLng) });
   slot.intermediateLocations.forEach((n, i) => {
-    if (n?.trim()) pts.push({ name: n, kind: 'stop', coords: coordsOf(n, slot.intermediateLocationIds?.[i]) });
+    const pin = slot.intermediateStopPins?.[i];
+    if (n?.trim()) pts.push({ name: n, kind: 'stop', coords: coordsOf(n, slot.intermediateLocationIds?.[i], pin?.lat, pin?.lng) });
   });
   pts.push({ name: slot.destination, kind: 'dropoff', coords: coordsOf(slot.destination, slot.destinationLocationId, slot.destinationLat, slot.destinationLng) });
 
@@ -73,7 +74,8 @@ export function routePoints(slot: TripSlotDraft, isRound: boolean, locations: Op
     if (!sameAsDrop) pts.push({ name: retStart.n, kind: 'returnPickup', coords: retStart.c });
     else pts[pts.length - 1] = { ...pts[pts.length - 1], alsoReturnPickup: true };
     (slot.returnIntermediateLocations || []).forEach((n, i) => {
-      if (n?.trim()) pts.push({ name: n, kind: 'returnStop', coords: coordsOf(n, slot.returnIntermediateLocationIds?.[i]) });
+      const pin = slot.returnIntermediateStopPins?.[i];
+      if (n?.trim()) pts.push({ name: n, kind: 'returnStop', coords: coordsOf(n, slot.returnIntermediateLocationIds?.[i], pin?.lat, pin?.lng) });
     });
     pts.push({ name: retEnd.n, kind: 'finalDrop', coords: retEnd.c });
   }

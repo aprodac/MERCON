@@ -14,7 +14,18 @@
  * self-hosted OSRM — or anything else — becomes a server-side config change.
  * `OSRM_BASE_URL` is that switch; it defaults to the public demo so nothing
  * changes operationally until someone decides otherwise.
+ *
+ * Production points it at its own OSRM container (docker-compose.yml
+ * `osrm`, data built by .github/workflows/build-osrm.yml — docs/infra/ROUTING.md).
+ * When that server can't be reached (not installed yet, restarting) the
+ * public demo answers instead, so routing degrades rather than stops.
+ * "No road route" from our own server is an answer, not an outage: no fallback.
+ *
+ * OSRM times a car. Trucks are slower, so every leg is timed at no more than
+ * TRUCK_MAX_KPH (env ROUTE_TRUCK_MAX_KPH, default 80) — the ETAs on the map,
+ * the driver app and the create-trip schedule all come from here.
  */
+import { TRUCK_MAX_KPH as SHARED_TRUCK_MAX_KPH } from '@mercon/shared-types';
 import { logger } from '../../utils/logger';
 
 export interface GeoPoint {
@@ -53,7 +64,18 @@ export class RoutingUnavailableError extends Error {
  * without it, which would make routing untestable without a database. Routing
  * has no business depending on Postgres being configured.
  */
-const OSRM_BASE_URL = (process.env.OSRM_BASE_URL || 'https://router.project-osrm.org').replace(/\/+$/, '');
+const PUBLIC_OSRM = 'https://router.project-osrm.org';
+const OSRM_BASE_URL = (process.env.OSRM_BASE_URL || PUBLIC_OSRM).replace(/\/+$/, '');
+/** Asked only when OSRM_BASE_URL can't be reached. Empty OSRM_FALLBACK_URL turns it off. */
+const OSRM_FALLBACK_URL = (process.env.OSRM_FALLBACK_URL ?? PUBLIC_OSRM).replace(/\/+$/, '');
+
+/** A loaded truck's top average; OSRM's car timing is stretched to at least this. */
+const TRUCK_MAX_KPH = Number(process.env.ROUTE_TRUCK_MAX_KPH) > 0 ? Number(process.env.ROUTE_TRUCK_MAX_KPH) : SHARED_TRUCK_MAX_KPH;
+
+/** Car time → truck time: never faster than TRUCK_MAX_KPH over the distance. */
+export function truckSeconds(distanceMeters: number, carSeconds: number): number {
+  return Math.round(Math.max(carSeconds, distanceMeters / (TRUCK_MAX_KPH / 3.6)));
+}
 
 /**
  * Routing must never hold a request open indefinitely. A driver waiting on a
@@ -61,6 +83,11 @@ const OSRM_BASE_URL = (process.env.OSRM_BASE_URL || 'https://router.project-osrm
  * spinner that never resolves.
  */
 const ROUTE_TIMEOUT_MS = 8_000;
+/** Our own server sits next to the API: if it hasn't answered in this long, it isn't going to. */
+const PRIMARY_TIMEOUT_MS = 3_000;
+
+/** The provider could not be asked at all (down, unreachable, 5xx) — worth trying the fallback. */
+class ProviderDownError extends RoutingUnavailableError {}
 
 function isFiniteCoord(p: GeoPoint): boolean {
   return (
@@ -87,22 +114,52 @@ export const MAX_ROUTE_POINTS = 25;
  * A driving route through every point in order. Used to draw a trip's
  * remaining stops on real roads instead of straight lines.
  */
-export async function getDrivingRouteThrough(points: GeoPoint[]): Promise<RouteResult> {
+export interface RouteOptions {
+  /**
+   * The way the truck at the first point is heading (degrees from north). The
+   * route then starts on the side of the road going that way — without it a
+   * truck on a divided highway or an interchange is often put on the opposite
+   * carriageway or a ramp, and the route shows a U-turn that isn't there.
+   */
+  startBearing?: number | null;
+}
+
+/** How far either side of the heading the start may snap (OSRM bearing range). */
+const START_BEARING_RANGE = 45;
+
+export async function getDrivingRouteThrough(points: GeoPoint[], options: RouteOptions = {}): Promise<RouteResult> {
   if (points.length < 2 || points.length > MAX_ROUTE_POINTS || !points.every(isFiniteCoord)) {
     throw new RoutingUnavailableError('Invalid coordinates');
   }
 
   // OSRM takes lng,lat — the reverse of how the rest of MERCON writes a point.
-  const coords = points.map((p) => `${p.lng},${p.lat}`).join(';');
-  const url = `${OSRM_BASE_URL}/route/v1/driving/${coords}?overview=full&geometries=geojson`;
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ROUTE_TIMEOUT_MS);
+  let path = `/route/v1/driving/${points.map((p) => `${p.lng},${p.lat}`).join(';')}?overview=full&geometries=geojson`;
+  const b = options.startBearing;
+  if (b != null && Number.isFinite(b)) {
+    // Only the start is constrained; the other points take any direction.
+    path += `&bearings=${Math.round(((b % 360) + 360) % 360)},${START_BEARING_RANGE}${';'.repeat(points.length - 1)}`;
+  }
+  const fallback = OSRM_FALLBACK_URL && OSRM_FALLBACK_URL !== OSRM_BASE_URL ? OSRM_FALLBACK_URL : null;
 
   try {
-    const res = await fetch(url, { signal: controller.signal });
+    return await askOsrm(OSRM_BASE_URL, path, fallback ? PRIMARY_TIMEOUT_MS : ROUTE_TIMEOUT_MS, 'osrm');
+  } catch (err) {
+    if (!(err instanceof ProviderDownError) || !fallback) throw err;
+    logger.warn({ provider: OSRM_BASE_URL }, '[routing] own route server down — asking the public one');
+    return askOsrm(fallback, path, ROUTE_TIMEOUT_MS, 'osrm-public');
+  }
+}
+
+async function askOsrm(base: string, path: string, timeoutMs: number, provider: string): Promise<RouteResult> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(`${base}${path}`, { signal: controller.signal });
     if (!res.ok) {
-      throw new RoutingUnavailableError(`Routing provider returned ${res.status}`);
+      // 4xx is a request it understood and refused; 5xx and 429 mean the server itself is in trouble.
+      const Err = res.status >= 500 || res.status === 429 ? ProviderDownError : RoutingUnavailableError;
+      throw new Err(`Routing provider returned ${res.status}`);
     }
 
     const data: any = await res.json();
@@ -116,21 +173,25 @@ export async function getDrivingRouteThrough(points: GeoPoint[]): Promise<RouteR
       throw new RoutingUnavailableError('Route contained no geometry');
     }
 
+    const distanceMeters = Number(route.distance) || 0;
     return {
       geometry,
-      distanceMeters: Number(route.distance) || 0,
-      durationSeconds: Number(route.duration) || 0,
+      distanceMeters,
+      durationSeconds: truckSeconds(distanceMeters, Number(route.duration) || 0),
       legs: Array.isArray(route.legs)
-        ? route.legs.map((l: any) => ({ distanceMeters: Number(l?.distance) || 0, durationSeconds: Number(l?.duration) || 0 }))
+        ? route.legs.map((l: any) => {
+          const d = Number(l?.distance) || 0;
+          return { distanceMeters: d, durationSeconds: truckSeconds(d, Number(l?.duration) || 0) };
+        })
         : [],
-      provider: 'osrm',
+      provider,
     };
   } catch (err) {
     if (err instanceof RoutingUnavailableError) throw err;
     // An aborted fetch and a DNS failure are both "we could not route"; the
     // caller does not need to tell them apart, but the log does.
-    logger.warn({ err, provider: 'osrm' }, '[routing] provider request failed');
-    throw new RoutingUnavailableError('Routing provider unreachable');
+    logger.warn({ err, provider: base }, '[routing] provider request failed');
+    throw new ProviderDownError('Routing provider unreachable');
   } finally {
     clearTimeout(timer);
   }

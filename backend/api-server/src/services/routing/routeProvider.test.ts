@@ -45,7 +45,8 @@ describe('getDrivingRoute', () => {
     const route = await getDrivingRoute(RIYADH, JEDDAH);
 
     assert.equal(route.distanceMeters, 848000);
-    assert.equal(route.durationSeconds, 32400);
+    // OSRM's 9 h is car time (94 km/h); a truck is timed at no more than 80 km/h: 848 km → 10.6 h.
+    assert.equal(route.durationSeconds, 38160);
     assert.equal(route.geometry.length, 3);
     assert.deepEqual(route.geometry[0], [46.6753, 24.7136]);
     assert.equal(route.provider, 'osrm');
@@ -74,6 +75,52 @@ describe('getDrivingRoute', () => {
     if (previous === undefined) delete process.env.OSRM_BASE_URL;
     else process.env.OSRM_BASE_URL = previous;
     delete require.cache[require.resolve('./routeProvider')];
+  });
+
+  it('keeps OSRM time when it is already slower than truck speed', async () => {
+    stubFetch(() => okResponse({ code: 'Ok', routes: [{ distance: 10000, duration: 900, geometry: { coordinates: [[1, 2], [3, 4]] }, legs: [{ distance: 10000, duration: 900 }] }] }));
+    const route = await getDrivingRoute(RIYADH, JEDDAH);
+    assert.equal(route.durationSeconds, 900); // 40 km/h in town stays 40 km/h
+    assert.equal(route.legs[0].durationSeconds, 900);
+  });
+
+  describe('with our own route server configured', () => {
+    let fresh: typeof getDrivingRoute;
+    const previous = process.env.OSRM_BASE_URL;
+    beforeEach(() => {
+      process.env.OSRM_BASE_URL = 'http://osrm:5000';
+      delete require.cache[require.resolve('./routeProvider')];
+      fresh = require('./routeProvider').getDrivingRoute;
+    });
+    afterEach(() => {
+      if (previous === undefined) delete process.env.OSRM_BASE_URL;
+      else process.env.OSRM_BASE_URL = previous;
+      delete require.cache[require.resolve('./routeProvider')];
+    });
+
+    it('asks the public server when ours is unreachable', async () => {
+      const calls = stubFetch((url) => {
+        if (url.startsWith('http://osrm:5000')) throw new Error('getaddrinfo ENOTFOUND osrm');
+        return okResponse(OSRM_OK);
+      });
+      const route = await fresh(RIYADH, JEDDAH);
+      assert.equal(calls.length, 2);
+      assert.match(calls[1], /^https:\/\/router\.project-osrm\.org\/route\/v1\/driving\//);
+      assert.equal(route.provider, 'osrm-public');
+    });
+
+    it('asks the public server when ours answers 5xx', async () => {
+      const calls = stubFetch((url) => (url.startsWith('http://osrm:5000') ? { ok: false, status: 503, json: async () => ({}) } : okResponse(OSRM_OK)));
+      await fresh(RIYADH, JEDDAH);
+      assert.equal(calls.length, 2);
+    });
+
+    it('does not fall back when ours says there is no road route', async () => {
+      const calls = stubFetch(() => okResponse({ code: 'NoRoute', routes: [] }));
+      // A fresh module load has its own error class, so match by name.
+      await assert.rejects(() => fresh(RIYADH, JEDDAH), { name: 'RoutingUnavailableError' });
+      assert.equal(calls.length, 1);
+    });
   });
 
   it('rejects invalid coordinates before making a request', async () => {

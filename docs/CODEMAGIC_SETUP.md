@@ -3,8 +3,8 @@
 Builds are defined in `codemagic.yaml` (repo root). This page covers the
 one-time setup in the Codemagic web UI, which needs your accounts.
 
-Codemagic builds **Android only**. iOS is built and uploaded from Xcode on the
-Mac — see `docs/IOS_DISTRIBUTION_AND_PUSH.md`.
+Codemagic builds **Android only**. iOS is built on Xcode Cloud from GitHub Actions —
+see `docs/XCODE_CLOUD_SETUP.md` (Mac fallback: `docs/IOS_DISTRIBUTION_AND_PUSH.md`).
 
 | Workflow | Output |
 |---|---|

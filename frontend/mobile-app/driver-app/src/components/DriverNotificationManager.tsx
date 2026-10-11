@@ -220,13 +220,19 @@ export function DriverNotificationManager() {
       connectAndListen();
     }
 
+    // iOS resumes as background → inactive → active, so the state just before
+    // 'active' is 'inactive' there; remember the trip through background instead.
+    let wasBackground = false;
     const appStateSub = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'background') wasBackground = true;
       if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
         connectAndListen();
-        // Alerts sent while away (cancelled, reassigned) only arrive as pushes;
-        // refetch so the screen matches the office without a manual refresh.
+        // Alerts sent while away (new trip, cancelled, reassigned) only arrive
+        // as pushes; refetch so the screen — and the "Got it" prompt — match
+        // the office without a manual refresh.
         // Not after 'inactive' alone — system dialogs cause that.
-        if (appStateRef.current === 'background') queryClient.invalidateQueries();
+        if (wasBackground) queryClient.invalidateQueries();
+        wasBackground = false;
       } else if (nextAppState.match(/inactive|background/)) {
         cleanupSocket();
       }

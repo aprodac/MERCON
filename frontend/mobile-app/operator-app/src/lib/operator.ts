@@ -28,6 +28,8 @@ export interface OperatorTrip {
   id: string;
   ref_id: string | null;
   status: string;
+  /** e.g. ROUND_TRIP — a round trip shows its way out and "back to …". */
+  rate_category?: string | null;
   planned_start?: string | null;
   planned_end?: string | null;
   actual_start?: string | null;
@@ -189,6 +191,30 @@ export interface LiveGpsFix {
   fresh: boolean;
 }
 
+/** Where a trip's truck stood still 5 min+ — at one of its stops, or a break on the way (API tracking/tripHalts.ts). */
+export interface TripHalt {
+  lat: number;
+  lng: number;
+  from: string;
+  to: string;
+  minutes: number;
+  kind: 'at_stop' | 'break';
+  stop_id: string | null;
+  /** Still standing there. */
+  ongoing: boolean;
+  /** "Route 40, near Al Quwayiyah" for a break, once the API has looked it up. */
+  place?: string | null;
+}
+
+/** The trip so far, split into driving, at stops and breaks (minutes). */
+export interface TripTimeSplit {
+  total_min: number;
+  driving_min: number;
+  at_stops_min: number;
+  breaks_min: number;
+  breaks: number;
+}
+
 export interface TripOverview {
   trip_id: string;
   status: string;
@@ -203,6 +229,9 @@ export interface TripOverview {
   /** [lng, lat] points driven, oldest first. */
   path: [number, number][];
   path_distance_m: number | null;
+  /** Absent from an older API. */
+  halts?: TripHalt[];
+  time_split?: TripTimeSplit | null;
   checks: {
     driver_assigned: boolean;
     truck_assigned: boolean;
@@ -246,6 +275,13 @@ export interface DriverUpdate {
   unsent_count: number;
 }
 
+/**
+ * A photo set still waits to be sent while none of it has gone out. Usually
+ * one of a set's photos (most have three) reaches the customer; the others
+ * stay marked "not sent" on the trip without being asked for again.
+ */
+export const needsSending = (u: Pick<DriverUpdate, 'items' | 'sent_ids'>): boolean => u.items.length > 0 && u.sent_ids.length === 0;
+
 export interface ShareResult {
   share_url: string;
   text: string;
@@ -265,7 +301,11 @@ export interface LiveUnit {
     ref_id: string | null;
     status: string;
     phase: 'upcoming' | 'active' | 'delayed';
+    /** Absent from servers older than the live map's customer link (2026-10). */
+    customer_id?: string | null;
     customer_name: string | null;
+    /** The customer's logo; absent from servers older than 2026-10-07. */
+    customer_logo_url?: string | null;
     planned_start: string | null;
     planned_end: string | null;
     stops: { id: string; sequence: number; type: string; name: string | null; address: string | null; lat: number | null; lng: number | null; planned_arrival: string | null; actual_arrival: string | null; actual_departure: string | null }[];
@@ -278,6 +318,8 @@ export interface LiveUnit {
   /** Which GPS feeds are live, and whether the truck is moving (same as the web live map). */
   feed?: 'both' | 'vehicle' | 'driver' | 'none';
   motion?: 'moving' | 'idle' | 'stale' | 'no_signal';
+  /** Since when a running trip's truck has stood within ~300 m of where it is (driver app GPS); null while moving. */
+  stopped_since?: string | null;
 }
 
 /** What a driver sent from a trip's stops (backend services/fleetLiveMap.ts `LiveTripMedia`). */
@@ -562,6 +604,8 @@ export interface OperatorLocation {
   city?: string | null;
   lat?: number | null;
   lng?: number | null;
+  /** EXACT = pinned on the gate; APPROXIMATE = a guess such as the city centre. */
+  coordinate_precision?: 'EXACT' | 'APPROXIMATE' | 'UNKNOWN' | string | null;
 }
 
 export interface QuotationLookupMatch {
@@ -1305,6 +1349,23 @@ export const operatorService = {
     return data.data as TripOverview;
   },
 
+  /**
+   * The road from a trip's truck to its next stop — the server keeps one route
+   * per trip (started in the truck's heading, re-routed only when the truck
+   * leaves it) and sends only what's still ahead, so this app and the web live
+   * map show the same line, km and arrival. Null when there's nothing to route
+   * or routing is down.
+   */
+  async routeAhead(tripId: string): Promise<{ geometry: [number, number][]; distanceMeters: number; durationSeconds: number; computedAt: string; stopId: string; onRoute: boolean } | null> {
+    try {
+      const { data } = await api.get(`/vehicles/live-map/trips/${tripId}/route-ahead`, { timeout: 12_000 });
+      const r = data?.data;
+      return r && Array.isArray(r.geometry) && Number.isFinite(r.distanceMeters) ? r : null;
+    } catch {
+      return null;
+    }
+  },
+
   /** Road route between two points or through several, with its [lng, lat] geometry (null when routing is down). */
   async liveRoute(points: { lat: number; lng: number }[]): Promise<{ geometry: [number, number][]; distanceMeters: number; durationSeconds: number } | null> {
     if (points.length < 2) return null;
@@ -1351,9 +1412,19 @@ export const operatorService = {
     recipient: ShareRecipient;
     recipient_phone?: string | null;
     channel: 'link' | 'whatsapp_api';
+    /** The message as the operator edited it (sent with the photos from the company WhatsApp). */
+    caption?: string | null;
+    /** 2–4 photos as one combined picture with the message under it. */
+    combine?: boolean;
   }): Promise<ShareResult> {
     const { data } = await api.post('/operator-inbox/driver-updates/share', body);
     return data.data as ShareResult;
+  },
+
+  /** The chosen photos combined into one picture (POST /operator-inbox/driver-updates/collage) — its /uploads URL. */
+  async driverUpdateCollage(body: { trip_id: string; update_key: string; media_ids: string[] }): Promise<string> {
+    const { data } = await api.post('/operator-inbox/driver-updates/collage', body);
+    return (data.data as { url: string }).url;
   },
 
   /** Replaces the trip's route and planned times (PUT /trips/:id/stops, as the web's Edit Trip). Draft / Scheduled trips only. */
