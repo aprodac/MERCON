@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { toast } from 'sonner';
+import { legLabel, liveLegOf, splitLegs, tripEnds } from '@mercon/shared-types';
 import { useQuery, useQueryClient, useMutation, keepPreviousData } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -113,14 +114,21 @@ import {
 import { cn } from '@/lib/utils';
 
 /** Origin → destination for an active trip, from its stops — same pickup/dropoff pattern used on the monthly board. */
-function tripRoute(trip: any): { origin: string | null; destination: string | null } {
+/**
+ * "Riyadh → Jeddah" for the Trip location column. A round trip's first and last stop are the
+ * same city, so it reads its way out (shared `tripEnds`, same as the trips list) plus ↺ and,
+ * while under way, the leg it's on — not "Riyadh → Riyadh".
+ */
+function tripRoute(trip: any): { origin: string | null; destination: string | null; round: boolean; leg: 1 | 2 | null } {
   const stops: any[] = trip?.stops || [];
+  const name = (s: any) => (s?.location_name || s?.location_address || '').replace(/\[RETURN:.*?\]/gi, '').replace(/🔁\s*/g, '').trim() || null;
+  const ends = tripEnds(stops, trip?.rate_category);
+  if (ends.round) {
+    return { origin: name(ends.from), destination: name(ends.to), round: true, leg: liveLegOf(splitLegs(stops, trip?.rate_category), trip?.status) };
+  }
   const pickup = stops.find((s) => s.stop_type === 'Pickup') ?? stops[0] ?? null;
   const dropoff = [...stops].reverse().find((s) => s.stop_type === 'Dropoff') ?? null;
-  return {
-    origin: pickup?.location_name || pickup?.location_address || null,
-    destination: dropoff?.location_name || dropoff?.location_address || null,
-  };
+  return { origin: name(pickup), destination: name(dropoff), round: false, leg: null };
 }
 
 // Custom icon builder for the vehicles on the map (renders high-definition 3D Google Maps style navigation trucks)
@@ -813,20 +821,29 @@ export default function VehicleListPage() {
       className: 'w-[170px] max-w-[180px]',
       headerClassName: 'w-[170px] max-w-[180px]',
       accessor: (row: Vehicle) => {
-        const activeTrip = row.trips?.[0];
+        // The trip it's out on, else the next booked one.
+        const activeTrip = row.trips?.find((t: any) => ['Loading', 'InTransit', 'Delayed'].includes(t.status)) ?? row.trips?.[0];
         if (!activeTrip) {
           return <span className="text-xs text-slate-400 dark:text-slate-500 font-medium italic">—</span>;
         }
-        const { origin, destination } = tripRoute(activeTrip);
+        const { origin, destination, round, leg } = tripRoute(activeTrip);
         if (!origin && !destination) {
           return <span className="text-xs text-slate-400 dark:text-slate-500 font-medium italic">Not set</span>;
         }
         return (
-          <div className="flex items-center gap-1.5 min-w-0 max-w-[165px]" title={`${origin || '—'} → ${destination || '—'}`}>
-            <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <span className="text-xs text-slate-700 dark:text-slate-300 truncate">
-              {origin || '—'} <span className="text-slate-400">→</span> {destination || '—'}
-            </span>
+          <div className="flex flex-col gap-0.5 min-w-0 max-w-[165px]" title={`${origin || '—'} → ${destination || '—'}${round ? ` → back to ${origin || '—'} (round trip)` : ''}`}>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <span className="text-xs text-slate-700 dark:text-slate-300 truncate">
+                {origin || '—'} <span className="text-slate-400">→</span> {destination || '—'}
+              </span>
+              {round && <span className="shrink-0 text-[11px] font-bold text-violet-600 dark:text-violet-300" aria-label="Round trip">↺</span>}
+            </div>
+            {round && (
+              <span className="pl-5 text-[10px] font-semibold text-slate-500 dark:text-slate-400 truncate">
+                Round trip{leg ? <span className="text-blue-700 dark:text-blue-300"> · {legLabel(leg)}</span> : null}
+              </span>
+            )}
           </div>
         );
       },
