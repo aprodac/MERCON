@@ -1,32 +1,42 @@
 /**
- * First-run phone setup — shown right after sign-in (and on every app open
- * until done) so a driver's phone can actually receive trips and share trip
+ * Phone setup — so a driver's phone can actually receive trips and share trip
  * location:
  *   1. Notifications allowed
  *   2. Location allowed (while using the app — enough for the trip service)
- *   3. Android battery optimisation off for MERCON (detected)
- *   4. The phone maker's own background / auto-launch switch (cannot be
- *      detected — the driver confirms it once on this install)
+ *   3. Android: MERCON allowed to run in the background — one tap opens
+ *      Android's own "Let app always run in background?" dialog
+ *      (REQUEST_IGNORE_BATTERY_OPTIMIZATIONS); detected with expo-battery.
+ *   +  Realme/Oppo, Xiaomi, Vivo, Huawei: an optional extra card for the
+ *      maker's own auto-start switch (not required, cannot be detected).
  *
- * Why 3 and 4: on a Realme phone the battery manager froze the swiped-away app;
- * a "Trip Assigned" push then arrived ~6 minutes late and Google Play services
- * was killed mid-trip, stopping trip GPS. Pushes sent while the phone was on
- * the USB cable (charging, never asleep) all arrived instantly.
+ * Why 3: on a Realme phone the battery manager froze the swiped-away app; a
+ * "Trip Assigned" push then arrived ~6 minutes late and Google Play services
+ * was killed mid-trip, stopping trip GPS. The old "find MERCON in the battery
+ * optimisation list" step could not be done (MERCON never showed in that list
+ * on Realme or Nothing phones), hence the direct dialog.
+ *
+ * The full guide opens by itself only once per install. After "Later" it
+ * stays closed and PhoneSetupReminder (above the bottom bar) offers a
+ * highlighted "Finish phone setup" button until every step is done.
  *
  * Permission prompts are only shown when the driver taps a button: on Android
  * a permission request pauses and resumes the app, so asking on its own would
  * loop with the "check again when the app comes back" logic.
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { AppState, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Battery from 'expo-battery';
+import Constants from 'expo-constants';
 import * as Device from 'expo-device';
+import * as IntentLauncher from 'expo-intent-launcher';
 import * as Location from 'expo-location';
-import { BatteryCharging, Bell, CheckCircle2, MapPin, Smartphone } from 'lucide-react-native';
+import { Bell, CheckCircle2, ChevronRight, MapPin, ShieldCheck, Smartphone } from 'lucide-react-native';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 import { safeSecureStore as SecureStore } from '@mercon/mobile-shared/lib/secure-store';
 import { Colors, Radius, Shadows, Spacing, Typography } from '@mercon/mobile-shared/theme/tokens';
 import { reportPhoneHealth } from '@/services/phoneHealth';
+import { usePhoneHealthState } from '@/components/PhoneHealthManager';
 
 let Notifications: typeof import('expo-notifications') | null = null;
 try {
@@ -35,8 +45,8 @@ try {
   // Native module unavailable — the notification step is skipped.
 }
 
-/** Set once the driver confirms the phone maker's background setting on this install. */
-const MAKER_SETUP_KEY = 'phone_setup_maker_confirmed_v1';
+/** Set once the full guide has opened by itself; after that only the reminder button opens it. */
+const AUTO_OPENED_KEY = 'phone_setup_auto_opened_v1';
 
 type MakerFamily = 'oppo' | 'xiaomi' | 'vivo' | 'huawei' | 'samsung' | 'other';
 
@@ -49,6 +59,11 @@ function makerFamily(): MakerFamily {
   if (/samsung/.test(m)) return 'samsung';
   return 'other';
 }
+
+const ANDROID_PACKAGE = Constants.expoConfig?.android?.package ?? 'tech.mercon.driver';
+
+/** Makers whose own battery manager also needs its auto-start switch (optional extra card). */
+const STRICT_MAKERS: MakerFamily[] = ['oppo', 'xiaomi', 'vivo', 'huawei'];
 
 const MAKER_STEPS: Record<MakerFamily, { key: string; en: string }> = {
   oppo: {
@@ -73,57 +88,89 @@ const MAKER_STEPS: Record<MakerFamily, { key: string; en: string }> = {
   },
   other: {
     key: 'setup_maker_other',
-    en: 'Tap "Open app settings" → Battery → allow background activity (or choose "Unrestricted").',
+    en: 'Tap "Open app settings" → "App battery usage" (or Battery) → choose "Unrestricted" or turn ON "Allow background usage".',
   },
 };
 
 interface SetupState {
   notif: boolean;
   location: boolean;
-  /** true = Android is still optimising (restricting) MERCON's battery use. */
-  batteryOptimized: boolean;
-  makerConfirmed: boolean;
+  /** Android lets MERCON run in the background (battery optimisation off). Always true on iOS. */
+  background: boolean;
 }
 
 async function readState(): Promise<SetupState> {
-  const [notif, location, batteryOptimized, maker] = await Promise.all([
+  const [notif, location, optimized] = await Promise.all([
     Notifications ? Notifications.getPermissionsAsync().then((p) => p.granted).catch(() => true) : Promise.resolve(true),
     Location.getForegroundPermissionsAsync().then((p) => p.granted).catch(() => false),
     Platform.OS === 'android' ? Battery.isBatteryOptimizationEnabledAsync().catch(() => false) : Promise.resolve(false),
-    SecureStore.getItemAsync(MAKER_SETUP_KEY).catch(() => null),
   ]);
-  return { notif, location, batteryOptimized, makerConfirmed: Platform.OS !== 'android' || maker === '1' };
+  return { notif, location, background: !optimized };
 }
 
-const isComplete = (s: SetupState) => s.notif && s.location && !s.batteryOptimized && s.makerConfirmed;
+const stepsDone = (s: SetupState) => [s.notif, s.location, s.background].filter(Boolean).length;
+const STEP_COUNT = 3;
+const isComplete = (s: SetupState) => stepsDone(s) === STEP_COUNT;
+
+// Shared between the guide (mounted once at the root) and the reminder button
+// (mounted above the bottom bar).
+type GuideStore = { state: SetupState | null; open: boolean };
+let store: GuideStore = { state: null, open: false };
+const listeners = new Set<() => void>();
+function setStore(patch: Partial<GuideStore>) {
+  store = { ...store, ...patch };
+  listeners.forEach((l) => l());
+}
+function subscribeStore(l: () => void) {
+  listeners.add(l);
+  return () => {
+    listeners.delete(l);
+  };
+}
+function useGuideStore(): GuideStore {
+  return useSyncExternalStore(subscribeStore, () => store);
+}
 
 export function PhoneSetupGuide() {
   const { t } = useLanguage();
-  const [state, setState] = useState<SetupState | null>(null);
-  /** "Later" hides the guide until the app is opened again. */
-  const [snoozed, setSnoozed] = useState(false);
+  const insets = useSafeAreaInsets();
+  const { state, open } = useGuideStore();
   const family = makerFamily();
 
   const refresh = useCallback(async () => {
     const next = await readState();
-    setState((prev) => {
-      // Tell the office as soon as a permission changes here.
-      if (prev && (prev.notif !== next.notif || prev.location !== next.location)) void reportPhoneHealth();
-      return next;
-    });
+    const prev = store.state;
+    // Tell the office as soon as a permission changes here.
+    if (prev && (prev.notif !== next.notif || prev.location !== next.location)) void reportPhoneHealth();
+    setStore({ state: next, ...(isComplete(next) ? { open: false } : null) });
+    return next;
   }, []);
 
   useEffect(() => {
-    void refresh();
+    let cancelled = false;
+    (async () => {
+      const first = await refresh();
+      if (cancelled || isComplete(first)) return;
+      // Open by itself only the first time on this install.
+      const autoOpened = await SecureStore.getItemAsync(AUTO_OPENED_KEY).catch(() => null);
+      if (cancelled || autoOpened === '1') return;
+      await SecureStore.setItemAsync(AUTO_OPENED_KEY, '1').catch(() => {});
+      setStore({ open: true });
+    })();
     // Coming back from the Settings app is how most steps get done.
     const sub = AppState.addEventListener('change', (s) => {
       if (s === 'active') void refresh();
     });
-    return () => sub.remove();
+    return () => {
+      cancelled = true;
+      sub.remove();
+      setStore({ open: false });
+    };
   }, [refresh]);
 
-  if (!state || isComplete(state) || snoozed) return null;
+  if (!state || isComplete(state) || !open) return null;
 
+  const close = () => setStore({ open: false });
   const openAppSettings = () => void Linking.openSettings().catch(() => {});
 
   const allowNotifications = async () => {
@@ -139,27 +186,42 @@ export function PhoneSetupGuide() {
     void refresh();
   };
 
-  const openBatterySettings = () => {
-    Linking.sendIntent('android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS').catch(openAppSettings);
-  };
-
-  const confirmMaker = async () => {
-    await SecureStore.setItemAsync(MAKER_SETUP_KEY, '1').catch(() => {});
+  // Android's own one-tap "Let app always run in background?" dialog.
+  const allowBackground = async () => {
+    await IntentLauncher.startActivityAsync(IntentLauncher.ActivityAction.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, {
+      data: `package:${ANDROID_PACKAGE}`,
+    }).catch(openAppSettings);
     void refresh();
   };
 
   const maker = MAKER_STEPS[family];
+  const done = stepsDone(state);
+  const total = Platform.OS === 'android' ? STEP_COUNT : STEP_COUNT - 1;
+  const doneShown = Platform.OS === 'android' ? done : done - 1; // iOS has no maker step
 
   return (
-    <Modal visible animationType="slide" onRequestClose={() => setSnoozed(true)}>
-      <View style={styles.screen}>
+    <Modal visible animationType="slide" onRequestClose={close} statusBarTranslucent>
+      <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <ScrollView contentContainerStyle={styles.content}>
+          <View style={styles.headerIcon}>
+            <ShieldCheck size={28} color={Colors.primary} />
+          </View>
           <Text style={styles.title}>{t('setup_title', 'Set up your phone for trips')}</Text>
           <Text style={styles.subtitle}>
             {t('setup_subtitle', 'Do these steps once so you get new trips instantly and the office can follow your trip, even when MERCON is closed.')}
           </Text>
 
+          <View style={styles.progressRow}>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${Math.round((doneShown / total) * 100)}%` as `${number}%` }]} />
+            </View>
+            <Text style={styles.progressText}>
+              {doneShown} / {total}
+            </Text>
+          </View>
+
           <Step
+            number={1}
             icon={<Bell size={20} color={Colors.primary} />}
             title={t('setup_notif_title', 'Allow notifications')}
             body={t('setup_notif_body', 'New trips, changes and cancellations arrive as notifications.')}
@@ -169,6 +231,7 @@ export function PhoneSetupGuide() {
             doneLabel={t('setup_done', 'Done')}
           />
           <Step
+            number={2}
             icon={<MapPin size={20} color={Colors.primary} />}
             title={t('setup_location_title', 'Allow location')}
             body={t('setup_location_body', 'Choose "While using the app". Location is only shared during a trip.')}
@@ -179,39 +242,68 @@ export function PhoneSetupGuide() {
           />
           {Platform.OS === 'android' && (
             <Step
-              icon={<BatteryCharging size={20} color={Colors.primary} />}
-              title={t('setup_battery_title', 'Turn off battery optimisation')}
-              body={t('setup_battery_body', 'In the list choose "All apps", find MERCON Driver and select "Don\'t optimise" (or "Allow").')}
-              done={!state.batteryOptimized}
-              action={t('setup_open_settings', 'Open settings')}
-              onPress={openBatterySettings}
+              number={3}
+              icon={<Smartphone size={20} color={Colors.primary} />}
+              title={t('setup_maker_title', 'Let MERCON run in the background')}
+              body={t('setup_background_body', 'Tap Allow, then choose "Allow" in the pop-up. New trips then arrive even when the phone is asleep.')}
+              done={state.background}
+              action={t('setup_allow', 'Allow')}
+              onPress={allowBackground}
               doneLabel={t('setup_done', 'Done')}
             />
           )}
-          {Platform.OS === 'android' && (
-            <Step
-              icon={<Smartphone size={20} color={Colors.primary} />}
-              title={t('setup_maker_title', 'Let MERCON run in the background')}
-              body={t(maker.key, maker.en)}
-              done={state.makerConfirmed}
-              action={t('setup_open_app_settings', 'Open app settings')}
-              onPress={openAppSettings}
-              secondaryAction={t('setup_maker_confirm', "I've done this")}
-              onSecondaryPress={confirmMaker}
-              doneLabel={t('setup_done', 'Done')}
-            />
+          {Platform.OS === 'android' && STRICT_MAKERS.includes(family) && (
+            <View style={styles.extra}>
+              <Text style={styles.extraTitle}>{t('setup_extra_title', 'Optional — if new trips still arrive late')}</Text>
+              <Text style={styles.stepBody}>{t(maker.key, maker.en)}</Text>
+              <TouchableOpacity onPress={openAppSettings} activeOpacity={0.7}>
+                <Text style={styles.extraLink}>{t('setup_open_app_settings', 'Open app settings')}</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </ScrollView>
 
-        <TouchableOpacity style={styles.laterBtn} onPress={() => setSnoozed(true)} activeOpacity={0.7}>
-          <Text style={styles.laterText}>{t('setup_later', 'Later — remind me next time')}</Text>
+        <TouchableOpacity style={styles.laterBtn} onPress={close} activeOpacity={0.7}>
+          <Text style={styles.laterText}>{t('setup_later', 'Later')}</Text>
         </TouchableOpacity>
       </View>
     </Modal>
   );
 }
 
+/**
+ * Highlighted "Finish phone setup" button above the bottom bar, shown while a
+ * step is still open and the guide is closed. Hidden while the red phone
+ * banner already asks for notifications/location (that banner has its own Fix).
+ */
+export function PhoneSetupReminder() {
+  const { t } = useLanguage();
+  const { state, open } = useGuideStore();
+  const { health } = usePhoneHealthState();
+  if (!state || open || isComplete(state)) return null;
+  if (health?.notif_permission === 'denied' || health?.location_permission === 'denied') return null;
+
+  const total = Platform.OS === 'android' ? STEP_COUNT : STEP_COUNT - 1;
+  const doneShown = Platform.OS === 'android' ? stepsDone(state) : stepsDone(state) - 1;
+
+  return (
+    <TouchableOpacity style={styles.reminder} onPress={() => setStore({ open: true })} activeOpacity={0.85}>
+      <ShieldCheck size={18} color={Colors.white} />
+      <Text style={styles.reminderText} numberOfLines={2}>
+        {t('setup_reminder', 'Finish phone setup to get trips instantly')}
+      </Text>
+      <View style={styles.reminderCount}>
+        <Text style={styles.reminderCountText}>
+          {doneShown}/{total}
+        </Text>
+      </View>
+      <ChevronRight size={18} color={Colors.white} />
+    </TouchableOpacity>
+  );
+}
+
 function Step(props: {
+  number: number;
   icon: React.ReactNode;
   title: string;
   body: string;
@@ -223,25 +315,27 @@ function Step(props: {
   onSecondaryPress?: () => void;
 }) {
   return (
-    <View style={[styles.step, props.done && styles.stepDone]}>
+    <View style={[styles.step, props.done ? styles.stepDone : styles.stepTodo]}>
       <View style={styles.stepHead}>
-        <View style={styles.stepIcon}>{props.done ? <CheckCircle2 size={20} color={Colors.success} /> : props.icon}</View>
-        <Text style={styles.stepTitle}>{props.title}</Text>
+        <View style={[styles.stepIcon, props.done && styles.stepIconDone]}>
+          {props.done ? <CheckCircle2 size={20} color={Colors.success} /> : props.icon}
+        </View>
+        <Text style={styles.stepTitle}>
+          {props.number}. {props.title}
+        </Text>
         {props.done && <Text style={styles.doneText}>{props.doneLabel}</Text>}
       </View>
       {!props.done && (
         <>
           <Text style={styles.stepBody}>{props.body}</Text>
-          <View style={styles.actions}>
-            <TouchableOpacity style={styles.primaryBtn} onPress={props.onPress} activeOpacity={0.85}>
-              <Text style={styles.primaryBtnText}>{props.action}</Text>
+          <TouchableOpacity style={styles.primaryBtn} onPress={props.onPress} activeOpacity={0.85}>
+            <Text style={styles.primaryBtnText}>{props.action}</Text>
+          </TouchableOpacity>
+          {props.secondaryAction && (
+            <TouchableOpacity style={styles.secondaryBtn} onPress={props.onSecondaryPress} activeOpacity={0.85}>
+              <Text style={styles.secondaryBtnText}>{props.secondaryAction}</Text>
             </TouchableOpacity>
-            {props.secondaryAction && (
-              <TouchableOpacity style={styles.secondaryBtn} onPress={props.onSecondaryPress} activeOpacity={0.85}>
-                <Text style={styles.secondaryBtnText}>{props.secondaryAction}</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          )}
         </>
       )}
     </View>
@@ -250,38 +344,92 @@ function Step(props: {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.gray100 },
-  content: { padding: Spacing.xl, paddingTop: Spacing['2xl'], gap: Spacing.md },
+  content: { padding: Spacing.xl, gap: Spacing.md },
+  headerIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Spacing.md,
+  },
   title: { ...Typography.headingL, color: Colors.gray900 },
-  subtitle: { ...Typography.bodyMedium, color: Colors.gray700, marginBottom: Spacing.sm },
+  subtitle: { ...Typography.bodyMedium, color: Colors.gray700 },
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.xs },
+  progressTrack: { flex: 1, height: 8, borderRadius: Radius.full, backgroundColor: Colors.gray200, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: Radius.full, backgroundColor: Colors.success },
+  progressText: { ...Typography.caption, color: Colors.gray700, fontWeight: '700' },
   step: {
     backgroundColor: Colors.white,
     borderRadius: Radius.lg,
     padding: Spacing.lg,
     gap: Spacing.sm,
+    borderWidth: 1,
     ...Shadows.md,
   },
-  stepDone: { opacity: 0.75 },
+  stepTodo: { borderColor: Colors.primary },
+  stepDone: { borderColor: 'transparent', opacity: 0.8 },
   stepHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  stepIcon: { width: 28, alignItems: 'center' },
+  stepIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepIconDone: { backgroundColor: Colors.successLight },
   stepTitle: { ...Typography.bodyMedium, color: Colors.gray900, fontWeight: '700', flex: 1 },
   doneText: { ...Typography.caption, color: Colors.success, fontWeight: '700' },
   stepBody: { ...Typography.bodySmall, color: Colors.gray700 },
-  actions: { flexDirection: 'row', gap: Spacing.sm, flexWrap: 'wrap' },
   primaryBtn: {
     backgroundColor: Colors.primary,
     borderRadius: Radius.md,
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: Spacing.lg,
+    alignItems: 'center',
   },
-  primaryBtnText: { ...Typography.buttonMedium, color: Colors.white },
+  primaryBtnText: { ...Typography.buttonMedium, lineHeight: 20, color: Colors.white },
   secondaryBtn: {
     borderWidth: 1,
     borderColor: Colors.primary,
     borderRadius: Radius.md,
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: Spacing.lg,
+    alignItems: 'center',
   },
-  secondaryBtnText: { ...Typography.buttonMedium, color: Colors.primary },
+  secondaryBtnText: { ...Typography.buttonMedium, lineHeight: 20, color: Colors.primary },
+  extra: {
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
+    gap: Spacing.xs,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.gray200,
+  },
+  extraTitle: { ...Typography.bodySmall, color: Colors.gray900, fontWeight: '700' },
+  extraLink: { ...Typography.buttonMedium, lineHeight: 20, color: Colors.primary, marginTop: Spacing.xs },
   laterBtn: { padding: Spacing.lg, alignItems: 'center' },
-  laterText: { ...Typography.buttonMedium, color: Colors.gray500 },
+  laterText: { ...Typography.buttonMedium, lineHeight: 20, color: Colors.gray500 },
+  reminder: {
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginHorizontal: Spacing.base,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.primary,
+    ...Shadows.md,
+  },
+  reminderText: { ...Typography.bodySmall, color: Colors.white, flex: 1, fontWeight: '700' },
+  reminderCount: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+  },
+  reminderCountText: { ...Typography.caption, color: Colors.primary, fontWeight: '700' },
 });

@@ -309,3 +309,17 @@ member's phones ("no phone signed in" = gets no pushes), and every push of the l
 
 The phone's API address is saved at sign-in (`user_devices.api_base`) so the extension
 reports to the server that phone uses. Migration `20261006120000_push_receipts` (additive).
+
+### Operator app keys (recorded 2026-10-05)
+
+- **Do not run `eas init` again** for the operator app — from another Expo login it would
+  create a second, unrelated project. The project ID is already in `operator-app/app.config.ts`.
+- APNs push key: Key ID `7SN8FSMQGT`, Team `Z83Y9VJTKH` (the `.p8` itself never goes in git or chat).
+  The driver app (`tech.merconapp.driver`) already has its own push key on its Expo project.
+- Android signing (EAS default keystore for `tech.mercon.operator`): upload certificate
+  **SHA-1 `31:FF:48:2F:42:CF:72:6B:07:6E:58:4F:DF:19:53:EE:C2:08:25:97`**. Never change it;
+  check every operator AAB with `keytool -printcert -jarfile <file>` before uploading to Play.
+- Expo access for other developers: `alan32` is a personal Expo account and can't add members —
+  create an Expo organisation, invite them, transfer both projects and update `owner` in both
+  `app.config.ts` files.
+
