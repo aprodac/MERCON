@@ -21,6 +21,7 @@ import {
   type CreateVehicleInput, type OperatorVehicle, type UpdateVehicleInput,
 } from '@/lib/operator';
 import { ListSearch } from '@/components/ListSearch';
+import { AssignmentImpact } from '@/features/vehicles/components/TruckAssignment';
 import { USER_MANAGEMENT_KEYS } from '@/features/users/screens/UserManagementScreen';
 import { niceName } from '@/features/trips/create/components/ui';
 import { Field, FormHeader, SaveBar, Section, SwitchRow, formStyles } from '@/features/users/components/FormKit';
@@ -109,11 +110,11 @@ function VehicleForm({ vehicle, onDone }: { vehicle?: OperatorVehicle; onDone: (
     try {
       if (vehicle) {
         await operatorService.updateVehicle(vehicle.id, { ...values, status });
-        // The assignment lives on the driver, so it is saved there (as the web does).
+        // One step through the assignment rule (the "When you save" box): the old driver and the
+        // new driver's old truck are freed together.
         if (driverId !== originalDriverId) {
           try {
-            if (originalDriverId) await operatorService.updateDriver(originalDriverId, { assigned_vehicle_id: null });
-            if (driverId) await operatorService.updateDriver(driverId, { assigned_vehicle_id: vehicle.id });
+            await operatorService.applyTruckAssignment({ vehicle_id: vehicle.id, driver_id: driverId });
           } catch (err) {
             Alert.alert('Vehicle saved, driver not changed', getApiErrorMessage(err));
           }
@@ -171,6 +172,7 @@ function VehicleForm({ vehicle, onDone }: { vehicle?: OperatorVehicle; onDone: (
         {!isNew ? (
           <Section title="Driver" Icon={UserRound}>
             <Field label="Assigned driver" value={driverLabel} placeholder="No driver" onPressBox={() => setPickerOpen(true)} />
+            <AssignmentImpact vehicleId={vehicle?.id ?? null} driverId={driverId} changed={driverId !== originalDriverId} />
           </Section>
         ) : null}
 
@@ -207,6 +209,7 @@ function VehicleForm({ vehicle, onDone }: { vehicle?: OperatorVehicle; onDone: (
         drivers={drivers.data ?? []}
         loading={drivers.isLoading}
         selectedId={driverId}
+        vehicleId={vehicle?.id ?? null}
         onPick={(next) => { setDriverId(next); setPickerOpen(false); }}
         onClose={() => setPickerOpen(false)}
       />
@@ -225,10 +228,10 @@ function TypeChips({ label, value, onChange }: { label: string; value: AssetType
   );
 }
 
-type PickerDriver = { id: string; first_name: string; last_name: string; phone_primary?: string | null };
+type PickerDriver = { id: string; first_name: string; last_name: string; phone_primary?: string | null; assignedVehicle?: { id?: string; plate_number?: string | null } | null };
 
-function DriverPicker({ visible, drivers, loading, selectedId, onPick, onClose }: {
-  visible: boolean; drivers: PickerDriver[]; loading: boolean; selectedId: string | null; onPick: (id: string | null) => void; onClose: () => void;
+function DriverPicker({ visible, drivers, loading, selectedId, vehicleId, onPick, onClose }: {
+  visible: boolean; drivers: PickerDriver[]; loading: boolean; selectedId: string | null; vehicleId: string | null; onPick: (id: string | null) => void; onClose: () => void;
 }) {
   const [query, setQuery] = useState('');
   const shown = useMemo(() => {
@@ -236,11 +239,11 @@ function DriverPicker({ visible, drivers, loading, selectedId, onPick, onClose }
     return q ? drivers.filter((d) => `${d.first_name} ${d.last_name} ${d.phone_primary ?? ''}`.toLowerCase().includes(q)) : drivers;
   }, [drivers, query]);
 
-  const row = (id: string | null, title: string, sub?: string | null) => (
+  const row = (id: string | null, title: string, sub?: string | null, warn?: boolean) => (
     <TouchableOpacity key={id ?? 'none'} style={s.pick} activeOpacity={0.7} onPress={() => onPick(id)} accessibilityRole="button" accessibilityState={{ selected: selectedId === id }}>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={s.pickTitle} numberOfLines={1}>{title}</Text>
-        {sub ? <Text style={s.pickSub} numberOfLines={1}>{sub}</Text> : null}
+        {sub ? <Text style={[s.pickSub, warn && { color: '#B45309' }]} numberOfLines={1}>{sub}</Text> : null}
       </View>
       {selectedId === id ? <Check size={18} color={Colors.primary} strokeWidth={2.4} /> : null}
     </TouchableOpacity>
@@ -252,7 +255,11 @@ function DriverPicker({ visible, drivers, loading, selectedId, onPick, onClose }
         <ListSearch value={query} onChangeText={setQuery} placeholder="Search name or phone" />
         <ScrollView style={{ maxHeight: 360 }} keyboardShouldPersistTaps="handled">
           {row(null, 'No driver')}
-          {loading ? <ActivityIndicator color={Colors.primary} style={{ marginVertical: 16 }} /> : shown.map((d) => row(d.id, niceName(`${d.first_name} ${d.last_name}`.trim()), d.phone_primary))}
+          {loading ? <ActivityIndicator color={Colors.primary} style={{ marginVertical: 16 }} /> : shown.map((d) => {
+            // Someone who drives another truck: picking them moves them off it.
+            const other = d.assignedVehicle && d.assignedVehicle.id !== vehicleId ? d.assignedVehicle.plate_number : null;
+            return row(d.id, niceName(`${d.first_name} ${d.last_name}`.trim()), [d.phone_primary, other ? `drives ${other}` : null].filter(Boolean).join(' · '), Boolean(other));
+          })}
         </ScrollView>
       </View>
     </AppModal>

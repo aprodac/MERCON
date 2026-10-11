@@ -23,12 +23,16 @@ import {
   Fingerprint,
   Car,
   KeyRound,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import QuickCreateVehicleModal from '@/components/trips/QuickCreateVehicleModal';
 import { driverService, DriverStatus } from '@/services/driverService';
 import { vehicleService, Vehicle } from '@/services/vehicleService';
+import { TruckAssignmentImpact } from '@/components/fleet/TruckAssignmentImpact';
+import { DriverSignInMethods } from '@/components/drivers/DriverSignInMethods';
 import { driverPhotoUrl } from '@/lib/documents';
 import { Card, CardContent } from '@/components/ui/card';
 import PhoneInput from '@/components/ui/PhoneInput';
@@ -73,11 +77,15 @@ export default function EditDriverPage() {
   });
 
   const vehicles = vehiclesRes?.data || [];
-  const vehicleOptions = vehicles.map((v) => ({
-    value: v.id,
-    label: `${v.plate_number} (${v.asset_type} • ${v.capacity_kg ? `${v.capacity_kg.toLocaleString()} kg` : 'N/A'})`,
-    keywords: `${v.plate_number} ${v.asset_type}`,
-  }));
+  // Each truck says who drives it now, so picking a taken one is a deliberate choice.
+  const vehicleOptions = vehicles.map((v) => {
+    const holder = v.assignedDriver && v.assignedDriver.id !== id ? `${v.assignedDriver.first_name} ${v.assignedDriver.last_name ?? ''}`.trim() : null;
+    return {
+      value: v.id,
+      label: `${v.plate_number} (${v.asset_type} • ${v.capacity_kg ? `${v.capacity_kg.toLocaleString()} kg` : 'N/A'})${holder ? ` — driven by ${holder}` : v.assignedDriver ? '' : ' — free'}`,
+      keywords: `${v.plate_number} ${v.asset_type} ${holder ?? ''}`,
+    };
+  });
 
   const handleVehicleCreated = (newVehicle: Vehicle) => {
     refetchVehicles();
@@ -98,6 +106,8 @@ export default function EditDriverPage() {
   // Driver app password — optional; blank keeps the current one.
   const [appPassword, setAppPassword] = useState('');
   const [appPasswordConfirm, setAppPasswordConfirm] = useState('');
+  // Show what's being typed, so the office can read the new password out to the driver.
+  const [showAppPassword, setShowAppPassword] = useState(false);
 
   useEffect(() => {
     if (driver) {
@@ -160,8 +170,10 @@ export default function EditDriverPage() {
 
   const updateMutation = useMutation({
     // Profile first (the phone is the app username), then the password onto that login.
-    mutationFn: async (payload: any) => {
+    mutationFn: async ({ truck, ...payload }: any) => {
       await driverService.update(id!, payload);
+      // The truck goes through the assignment rule: the other driver / truck are freed in the same step.
+      if (truck !== undefined) await driverService.applyTruckAssignment({ driver_id: id!, vehicle_id: truck });
       if (!appPassword.trim()) return { passwordError: null as string | null };
       try {
         await driverService.setDriverPassword(id!, appPassword.trim());
@@ -174,6 +186,8 @@ export default function EditDriverPage() {
       queryClient.invalidateQueries({ queryKey: ['driver', id] });
       queryClient.invalidateQueries({ queryKey: ['drivers'] });
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['vehicles'] });
+      queryClient.invalidateQueries({ queryKey: ['vehicles-select'] });
       if (passwordError) {
         // Stay on the page so the password can be corrected and saved again.
         setError(`Profile saved, but the app password was not set: ${passwordError}`);
@@ -211,6 +225,8 @@ export default function EditDriverPage() {
   const isPhoneValid = validateSaudiPhone(formData.phone_primary);
   const isLicenseValid = validateSaudiLicense(formData.license_number);
 
+  const truckChanged = formData.assigned_vehicle_id !== (driver?.assignedVehicleId || '');
+
   const isFormValid =
     formData.first_name.trim() !== '' &&
     formData.last_name.trim() !== '' &&
@@ -246,11 +262,11 @@ export default function EditDriverPage() {
     }
     if (!id) return;
 
-    const { license_expiry, ...profile } = formData;
+    const { license_expiry, assigned_vehicle_id, ...profile } = formData;
     updateMutation.mutate({
       ...profile,
       ...(expiryChanged ? { license_expiry } : {}),
-      assigned_vehicle_id: formData.assigned_vehicle_id || null,
+      ...(truckChanged ? { truck: assigned_vehicle_id || null } : {}),
     });
   };
 
@@ -473,9 +489,14 @@ export default function EditDriverPage() {
                       <KeyRound className="w-3.5 h-3.5 text-[#FA634E]" /> Driver App Login
                     </h2>
                     <span className="text-[10px] font-semibold text-slate-500">
-                      {driver?.hasAccountPassword ? 'Password is set' : 'No password yet'}
+                      {driver?.hasAccountPassword ? 'Licence or password' : 'Licence only'}
                     </span>
                   </div>
+                  <DriverSignInMethods
+                    phone={formData.phone_primary}
+                    license={formData.license_number.trim()}
+                    hasPassword={Boolean(driver?.hasAccountPassword)}
+                  />
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                     <div className="space-y-1">
                       <Label htmlFor="app_username" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
@@ -490,12 +511,23 @@ export default function EditDriverPage() {
                       <p className="text-[10px] text-slate-500">Always the mobile number above.</p>
                     </div>
                     <div className="space-y-1">
-                      <Label htmlFor="app_password" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                        {driver?.hasAccountPassword ? 'New password' : 'Password'}
-                      </Label>
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="app_password" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                          {driver?.hasAccountPassword ? 'New password' : 'Password'}
+                        </Label>
+                        <button
+                          type="button"
+                          onClick={() => setShowAppPassword((v) => !v)}
+                          className="text-[10px] font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 inline-flex items-center gap-1"
+                          aria-pressed={showAppPassword}
+                        >
+                          {showAppPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                          {showAppPassword ? 'Hide' : 'Show'}
+                        </button>
+                      </div>
                       <Input
                         id="app_password"
-                        type="password"
+                        type={showAppPassword ? 'text' : 'password'}
                         autoComplete="new-password"
                         placeholder={driver?.hasAccountPassword ? 'Leave blank to keep' : 'Min 4 characters'}
                         value={appPassword}
@@ -509,7 +541,7 @@ export default function EditDriverPage() {
                       </Label>
                       <Input
                         id="app_password_confirm"
-                        type="password"
+                        type={showAppPassword ? 'text' : 'password'}
                         autoComplete="new-password"
                         value={appPasswordConfirm}
                         onChange={(e) => setAppPasswordConfirm(e.target.value)}
@@ -552,6 +584,11 @@ export default function EditDriverPage() {
                     onAddNew={() => setIsAddVehicleOpen(true)}
                     addNewLabel="Add New Vehicle"
                     triggerClassName="h-8 text-xs rounded-lg w-full"
+                  />
+                  <TruckAssignmentImpact
+                    driverId={id ?? null}
+                    vehicleId={formData.assigned_vehicle_id || null}
+                    changed={truckChanged}
                   />
                 </div>
 

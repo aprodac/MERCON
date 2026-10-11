@@ -299,7 +299,8 @@ export default function UserManagementPage() {
               : 'bg-[#FAEEDA] text-[#633806] hover:bg-[#FAC775]/60 dark:bg-[#633806]/40 dark:text-[#FAC775]',
           )}
         >
-          <KeyRound size={12} /> {d.hasAccountPassword ? 'Ready' : 'Set password'}
+          {/* Licence number always signs in; a password is the second way. */}
+          <KeyRound size={12} /> {d.hasAccountPassword ? 'Licence + password' : 'Licence only · set password'}
         </button>
       ),
     },

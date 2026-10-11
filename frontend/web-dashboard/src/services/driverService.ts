@@ -1,4 +1,5 @@
 import { api, ApiResponse } from '@/lib/api';
+import type { AssignmentPreview } from '@mercon/shared-types';
 import { Vehicle } from './vehicleService';
 import type { ImportSummary } from '@/components/fleet/ExcelImportDialog';
 
@@ -168,6 +169,21 @@ export const driverService = {
 
   async update(id: string, payload: Partial<CreateDriverPayload & { status: DriverStatus }>): Promise<Driver> {
     const res = await api.patch<ApiResponse<Driver>>(`/drivers/${id}`, payload);
+    return res.data.data;
+  },
+
+  /**
+   * Which truck a driver drives: { driver_id, vehicle_id } pairs them; vehicle_id null takes the
+   * driver off their truck; driver_id null empties the truck. Preview first to show the knock-on
+   * effects (the other truck left empty, the other driver left without a truck).
+   */
+  async previewTruckAssignment(body: { driver_id: string | null; vehicle_id: string | null }): Promise<AssignmentPreview> {
+    const res = await api.post<ApiResponse<AssignmentPreview>>('/drivers/truck-assignment/preview', body);
+    return res.data.data;
+  },
+
+  async applyTruckAssignment(body: { driver_id: string | null; vehicle_id: string | null }): Promise<AssignmentPreview> {
+    const res = await api.post<ApiResponse<AssignmentPreview>>('/drivers/truck-assignment', body);
     return res.data.data;
   },
 

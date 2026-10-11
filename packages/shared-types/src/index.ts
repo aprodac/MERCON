@@ -1259,6 +1259,7 @@ export * from './quotationSearch';
 export * from './monthlyRotation';
 export * from './tripRoute';
 export * from './tripLegs';
+export * from './truckAssignment';
 
 
 

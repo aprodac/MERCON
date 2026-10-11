@@ -105,7 +105,7 @@ export default function ProfileScreen() {
   const profileSub = !me.data ? 'Name, phone and email' : missing.length ? `Add your ${missing.join(' and ')}` : 'Name, phone and email are filled in';
   const noLogin = driverAccounts.data?.filter((d) => !d.user).length ?? 0;
   const teamSub = driverAccounts.data && platformUsers.data
-    ? (noLogin ? `${noLogin} drivers have no app password` : `${driverAccounts.data.length} drivers  ·  ${platformUsers.data.length} users`)
+    ? (noLogin ? `${noLogin} drivers sign in with licence only` : `${driverAccounts.data.length} drivers  ·  ${platformUsers.data.length} users`)
     : 'Team accounts and driver logins';
   const locationSub = locationAccess.data
     ? (locationAccess.data.granted ? 'Location allowed' : locationAccess.data.canAskAgain ? 'Location not allowed yet' : 'Location is off — turn it on in phone settings')

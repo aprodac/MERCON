@@ -28,6 +28,7 @@ import { vehicleService, AssetType, AssetStatus } from '@/services/vehicleServic
 import { driverService, Driver } from '@/services/driverService';
 import VehiclePreviewModal from '@/components/fleet/VehiclePreviewModal';
 import DriverPreviewModal from '@/components/drivers/DriverPreviewModal';
+import { TruckAssignmentImpact } from '@/components/fleet/TruckAssignmentImpact';
 import VehicleImageUploader from '@/components/ui/VehicleImageUploader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -146,26 +147,18 @@ export default function EditVehiclePage() {
     }
   };
 
+  const driverChanged = assignedDriverId !== ((vehicle?.assignedDriver || (vehicle as any)?.driver)?.id || 'unassigned');
+
   const updateMutation = useMutation({
     mutationFn: async (payload: any) => {
       const updatedVehicle = await vehicleService.update(id!, payload);
-      const origDriverId = vehicle?.assignedDriver?.id || 'unassigned';
-
-      if (assignedDriverId !== origDriverId) {
-        if (origDriverId !== 'unassigned') {
-          try {
-            await driverService.update(origDriverId, { assigned_vehicle_id: null });
-          } catch (e) {
-            console.error('Failed to unassign previous driver:', e);
-          }
-        }
-        if (assignedDriverId !== 'unassigned') {
-          try {
-            await driverService.update(assignedDriverId, { assigned_vehicle_id: id! });
-          } catch (e) {
-            console.error('Failed to assign new driver:', e);
-          }
-        }
+      // One step through the assignment rule: the old driver and the new driver's old truck are
+      // freed together (it used to be two calls whose failures were swallowed).
+      if (driverChanged) {
+        await driverService.applyTruckAssignment({
+          vehicle_id: id!,
+          driver_id: assignedDriverId === 'unassigned' ? null : assignedDriverId,
+        });
       }
       return updatedVehicle;
     },
@@ -173,7 +166,8 @@ export default function EditVehiclePage() {
       queryClient.invalidateQueries({ queryKey: ['vehicle', id] });
       queryClient.invalidateQueries({ queryKey: ['vehicles'] });
       queryClient.invalidateQueries({ queryKey: ['drivers'] });
-      toast.success('Vehicle updated successfully');
+      queryClient.invalidateQueries({ queryKey: ['drivers-lookup'] });
+      toast.success(driverChanged ? 'Vehicle and driver updated' : 'Vehicle updated successfully');
       navigate(`/vehicles/${id}`);
     },
     onError: (err: any) => {
@@ -440,13 +434,24 @@ export default function EditVehiclePage() {
                           <SelectItem value="unassigned" className="text-xs italic text-slate-400">
                             Unassigned (No Driver)
                           </SelectItem>
-                          {drivers.map((d) => (
-                            <SelectItem key={d.id} value={d.id} className="text-xs">
-                              {d.first_name} {d.last_name} ({d.phone_primary || d.ref_id || 'No Phone'})
-                            </SelectItem>
-                          ))}
+                          {drivers.map((d) => {
+                            // Who already drives another truck — picking them moves them off it.
+                            const other = d.assignedVehicle && d.assignedVehicle.id !== id ? d.assignedVehicle.plate_number : null;
+                            return (
+                              <SelectItem key={d.id} value={d.id} className="text-xs">
+                                {d.first_name} {d.last_name} ({d.phone_primary || d.ref_id || 'No Phone'})
+                                {other ? <span className="text-amber-700 dark:text-amber-400"> · drives {other}</span> : d.assignedVehicle ? null : <span className="text-emerald-700 dark:text-emerald-400"> · no truck</span>}
+                              </SelectItem>
+                            );
+                          })}
                         </SelectContent>
                       </Select>
+                      <TruckAssignmentImpact
+                        className="mt-2"
+                        vehicleId={id ?? null}
+                        driverId={assignedDriverId === 'unassigned' ? null : assignedDriverId}
+                        changed={driverChanged}
+                      />
                     </div>
                   </div>
                 </div>
