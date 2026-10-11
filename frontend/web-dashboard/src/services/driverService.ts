@@ -23,6 +23,29 @@ export interface Driver {
   documents?: Document[];
   /** Lifetime driver payout across every trip (not just the in-progress ones `trips` carries). */
   total_trip_charges?: number;
+  /** What the driver is doing, from their trips (Drivers list only) — see components/drivers/DriverDuty. */
+  duty?: DriverDuty;
+}
+
+/** A trip as the Drivers list shows it (backend services/driverDuty.ts). */
+export interface DriverDutyTrip {
+  id: string;
+  ref_id: string | null;
+  status: string;
+  /** When it starts / when the driver is free again (round trip: back home). */
+  start: string | null;
+  end: string | null;
+  from: string | null;
+  to: string | null;
+  round: boolean;
+  leg: 1 | 2 | null;
+  co_driver: boolean;
+}
+
+export interface DriverDuty {
+  on_trip: DriverDutyTrip | null;
+  /** Booked (Scheduled) trips, soonest first, up to two weeks ahead. */
+  upcoming: DriverDutyTrip[];
 }
 
 export interface CreateDriverPayload {

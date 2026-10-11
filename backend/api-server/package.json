@@ -41,6 +41,7 @@
     "test:staff-alerts": "node -r ts-node/register --test src/services/staffAlerts/messages.test.ts src/services/staffAlerts/sender.test.ts",
     "test:push-log": "node -r ts-node/register --test src/services/pushLog.test.ts",
     "test:driver-app-phase3": "node -r ts-node/register --test src/tests/driverAppPhase3.test.ts",
+    "test:driver-login": "node -r ts-node/register --test src/tests/driverLogin.test.ts",
     "test:file-links": "node -r ts-node/register --test src/tests/fileLinks.test.ts",
     "test:operator-inbox": "node -r ts-node/register --test src/tests/operatorInbox.test.ts",
     "test:share-collage": "node -r ts-node/register --test src/tests/shareCollage.test.ts",

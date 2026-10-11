@@ -43,6 +43,17 @@ export const createLoginIpLimit = () => rateLimit({
  * the body field holding it (`username` on the web, `phone_primary` on mobile).
  * Requests without it fall through to the validator untouched.
  */
+/**
+ * One bucket per account however it is typed: a Saudi mobile number counts as
+ * the same account as "05…", "+966 5…", "5…" or "00966…", so switching formats
+ * doesn't multiply the attempts allowed.
+ */
+export function loginAccountKey(raw: unknown): string {
+  const typed = String(raw ?? '').trim().toLowerCase().replace(/[\s-]/g, '');
+  const local = typed.replace(/\D/g, '').replace(/^(00966|966|0)/, '');
+  return /^5\d{8}$/.test(local) && /^[+\d]+$/.test(typed) ? `sa:${local}` : typed;
+}
+
 export const createLoginAccountLimit = (field: string) => rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: dev ? 1000 : 10,
@@ -50,7 +61,7 @@ export const createLoginAccountLimit = (field: string) => rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => !String(req.body?.[field] ?? '').trim(),
-  keyGenerator: (req) => `acct:${String(req.body?.[field] ?? '').trim().toLowerCase().replace(/[\s-]/g, '')}`,
+  keyGenerator: (req) => `acct:${loginAccountKey(req.body?.[field])}`,
   message: { success: false, error: { code: 'RATE_LIMITED', message: 'Too many attempts on this account. Please try again later.' } },
 });
 

@@ -22,6 +22,7 @@ import {
   MapPin,
   Fingerprint,
   Car,
+  KeyRound,
 } from 'lucide-react';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -94,6 +95,9 @@ export default function EditDriverPage() {
     assigned_vehicle_id: '',
     avatar_url: null as string | null,
   });
+  // Driver app password — optional; blank keeps the current one.
+  const [appPassword, setAppPassword] = useState('');
+  const [appPasswordConfirm, setAppPasswordConfirm] = useState('');
 
   useEffect(() => {
     if (driver) {
@@ -147,17 +151,36 @@ export default function EditDriverPage() {
         avatar_url: driver.avatar_url || null,
       });
       setFiles([]);
+      setAppPassword('');
+      setAppPasswordConfirm('');
       setError(null);
       toast.info('Form reset to original values');
     }
   };
 
   const updateMutation = useMutation({
-    mutationFn: (payload: any) => driverService.update(id!, payload),
-    onSuccess: () => {
+    // Profile first (the phone is the app username), then the password onto that login.
+    mutationFn: async (payload: any) => {
+      await driverService.update(id!, payload);
+      if (!appPassword.trim()) return { passwordError: null as string | null };
+      try {
+        await driverService.setDriverPassword(id!, appPassword.trim());
+        return { passwordError: null };
+      } catch (err: any) {
+        return { passwordError: (err.response?.data?.error?.message || err.message || 'Failed to set password') as string };
+      }
+    },
+    onSuccess: ({ passwordError }) => {
       queryClient.invalidateQueries({ queryKey: ['driver', id] });
       queryClient.invalidateQueries({ queryKey: ['drivers'] });
-      toast.success('Driver profile updated successfully');
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      if (passwordError) {
+        // Stay on the page so the password can be corrected and saved again.
+        setError(`Profile saved, but the app password was not set: ${passwordError}`);
+        toast.error(`App password not set: ${passwordError}`);
+        return;
+      }
+      toast.success(appPassword.trim() ? 'Driver profile and app password updated' : 'Driver profile updated successfully');
       navigate(`/drivers/${id}`);
     },
     onError: (err: any) => {
@@ -180,6 +203,11 @@ export default function EditDriverPage() {
 
   const isExpiryValid = formData.license_expiry ? new Date(formData.license_expiry) > new Date() : false;
   const isExpired = formData.license_expiry !== '' && !isExpiryValid;
+  // An already-expired date that wasn't touched must not block other edits
+  // (phone, password…); it is only re-validated — and re-sent — when changed.
+  const originalExpiry = driver?.license_expiry ? new Date(driver.license_expiry).toISOString().split('T')[0] : '';
+  const expiryChanged = formData.license_expiry !== originalExpiry;
+  const expiryOk = isExpiryValid || (!expiryChanged && formData.license_expiry !== '');
   const isPhoneValid = validateSaudiPhone(formData.phone_primary);
   const isLicenseValid = validateSaudiLicense(formData.license_number);
 
@@ -189,7 +217,7 @@ export default function EditDriverPage() {
     isPhoneValid &&
     isLicenseValid &&
     formData.license_expiry !== '' &&
-    isExpiryValid;
+    expiryOk;
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -206,14 +234,22 @@ export default function EditDriverPage() {
       setError('License Expiry is required and must be a valid date.');
       return;
     }
-    if (!isExpiryValid) {
+    if (!expiryOk) {
       setError('License is already expired. Driver must have a future-dated valid license.');
       return;
     }
+    if (appPassword && appPassword.trim().length < 4) {
+      return setError('App password must be at least 4 characters.');
+    }
+    if (appPassword.trim() !== appPasswordConfirm.trim()) {
+      return setError('App password and confirmation do not match.');
+    }
     if (!id) return;
 
+    const { license_expiry, ...profile } = formData;
     updateMutation.mutate({
-      ...formData,
+      ...profile,
+      ...(expiryChanged ? { license_expiry } : {}),
       assigned_vehicle_id: formData.assigned_vehicle_id || null,
     });
   };
@@ -423,8 +459,64 @@ export default function EditDriverPage() {
                       />
                       {isExpired && (
                         <p className="text-[10px] text-rose-500 font-semibold mt-0.5">
-                          License is expired — choose a future date.
+                          {expiryChanged ? 'License is expired — choose a future date.' : 'License is expired — other changes can still be saved.'}
                         </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Driver app login: username is the mobile number; password optional here */}
+                <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <KeyRound className="w-3.5 h-3.5 text-[#FA634E]" /> Driver App Login
+                    </h2>
+                    <span className="text-[10px] font-semibold text-slate-500">
+                      {driver?.hasAccountPassword ? 'Password is set' : 'No password yet'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <div className="space-y-1">
+                      <Label htmlFor="app_username" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                        Username
+                      </Label>
+                      <Input
+                        id="app_username"
+                        value={formData.phone_primary.replace(/[\s-]/g, '')}
+                        readOnly
+                        className="h-8 text-xs font-mono bg-slate-50 dark:bg-slate-800/60"
+                      />
+                      <p className="text-[10px] text-slate-500">Always the mobile number above.</p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="app_password" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                        {driver?.hasAccountPassword ? 'New password' : 'Password'}
+                      </Label>
+                      <Input
+                        id="app_password"
+                        type="password"
+                        autoComplete="new-password"
+                        placeholder={driver?.hasAccountPassword ? 'Leave blank to keep' : 'Min 4 characters'}
+                        value={appPassword}
+                        onChange={(e) => setAppPassword(e.target.value)}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="app_password_confirm" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                        Confirm password
+                      </Label>
+                      <Input
+                        id="app_password_confirm"
+                        type="password"
+                        autoComplete="new-password"
+                        value={appPasswordConfirm}
+                        onChange={(e) => setAppPasswordConfirm(e.target.value)}
+                        className="h-8 text-xs"
+                      />
+                      {appPasswordConfirm !== '' && appPassword.trim() !== appPasswordConfirm.trim() && (
+                        <p className="text-[10px] text-rose-500 font-semibold mt-0.5">Passwords do not match.</p>
                       )}
                     </div>
                   </div>

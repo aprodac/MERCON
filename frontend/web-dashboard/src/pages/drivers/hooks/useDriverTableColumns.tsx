@@ -5,7 +5,6 @@ import { toast } from 'sonner';
 import {
   Truck,
   AlertTriangle,
-  Calendar as CalendarIcon,
   MoreHorizontal,
   Edit2,
   Trash2,
@@ -13,7 +12,6 @@ import {
 import { Driver, driverService } from '@/services/driverService';
 import DriverAvatar from '@/components/ui/DriverAvatar';
 import PhoneDisplay from '@/components/ui/PhoneDisplay';
-import StatusBadge from '@/components/ui/StatusBadge';
 import { Badge } from '@/components/ui/badge';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
 import {
@@ -24,7 +22,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { formatInDeploymentTz } from '@/lib/datetime';
-import { getUpcomingScheduledDates } from '@/utils/scheduleUtils';
+import { BookedDays, DutyStatusCell } from '@/components/drivers/DriverDuty';
+import { dutyStatusOf } from '@/components/drivers/driverDutyStatus';
 import { cn } from '@/lib/utils';
 import { PHONE_LEVEL_LABEL, timeAgo, type DriverPhoneStatusRow } from '@/services/driverPhoneService';
 import { PhoneDot } from '@/components/drivers/phone/PhoneStatus';
@@ -129,7 +128,7 @@ export function useDriverTableColumns({
               firstName={row.first_name}
               lastName={row.last_name}
               size="sm"
-              status={row.status}
+              status={dutyStatusOf(row)}
               showStatusDot
               previewable
               onPreview={() => onPreviewDriver(row)}
@@ -234,7 +233,13 @@ export function useDriverTableColumns({
       },
       {
         header: 'Duty Status',
-        accessor: (row: Driver) => <StatusBadge status={row.status} />,
+        // From the driver's trips: on a round trip shows "On trip · Leg 2 returning", not "Available".
+        accessor: (row: Driver) => <DutyStatusCell driver={row} tz={tz} />,
+      },
+      {
+        header: 'Booked Days',
+        // The trip they're on (until when) and the trips booked for the next two weeks.
+        accessor: (row: Driver) => <BookedDays driver={row} tz={tz} />,
       },
       {
         header: 'Total Driver Charges',
@@ -251,38 +256,6 @@ export function useDriverTableColumns({
               : '—'}
           </span>
         ),
-      },
-      {
-        header: 'Scheduled Days',
-        accessor: (row: Driver) => {
-          const scheduledDates = getUpcomingScheduledDates(row.trips);
-          if (scheduledDates.length === 0) {
-            return <span className="text-xs text-slate-400 font-medium italic">None</span>;
-          }
-          return (
-            <div className="flex items-center gap-1 flex-wrap max-w-[200px]">
-              {scheduledDates.slice(0, 3).map((item, idx) => (
-                <Badge
-                  key={idx}
-                  variant="outline"
-                  className="bg-indigo-50/80 text-indigo-700 border-indigo-200/80 text-[10px] font-semibold py-0.5 px-1.5 gap-1 shrink-0"
-                  title={`Trip ${item.tripRef || ''}`}
-                >
-                  <CalendarIcon className="w-2.5 h-2.5 text-indigo-500" />
-                  {item.formattedDate}
-                </Badge>
-              ))}
-              {scheduledDates.length > 3 && (
-                <Badge
-                  variant="outline"
-                  className="bg-slate-100 text-slate-600 text-[10px] font-medium py-0.5 px-1"
-                >
-                  +{scheduledDates.length - 3}
-                </Badge>
-              )}
-            </div>
-          );
-        },
       },
       {
         header: 'Actions',

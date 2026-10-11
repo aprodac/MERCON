@@ -11,7 +11,7 @@ import {
   stopName, stopProgress, type AttentionReason,
 } from '@/lib/liveOps';
 import TripStatusMenu from './TripStatusMenu';
-import { splitLegs } from '@mercon/shared-types';
+import { liveLegOf, splitLegs } from '@mercon/shared-types';
 
 interface Props {
   trip: Trip;
@@ -58,6 +58,7 @@ const OpsTripCard = forwardRef<HTMLDivElement, Props>(function OpsTripCard(
   const last = routeStops.length > 1 ? routeStops[routeStops.length - 1] : null;
   const progress = stopProgress(trip);
   const active = isActiveTrip(trip);
+  const liveLeg = active ? liveLegOf(legs, trip.status) : null;
   const nextIdx = active ? nextStopIndex(stops) : null;
   const next = nextIdx == null ? null : stops[nextIdx];
   const nextLate = next ? minutesPast(next.planned_arrival) : null;
@@ -127,7 +128,7 @@ const OpsTripCard = forwardRef<HTMLDivElement, Props>(function OpsTripCard(
           {routeStops.length > 2 && <span className="shrink-0 text-[11px] text-muted-foreground">+{routeStops.length - 2}</span>}
           {legs.round && (
             <span className="shrink-0 rounded bg-violet-50 px-1 text-[10px] font-semibold text-violet-700 dark:bg-violet-950/50 dark:text-violet-300" title="Round trip">
-              ↺{active && legs.currentLeg ? ` leg ${legs.currentLeg}` : ''}
+              ↺{liveLeg ? ` leg ${liveLeg}` : ''}
             </span>
           )}
         </div>

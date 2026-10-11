@@ -1546,6 +1546,8 @@ export interface OperatorDriver {
   current_vehicle?: { plate_number?: string | null } | null;
   /** Linked login account — present once a password has been set. */
   user?: { id: string; username: string | null; phone: string | null } | null;
+  /** Whether that login has a password (GET /drivers and /drivers/:id). */
+  hasAccountPassword?: boolean;
 }
 
 export interface PlatformUser {

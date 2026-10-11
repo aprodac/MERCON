@@ -6,6 +6,7 @@ import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import type { DriverUpdate, LiveMediaItem, OperatorTripDetail, OperatorTripDocument, TripPhase } from '../../../../lib/operator';
 import { ON_TIME_GRACE_MIN, TONE, delayText, mapsLink, minutesLate, sendStatus, sortedStops, stopName, tripLegsOf, updateTitle, type Formatters, type Stop } from '../tripDetailsModel';
+import { liveLegOf } from '../../tripLegs';
 import { Card, Chip, INK, MUTED, WA, WA_INK, WA_LIGHT, tap } from './parts';
 import { isAppScreenshot, pendingTimeCheck } from './TripTimesSheet';
 
@@ -38,10 +39,11 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
   const legs = tripLegsOf(trip);
   const legTitle = (part: Stop[], n: 1 | 2) =>
     part.length ? `Leg ${n} · ${n === 1 ? 'going' : 'returning'} · ${stopName(part[0], stops.indexOf(part[0]))} → ${stopName(part[part.length - 1], stops.indexOf(part[part.length - 1]))}` : null;
+  const liveLeg = phase === 'active' ? liveLegOf(legs, trip.status) : null;
   const legStart = legs.round
     ? new Map<string, { title: string | null; current: boolean }>([
-        [legs.outbound[0]?.id, { title: legTitle(legs.outbound, 1), current: phase === 'active' && legs.currentLeg === 1 }],
-        [legs.ret[0]?.id, { title: legTitle(legs.ret, 2), current: phase === 'active' && legs.currentLeg === 2 }],
+        [legs.outbound[0]?.id, { title: legTitle(legs.outbound, 1), current: liveLeg === 1 }],
+        [legs.ret[0]?.id, { title: legTitle(legs.ret, 2), current: liveLeg === 2 }],
       ])
     : null;
   const nextIdx = phase === 'active' ? stops.findIndex((s) => !s.actual_arrival) : -1;

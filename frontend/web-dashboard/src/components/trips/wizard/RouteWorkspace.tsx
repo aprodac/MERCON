@@ -743,7 +743,9 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
       )}
 
       {showSchedule && (
-        <div className="space-y-2">
+        // @container: the fields lay out by the card's width, not the window's —
+        // beside the price panel the card is narrow even on a wide screen.
+        <div className="space-y-2 @container">
           {highlightSchedule && (
             <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
               <ArrowDown className="w-3.5 h-3.5" /> Next: when does it pick up?
@@ -755,7 +757,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
             </span>
           </div>
           {/* SCHEDULE ROW: PICKUP → TRAVEL TIME → ARRIVAL */}
-          <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2.5 items-end">
+          <div className="grid grid-cols-1 @md:grid-cols-2 gap-x-2.5 gap-y-2 items-end">
             {/* PICKUP */}
             <div id={`field-pickup-${slot.id}`} className="space-y-1 min-w-0">
               <label className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center justify-between h-4">
@@ -788,7 +790,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                       ...(!timeStr ? { dropoffTime: '' } : {}),
                     });
                   }}
-                  placeholder="Select pickup time..."
+                  placeholder="Pickup time"
                   buttonClassName={cn(
                     "h-9 rounded-xl border-slate-200 bg-white shadow-2xs font-semibold text-xs text-slate-800 px-3 w-full",
                     (fieldErrors?.[`pickup-${slot.id}`] || fieldErrors?.[`schedule-${slot.id}`]) && "border-red-500 ring-2 ring-red-500/30 bg-red-50/20 text-red-900"
@@ -827,7 +829,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                 </div>
               )}
             </div>
-            <div className="hidden md:flex items-center justify-center pb-2">
+            <div className="col-span-full order-first flex min-w-0 items-center empty:hidden">
               {slot.origin && slot.destination ? (
                 <TransitTimeBadge
                   origin={slot.origin}
@@ -858,7 +860,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                   compact
                 />
               ) : (
-                <span className="text-slate-300 dark:text-slate-600">→</span>
+                null
               )}
             </div>
             {/* ARRIVAL — filled from the travel time, editable */}
@@ -880,7 +882,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                 )}
               </label>
               {isMonthly ? (
-                <div className="flex gap-1.5">
+                <div className="flex gap-1.5 min-w-0">
                   {isRoundTrip && (
                     <DaySelect
                       label="Outbound arrival day"
@@ -890,6 +892,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                     />
                   )}
                   <TimePicker
+                    className="flex-1"
                     value={slot.dropoffTime || ''}
                     onChange={(timeStr) => {
                       handleUpdateTripSlot(slot.id, {
@@ -897,7 +900,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                         dropoffManual: Boolean(timeStr),
                       });
                     }}
-                    placeholder="Select dropoff time..."
+                    placeholder="Arrival time"
                     buttonClassName={cn(
                       "h-9 rounded-xl border-slate-200 bg-white shadow-2xs font-semibold text-xs text-slate-800 px-3 w-full",
                       (scheduleError || fieldErrors?.[`dropoff-${slot.id}`] || fieldErrors?.[`schedule-${slot.id}`]) && "border-red-500 ring-1 ring-red-500"
@@ -934,15 +937,15 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
           </div>
           {/* ROUND TRIP: RETURN LOADING → TRAVEL TIME → ARRIVAL HOME */}
           {isRoundTrip && (
-            <div className="space-y-1.5 border-t border-dashed border-slate-200 dark:border-slate-700 pt-2.5">
+            <div className="space-y-1.5 border-t border-dashed border-slate-200 dark:border-slate-700 pt-2.5 @container">
               <span className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-800 dark:text-amber-300">
                 <RotateCcw className="w-3.5 h-3.5" /> Return · {returnFrom || 'destination'} → {returnTo || 'origin'}
               </span>
-              <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2.5 items-end">
+              <div className="grid grid-cols-1 @md:grid-cols-2 gap-x-2.5 gap-y-2 items-end">
                 <div className="space-y-1 min-w-0">
                   <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">Return loading</span>
                   {isMonthly ? (
-                    <div className="flex gap-1.5">
+                    <div className="flex gap-1.5 min-w-0">
                       <DaySelect
                         label="Return loading day"
                       baseDate={firstOperatingDay}
@@ -950,6 +953,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                         onChange={(d) => handleUpdateTripSlot(slot.id, { returnPickupDay: d })}
                       />
                       <TimePicker
+                        className="flex-1"
                         value={slot.returnPickupTime || ''}
                         onChange={(t) =>
                           handleUpdateTripSlot(slot.id, {
@@ -984,7 +988,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                     />
                   )}
                 </div>
-                <div className="hidden md:flex items-center justify-center pb-2">
+                <div className="col-span-full order-first flex min-w-0 items-center empty:hidden">
                   {returnFrom && returnTo ? (
                     <TransitTimeBadge
                       origin={returnFrom}
@@ -1004,7 +1008,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                       compact
                     />
                   ) : (
-                    <span className="text-slate-300 dark:text-slate-600">→</span>
+                    null
                   )}
                 </div>
                 <div className="space-y-1 min-w-0">
@@ -1022,7 +1026,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                     )}
                   </span>
                   {isMonthly ? (
-                    <div className="flex gap-1.5">
+                    <div className="flex gap-1.5 min-w-0">
                       <DaySelect
                         label="Arrival home day"
                       baseDate={firstOperatingDay}
@@ -1030,6 +1034,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                         onChange={(d) => handleUpdateTripSlot(slot.id, { returnDropoffDay: d, returnDropoffManual: true })}
                       />
                       <TimePicker
+                        className="flex-1"
                         value={slot.returnDropoffTime || ''}
                         onChange={(t) => handleUpdateTripSlot(slot.id, { returnDropoffTime: t, returnDropoffDate: '', returnDropoffManual: Boolean(t) })}
                         placeholder="Arrival time"

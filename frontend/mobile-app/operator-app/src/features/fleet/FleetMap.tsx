@@ -26,7 +26,8 @@
  *   otherwise), a faint line through the rest of the trip (only when it
  *   follows real roads), a grey breadcrumb trail of where it has driven on
  *   this trip, its trip's numbered stops, and a small pause marker with the
- *   minutes wherever it took a break on the way. While following, the
+ *   minutes wherever it took a break on the way (tap it: onHaltPress, where it
+ *   was — HaltSheet). While following, the
  *   camera moves with the truck as fresh positions arrive; dragging the map
  *   stops that until recenter().
  *
@@ -126,7 +127,7 @@ const ECHO_MS = 800;
 /** The time of a tap (read in press handlers, never while rendering). */
 const tapTime = () => Date.now();
 
-type Target = { kind: 'unit'; key: string } | { kind: 'group'; id: number; lng: number; lat: number };
+type Target = { kind: 'unit'; key: string } | { kind: 'group'; id: number; lng: number; lat: number } | { kind: 'halt'; halt: TripHalt };
 
 type GroupProps = { key: string } & Mix;
 
@@ -254,12 +255,14 @@ interface Props {
   isolate?: boolean;
   /** The picked truck's breaks on the way (where it stood still away from its stops). */
   halts?: TripHalt[] | null;
+  /** A break marker tapped — where it was, and for how long. */
+  onHaltPress?: (halt: TripHalt) => void;
 }
 
 export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   units, selected, onSelect, interactive = false, theme = 'light', tilted = false, focusMode = 'none',
   routeLine, focus, padding = { top: 40, bottom: 40 }, onViewChange, onGroupPress, restLine, trail, follow = true, onUserMove,
-  initialCamera, onLongPress, lane, ringed, isolate = false, halts,
+  initialCamera, onLongPress, lane, ringed, isolate = false, halts, onHaltPress,
 }, ref) {
   const { height } = useWindowDimensions();
   const points = useMemo(() => units.filter(located), [units]);
@@ -390,11 +393,12 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   // One tap can arrive twice (the marker's onPress and the map's); act on it once.
   const lastPress = useRef<{ id: string; at: number }>({ id: '', at: 0 });
   const pressTarget = (t: Target) => {
-    const id = t.kind === 'unit' ? `u:${t.key}` : `g:${t.id}`;
+    const id = t.kind === 'unit' ? `u:${t.key}` : t.kind === 'halt' ? `h:${t.halt.from}` : `g:${t.id}`;
     const at = tapTime();
     if (lastPress.current.id === id && at - lastPress.current.at < ECHO_MS) return;
     lastPress.current = { id, at };
     if (t.kind === 'unit') onSelect?.(t.key);
+    else if (t.kind === 'halt') onHaltPress?.(t.halt);
     else pressGroup(t);
   };
 
@@ -403,6 +407,7 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
     const cands: { t: Target; lng: number; lat: number }[] = [
       ...groups.map((g) => ({ t: { kind: 'group' as const, id: g.id, lng: g.lng, lat: g.lat }, lng: g.lng, lat: g.lat })),
       ...singles.map((u) => ({ t: { kind: 'unit' as const, key: u.key }, lng: u.position!.lng, lat: u.position!.lat })),
+      ...(sel && halts && onHaltPress ? halts.map((h) => ({ t: { kind: 'halt' as const, halt: h }, lng: h.lng, lat: h.lat })) : []),
     ];
     let best: { t: Target; d: number } | null = null;
     try {
@@ -677,15 +682,21 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
         ))
         : null}
 
-      {/* Breaks on the way: where, and how long. */}
+      {/* Breaks on the way: where, and how long. A Marker, so a tap opens the place (onHaltPress). */}
       {sel && halts
         ? halts.map((h) => (
-          <ViewAnnotation key={`halt-${h.from}`} id={`halt-${h.from}`} lngLat={[h.lng, h.lat]} anchor="center">
+          <Marker
+            key={`halt-${h.from}`}
+            id={`halt-${h.from}`}
+            lngLat={[h.lng, h.lat]}
+            anchor="center"
+            onPress={interactive && onHaltPress ? () => pressTarget({ kind: 'halt', halt: h }) : undefined}
+          >
             <View style={[st.halt, h.ongoing && st.haltNow]}>
               <Text style={st.haltIcon}>II</Text>
               <Text style={st.haltText}>{h.minutes < 60 ? `${h.minutes}m` : `${Math.floor(h.minutes / 60)}h${h.minutes % 60 ? ` ${h.minutes % 60}m` : ''}`}</Text>
             </View>
-          </ViewAnnotation>
+          </Marker>
         ))
         : null}
 
