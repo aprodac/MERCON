@@ -8,6 +8,7 @@ import { DriverStatus } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import ExcelJS from 'exceljs';
 import { logger } from '../utils/logger';
+import { DriverLoginConflict, claimLoginPhone, cleanPhone, driverUsername, phoneKey, syncDriverLogin } from '../services/driverLogin';
 import { OPERATIONAL_TRIP_STATUSES, resolveVehicleLocationsForTrips } from '../services/locationResolver';
 
 /**
@@ -153,6 +154,9 @@ function withoutPasswordHash<U extends { password_hash?: string | null }>(user: 
   const { password_hash: _hash, ...rest } = user;
   return rest;
 }
+
+/** The driver's app login as the edit screens show it ("Password is set", username). */
+const DRIVER_LOGIN_SELECT = { id: true, username: true, phone: true, isActive: true, password_hash: true } as const;
 
 export const getDrivers = async (req: Request, res: Response) => {
   try {
@@ -312,7 +316,7 @@ export const getDriverById = async (req: Request, res: Response) => {
     const driver = req.query.mode === 'lookup'
       ? await prisma.driver.findFirst({
           where: whereClause,
-          include: { assignedVehicle: true },
+          include: { assignedVehicle: true, user: { select: DRIVER_LOGIN_SELECT } },
         })
       : await prisma.driver.findFirst({
           where: whereClause,
@@ -323,7 +327,8 @@ export const getDriverById = async (req: Request, res: Response) => {
               orderBy: { planned_start: 'desc' },
               include: { vehicle: true, customer: true, stops: { where: { deletedAt: null }, orderBy: { stop_sequence: 'asc' } } }
             },
-            assignedVehicle: true
+            assignedVehicle: true,
+            user: { select: DRIVER_LOGIN_SELECT },
           }
         });
 
@@ -336,7 +341,15 @@ export const getDriverById = async (req: Request, res: Response) => {
       select: DOCUMENT_LIST_SELECT,
     });
 
-    res.json({ success: true, data: { ...driver, documents } });
+    res.json({
+      success: true,
+      data: {
+        ...driver,
+        user: withoutPasswordHash(driver.user),
+        hasAccountPassword: Boolean(driver.user?.password_hash),
+        documents,
+      },
+    });
   } catch (error) {
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to fetch driver' } });
   }
@@ -354,8 +367,8 @@ export const createDriver = async (req: Request, res: Response) => {
         ref_id,
         first_name,
         last_name,
-        phone_primary,
-        license_number,
+        phone_primary: cleanPhone(phone_primary),
+        license_number: String(license_number).trim(),
         license_expiry: new Date(license_expiry),
         assignedVehicleId: assigned_vehicle_id || null,
         avatar_url: avatar_url || null,
@@ -519,21 +532,76 @@ export const bulkImportDrivers = async (req: Request, res: Response) => {
 
 export const updateDriver = async (req: Request, res: Response) => {
   try {
+    const id = req.params.id as string;
+    const existing = await prisma.driver.findFirst({ where: { id, deletedAt: null } });
+    if (!existing) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Driver not found' } });
+    }
+
     const { assigned_vehicle_id, ...rest } = req.body;
-    const updatedDriver = await prisma.driver.update({
-      where: { id: req.params.id as string },
-      data: {
-        ...rest,
-        ...(assigned_vehicle_id !== undefined ? { assignedVehicleId: assigned_vehicle_id } : {}),
-        updated_by: (req as any).user?.id
+    if (rest.phone_primary !== undefined) rest.phone_primary = cleanPhone(rest.phone_primary);
+    if (typeof rest.license_number === 'string') rest.license_number = rest.license_number.trim();
+
+    // The phone is the driver's app username: refuse one another driver has,
+    // in any spelling (+966…, 05…, 5…), before the unique index does it with a 500.
+    const phoneChanged = rest.phone_primary !== undefined && phoneKey(rest.phone_primary) !== phoneKey(existing.phone_primary);
+    if (phoneChanged && rest.phone_primary) {
+      const sameKey = phoneKey(rest.phone_primary);
+      const candidates = await prisma.driver.findMany({
+        where: { id: { not: id }, phone_primary: { endsWith: sameKey } },
+        select: { id: true, first_name: true, last_name: true, ref_id: true, phone_primary: true, deletedAt: true },
+      });
+      const clash = candidates.find((d) => phoneKey(d.phone_primary) === sameKey);
+      if (clash && !clash.deletedAt) {
+        const name = `${clash.first_name} ${clash.last_name}`.trim();
+        return res.status(409).json({
+          success: false,
+          error: { code: 'PHONE_IN_USE', message: `This phone is already used by driver ${name}${clash.ref_id ? ` (${clash.ref_id})` : ''}.` },
+        });
       }
+    }
+
+    const updatedDriver = await prisma.$transaction(async (tx) => {
+      // A deleted driver keeps its number; let the live driver have it.
+      if (phoneChanged && rest.phone_primary) {
+        const sameKey = phoneKey(rest.phone_primary);
+        const deleted = await tx.driver.findMany({
+          where: { id: { not: id }, deletedAt: { not: null }, phone_primary: { endsWith: sameKey } },
+          select: { id: true, phone_primary: true },
+        });
+        for (const d of deleted.filter((d) => phoneKey(d.phone_primary) === sameKey)) {
+          await tx.driver.update({ where: { id: d.id }, data: { phone_primary: null } });
+        }
+      }
+
+      const driver = await tx.driver.update({
+        where: { id },
+        data: {
+          ...rest,
+          ...(assigned_vehicle_id !== undefined ? { assignedVehicleId: assigned_vehicle_id } : {}),
+          updated_by: (req as any).user?.id
+        }
+      });
+      // Keep the app login (username = phone) on the driver's current number.
+      await syncDriverLogin(tx, driver);
+      return driver;
     });
 
     res.json({ success: true, data: updatedDriver });
   } catch (error: any) {
-    if (error.code === 'P2002' && error.meta?.target?.includes?.('assignedVehicleId')) {
-      return res.status(400).json({ success: false, error: { code: 'DUPLICATE_ENTRY', message: 'That vehicle is already assigned to another driver' } });
+    if (error instanceof DriverLoginConflict) {
+      return res.status(409).json({ success: false, error: { code: 'PHONE_IN_USE', message: error.message } });
     }
+    if (error.code === 'P2002') {
+      const target = String(error.meta?.target ?? '');
+      const message = target.includes('assignedVehicleId')
+        ? 'That vehicle is already assigned to another driver'
+        : target.includes('phone')
+          ? 'This phone number is already used by another driver or user'
+          : 'This driver conflicts with an existing record';
+      return res.status(409).json({ success: false, error: { code: 'DUPLICATE_ENTRY', message } });
+    }
+    logger.error({ err: error }, 'Failed to update driver');
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to update driver' } });
   }
 };
@@ -788,19 +856,16 @@ export const bulkUpdateDriverStatus = async (req: Request, res: Response) => {
 export const setDriverPassword = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { password } = req.body;
+    const password = String(req.body?.password ?? '').trim(); // validated by setDriverPasswordBody
 
-    if (!password || password.trim().length < 4) {
+    if (password.length < 4) {
       return res.status(400).json({
         success: false,
         error: { code: 'VALIDATION_ERROR', message: 'Password must be at least 4 characters' },
       });
     }
 
-    const driver = await prisma.driver.findUnique({
-      where: { id: id as string },
-      include: { user: true },
-    });
+    const driver = await prisma.driver.findUnique({ where: { id: id as string } });
 
     if (!driver || driver.deletedAt) {
       return res.status(404).json({
@@ -809,80 +874,43 @@ export const setDriverPassword = async (req: Request, res: Response) => {
       });
     }
 
-    const password_hash = await bcrypt.hash(password.trim(), 10);
-    const phone = driver.phone_primary ? driver.phone_primary.trim() : null;
+    const password_hash = await bcrypt.hash(password, 10);
+    const phone = cleanPhone(driver.phone_primary);
     const name = `${driver.first_name} ${driver.last_name}`.trim();
-    const username = phone || driver.ref_id || `driver_${driver.id.substring(0, 8)}`;
+    const username = driverUsername(driver, phone);
+    const login = { password_hash, name, phone, username, role: 'Driver' as const, isActive: true, deletedAt: null };
 
-    let targetUserId = driver.userId;
-
-    if (targetUserId) {
-      // Update existing linked user
-      await prisma.user.update({
-        where: { id: targetUserId },
-        data: {
-          password_hash,
-          name,
-          phone: phone || undefined,
-          username,
-          role: 'Driver',
-          isActive: true,
-        },
-      });
-    } else {
-      // Check if a user account with this phone or username already exists
-      let existingUser = phone
-        ? await prisma.user.findFirst({
-            where: { OR: [{ phone }, { username: phone }] },
-          })
-        : null;
-
-      // Never turn a staff login (Admin/Operator) that shares this phone into a driver account.
-      if (existingUser && (existingUser.role !== 'Driver' || existingUser.isSuperAdmin)) {
-        return res.status(409).json({
-          success: false,
-          error: { code: 'PHONE_IN_USE', message: `This phone belongs to the ${existingUser.role} account @${existingUser.username}. Give the driver a different phone.` },
-        });
+    const targetUserId = await prisma.$transaction(async (tx) => {
+      if (driver.userId) {
+        // Phone may have changed since the login was made — free the number, then move the login onto it.
+        if (phone) await claimLoginPhone(tx, phone, driver.id, driver.userId);
+        await tx.user.update({ where: { id: driver.userId }, data: login });
+        return driver.userId;
       }
 
-      if (existingUser) {
-        await prisma.user.update({
-          where: { id: existingUser.id },
-          data: {
-            password_hash,
-            name,
-            role: 'Driver',
-            isActive: true,
-          },
-        });
-        targetUserId = existingUser.id;
-      } else {
-        const newUser = await prisma.user.create({
-          data: {
-            name,
-            phone,
-            username,
-            role: 'Driver',
-            password_hash,
-            isActive: true,
-          },
-        });
-        targetUserId = newUser.id;
-      }
-
-      // Link driver to user
-      await prisma.driver.update({
-        where: { id: driver.id },
-        data: { userId: targetUserId },
-      });
-    }
+      const { adoptable } = phone ? await claimLoginPhone(tx, phone, driver.id, null) : { adoptable: null };
+      const userId = adoptable
+        ? (await tx.user.update({ where: { id: adoptable }, data: login })).id
+        : (await tx.user.create({ data: login })).id;
+      await tx.driver.update({ where: { id: driver.id }, data: { userId } });
+      return userId;
+    });
 
     res.json({
       success: true,
       message: 'Driver password set successfully. Driver can now log in using phone number and password in the mobile app.',
-      data: { driverId: driver.id, userId: targetUserId },
+      data: { driverId: driver.id, userId: targetUserId, username },
     });
-  } catch (error) {
+  } catch (error: any) {
+    if (error instanceof DriverLoginConflict) {
+      return res.status(409).json({ success: false, error: { code: 'PHONE_IN_USE', message: error.message } });
+    }
+    if (error?.code === 'P2002') {
+      return res.status(409).json({
+        success: false,
+        error: { code: 'DUPLICATE_ENTRY', message: 'Another account already uses this driver\'s phone or reference as its login' },
+      });
+    }
     logger.error({ err: error }, 'Error setting driver password:');
     res.status(500).json({
       success: false,

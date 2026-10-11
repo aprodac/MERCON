@@ -33,6 +33,8 @@ const STATUS_LABELS: Record<string, string> = {
 
 // Same rules as the backend's createDriverBody / updateDriverBody.
 const PHONE_RE = /^(\+966|00966|0)?5\d{8}$/;
+/** How the backend stores the phone (and the driver's app username): no spaces or dashes. */
+const cleanPhone = (v: string) => v.replace(/[\s-]/g, '');
 const LICENSE_RE = /^[12]\d{9}$/;
 
 function toDDMMYYYY(iso?: string | null): string {
@@ -98,7 +100,7 @@ function DriverForm({ driver, onDone }: { driver?: OperatorDriver; onDone: () =>
     const e: Errors = {};
     if (!firstName.trim()) e.firstName = 'Required';
     if (!lastName.trim()) e.lastName = 'Required';
-    if (!PHONE_RE.test(phone.replace(/[\s-]/g, ''))) e.phone = 'Saudi mobile, e.g. 0501234567';
+    if (!PHONE_RE.test(cleanPhone(phone))) e.phone = 'Saudi mobile, e.g. 0501234567';
     if (!LICENSE_RE.test(licenseNumber.trim())) e.license = '10 digits starting with 1 or 2';
     const expiry = parseDDMMYYYY(licenseExpiry);
     const today = new Date();
@@ -123,7 +125,7 @@ function DriverForm({ driver, onDone }: { driver?: OperatorDriver; onDone: () =>
         const created = await operatorService.createDriver({
           first_name: firstName.trim(),
           last_name: lastName.trim(),
-          phone_primary: phone.trim(),
+          phone_primary: cleanPhone(phone),
           license_number: licenseNumber.trim(),
           license_expiry: expiryIso,
         });
@@ -132,17 +134,19 @@ function DriverForm({ driver, onDone }: { driver?: OperatorDriver; onDone: () =>
         const payload: UpdateDriverInput = {};
         if (firstName.trim() !== driver.first_name) payload.first_name = firstName.trim();
         if (lastName.trim() !== driver.last_name) payload.last_name = lastName.trim();
-        if (phone.trim() !== (driver.phone_primary ?? '')) payload.phone_primary = phone.trim();
+        if (cleanPhone(phone) !== (driver.phone_primary ?? '')) payload.phone_primary = cleanPhone(phone);
         if (licenseNumber.trim() !== driver.license_number) payload.license_number = licenseNumber.trim();
         if (licenseExpiry !== initialExpiry) payload.license_expiry = expiryIso;
         if (status !== driver.status) payload.status = status;
         if (Object.keys(payload).length) await operatorService.updateDriver(driver.id, payload);
       }
 
+      let passwordFailed = false;
       if (password && driverId) {
         try {
           await operatorService.setDriverPassword(driverId, password.trim());
         } catch (err) {
+          passwordFailed = true;
           Alert.alert('Driver saved, password not set', getApiErrorMessage(err));
         }
       }
@@ -150,6 +154,8 @@ function DriverForm({ driver, onDone }: { driver?: OperatorDriver; onDone: () =>
       invalidateOperatorDrivers();
       await queryClient.invalidateQueries({ queryKey: ['user-management', 'drivers'] });
       await queryClient.invalidateQueries({ queryKey: ['drivers'] });
+      // When editing, stay on the form so the password can be fixed and saved again.
+      if (passwordFailed && !isNew) return;
       onDone();
     } catch (err) {
       Alert.alert(isNew ? 'Could not add driver' : 'Could not save driver', getApiErrorMessage(err));
@@ -157,6 +163,10 @@ function DriverForm({ driver, onDone }: { driver?: OperatorDriver; onDone: () =>
       setSaving(false);
     }
   };
+
+  // `hasAccountPassword` comes from GET /drivers/:id; older servers only sent `user`.
+  const hasPassword = Boolean(driver?.hasAccountPassword ?? driver?.user);
+  const loginPhone = cleanPhone(phone) || driver?.user?.username || '';
 
   const clear = (k: keyof Errors) => errors[k] && setErrors((prev) => ({ ...prev, [k]: undefined }));
 
@@ -219,14 +229,20 @@ function DriverForm({ driver, onDone }: { driver?: OperatorDriver; onDone: () =>
         <Section
           title="App login"
           Icon={KeyRound}
-          note={isNew ? 'Optional' : driver?.user ? 'Password is set' : 'No password yet'}
+          note={isNew ? 'Optional' : hasPassword ? 'Password is set' : 'No password yet'}
         >
+          <Field
+            label="Username (driver app)"
+            value={loginPhone}
+            editable={false}
+            hint="Always the mobile number above — change the number to change the username."
+          />
           <PasswordField
-            label={isNew || !driver?.user ? 'Password' : 'New password'}
+            label={isNew || !hasPassword ? 'Password' : 'New password'}
             value={password}
             onChangeText={(v) => { setPassword(v); clear('password'); }}
             error={errors.password}
-            placeholder={isNew || !driver?.user ? 'Optional' : 'Leave blank to keep'}
+            placeholder={isNew || !hasPassword ? 'Optional' : 'Leave blank to keep'}
           />
         </Section>
       </ScrollView>

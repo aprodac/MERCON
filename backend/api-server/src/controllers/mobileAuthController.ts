@@ -43,12 +43,12 @@ export function phoneVariants(raw: string): string[] {
 /**
  * Finds the driver for a typed phone number (or driver ID). Falls back to
  * comparing digits only, so a number stored with spaces in odd places
- * ("055 123 4567") still matches.
+ * ("055 123 4567") still matches. Deleted drivers never sign in.
  */
 async function findDriverForLogin(typed: string) {
   const include = { user: true } as const;
   const byVariant = await prisma.driver.findFirst({
-    where: { OR: [...phoneVariants(typed).map((p) => ({ phone_primary: p })), { ref_id: typed }] },
+    where: { deletedAt: null, OR: [...phoneVariants(typed).map((p) => ({ phone_primary: p })), { ref_id: typed }] },
     include,
   });
   if (byVariant) return byVariant;
@@ -89,19 +89,25 @@ export const mobileLogin = async (req: Request, res: Response) => {
     let isValid = false;
 
     // Check account password first, exactly as typed (case matters), if the driver has one.
-    if (password && driver.user?.password_hash) {
-      isValid = await bcrypt.compare(password, driver.user.password_hash);
-      // The office sets passwords trimmed; phone keyboards often add a trailing space.
-      if (!isValid && String(password).trim() !== password) {
-        isValid = await bcrypt.compare(String(password).trim(), driver.user.password_hash);
-      }
-    } else if (password) {
-      // Also check if a standalone User record exists for this phone number
+    // The office sets passwords trimmed; phone keyboards often add a trailing space.
+    const attempts = password ? Array.from(new Set([String(password), String(password).trim()])).filter(Boolean) : [];
+    const passwordMatches = async (hash: string) => {
+      for (const attempt of attempts) if (await bcrypt.compare(attempt, hash)) return true;
+      return false;
+    };
+    if (attempts.length && driver.user?.password_hash) {
+      isValid = await passwordMatches(driver.user.password_hash);
+    } else if (attempts.length && !driver.userId) {
+      // A driver login made before it was linked: a Driver account on this phone that no driver owns.
       const linkedUser = await prisma.user.findFirst({
-        where: { OR: [{ phone: id }, { username: id }] },
+        where: {
+          role: 'Driver',
+          driver: { is: null },
+          OR: phoneVariants(id).flatMap((p) => [{ phone: p }, { username: p }]),
+        },
       });
       if (linkedUser?.password_hash) {
-        isValid = await bcrypt.compare(password, linkedUser.password_hash);
+        isValid = await passwordMatches(linkedUser.password_hash);
       }
     }
 
