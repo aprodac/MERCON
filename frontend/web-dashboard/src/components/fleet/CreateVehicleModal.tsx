@@ -212,10 +212,20 @@ export default function CreateVehicleModal({ isOpen, onClose, onSuccess }: Creat
                 {drivers.map((d) => (
                   <SelectItem key={d.id} value={d.id} className="text-xs">
                     {d.first_name} {d.last_name} ({d.phone_primary || d.ref_id || 'No Phone'})
+                    {d.assignedVehicle ? <span className="text-amber-700 dark:text-amber-400"> · drives {d.assignedVehicle.plate_number}</span> : null}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {(() => {
+              // Moving a driver off another truck leaves that truck without a driver — say so.
+              const picked = drivers.find((d) => d.id === assignedDriverId);
+              return picked?.assignedVehicle ? (
+                <p className="text-[11px] font-medium text-amber-800 dark:text-amber-300">
+                  {picked.assignedVehicle.plate_number} will have no driver — {picked.first_name} moves to this truck.
+                </p>
+              ) : null;
+            })()}
           </div>
 
           <DialogFooter className="pt-2">

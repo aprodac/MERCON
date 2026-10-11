@@ -3,7 +3,8 @@
  *   Drivers     → driver profiles; tap one to edit details and set its app password.
  *   Users       → Admin / Operator logins; Admins can add and edit them, Operators
  *                 only view (the backend enforces the same: POST/PUT /users are Admin-only).
- *   No password → the drivers who can't sign in to the driver app yet.
+ *   Licence only → drivers with no app password yet: they sign in with mobile + licence
+ *                  number (that always works); a password is the second way in.
  *
  * Rows follow the other list pages: avatar, name, a status line, a detail line.
  */
@@ -69,13 +70,16 @@ export default function UserManagementScreen() {
   const renderDriver = ({ item }: { item: OperatorDriver }) => {
     const name = `${item.first_name} ${item.last_name}`.trim();
     return (
-      <TouchableOpacity style={styles.row} activeOpacity={0.8} onPress={() => router.push(`/driver-edit?id=${item.id}`)} accessibilityRole="button" accessibilityLabel={`Edit ${name}${item.user ? '' : ', no app password'}`}>
+      <TouchableOpacity style={styles.row} activeOpacity={0.8} onPress={() => router.push(`/driver-edit?id=${item.id}`)} accessibilityRole="button" accessibilityLabel={`Edit ${name}${item.user ? '' : ', signs in with licence number only'}`}>
         <CompanyAvatar name={name} url={item.avatar_url ?? item.photo_url} size={42} />
         <View style={styles.rowText}>
           <Text style={styles.name} numberOfLines={1}>{shortName(name)}</Text>
-          <Text style={styles.meta} numberOfLines={1}>{item.phone_primary || item.ref_id || 'No phone'}</Text>
+          <Text style={styles.meta} numberOfLines={1}>
+            {item.phone_primary || item.ref_id || 'No phone'}
+            {` · signs in with licence${item.user ? ' or password' : ''}`}
+          </Text>
         </View>
-        {item.user || tab === 'nologin' ? null : <View style={styles.tag}><Text style={styles.tagText}>No password</Text></View>}
+        {item.user || tab === 'nologin' ? null : <View style={styles.tag}><Text style={styles.tagText}>Licence only</Text></View>}
         <ChevronRight size={18} color="#B4B4BD" />
       </TouchableOpacity>
     );
@@ -111,7 +115,7 @@ export default function UserManagementScreen() {
         items={[
           { key: 'drivers', label: 'Drivers', count: drivers.data?.length ?? '–' },
           { key: 'users', label: 'Users', count: users.data?.length ?? '–' },
-          { key: 'nologin', label: 'No password', dot: AMBER, count: noLogin ?? '–' },
+          { key: 'nologin', label: 'Licence only', dot: AMBER, count: noLogin ?? '–' },
         ]}
       />
       <ListSearch

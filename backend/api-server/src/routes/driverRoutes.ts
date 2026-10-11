@@ -1,13 +1,14 @@
 import { Router } from 'express';
 import { getDrivers, getDriverById, createDriver, updateDriver, deleteDriver , bulkDeleteDrivers, bulkUpdateDriverStatus, bulkImportDrivers, getDriverUsage, getDriverStats, setDriverPassword, exportDrivers, getDriverPayouts } from '../controllers/driverController';
 import { upsertDriverVehiclePreference } from '../controllers/fleetDispatchController';
+import { applyAssignment, previewAssignment } from '../controllers/truckAssignmentController';
 import { getDriverSalaries, createDriverSalary, updateDriverSalary, deleteDriverSalary } from '../controllers/vehicleCostController';
 import { getDriversPhoneStatus, getDriverPhone, sendTestPush } from '../controllers/driverPhoneController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles } from '../middlewares/rbac';
 import { validate } from '../middlewares/validate';
 import { storeInlineImages } from '../middlewares/inlineImages';
-import { createDriverBody, updateDriverBody, listQuery, bulkImportDriversBody, setDriverPasswordBody, idParam, driverSalaryBody, updateDriverSalaryBody, nestedIdParams } from '../schemas';
+import { createDriverBody, updateDriverBody, listQuery, bulkImportDriversBody, setDriverPasswordBody, truckAssignmentBody, idParam, driverSalaryBody, updateDriverSalaryBody, nestedIdParams } from '../schemas';
 
 const router = Router();
 
@@ -22,6 +23,9 @@ router.post('/import', validate({ body: bulkImportDriversBody }), bulkImportDriv
 
 
 // Registered before `/:id` so the literal path isn't captured as an id.
+// Which truck a driver drives — preview the knock-on effects, then apply (services/truckAssignment).
+router.post('/truck-assignment/preview', validate({ body: truckAssignmentBody }), previewAssignment);
+router.post('/truck-assignment', validate({ body: truckAssignmentBody }), applyAssignment);
 router.get('/stats', getDriverStats);
 router.get('/export', exportDrivers);
 router.get('/payouts', getDriverPayouts);
