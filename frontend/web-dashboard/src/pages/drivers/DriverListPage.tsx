@@ -102,13 +102,13 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 
-import { getUpcomingScheduledDates } from '@/utils/scheduleUtils';
+import { dutyStatusOf } from '@/components/drivers/driverDutyStatus';
 
 const DRIVER_EXPORT_COLUMNS: ExportColumn<Driver>[] = [
   { id: 'ref_id', label: 'Driver ID', accessor: (d) => d.ref_id || `DRV-${d.id.slice(0, 5).toUpperCase()}` },
   { id: 'name', label: 'Driver Name', accessor: (d) => `${d.first_name} ${d.last_name}` },
   { id: 'phone', label: 'Primary Phone', accessor: (d) => d.phone_primary || 'N/A' },
-  { id: 'status', label: 'Duty Status', accessor: (d) => d.status },
+  { id: 'status', label: 'Duty Status', accessor: (d) => dutyStatusOf(d) },
   { id: 'license_number', label: 'License Number', accessor: (d) => d.license_number || 'N/A' },
   { id: 'license_expiry', label: 'License Expiry Date', accessor: (d) => d.license_expiry ? formatInDeploymentTz(d.license_expiry, 'Asia/Riyadh', 'dd/MM/yyyy') : 'N/A' },
   { id: 'assigned_vehicle', label: 'Assigned Vehicle', accessor: (d) => d.assignedVehicle?.plate_number || d.trips?.[0]?.vehicle?.plate_number || 'None' },
@@ -125,7 +125,7 @@ const DRIVER_EXPORT_FILTERS: ExportFilter<Driver>[] = [
       { label: 'Off Duty', value: 'OffDuty' },
       { label: 'Suspended', value: 'Suspended' },
     ],
-    filterFn: (d, val) => d.status === val,
+    filterFn: (d, val) => dutyStatusOf(d) === val,
   },
   {
     id: 'license_status',
@@ -276,8 +276,8 @@ export default function DriverListPage() {
   // The current page is only a fallback for the first paint before stats land.
   const totalCount = driverStats?.total ?? (driversRes?.meta?.total || drivers.length);
 
-  const availableCount = driverStats?.available ?? drivers.filter(d => d.status === 'Available').length;
-  const onTripCount = driverStats?.on_trip ?? drivers.filter(d => d.status === 'OnTrip').length;
+  const availableCount = driverStats?.available ?? drivers.filter(d => dutyStatusOf(d) === 'Available').length;
+  const onTripCount = driverStats?.on_trip ?? drivers.filter(d => dutyStatusOf(d) === 'OnTrip').length;
 
   // Drivers on this page currently reporting a fresh GPS ping (resolver's `CURRENT` state).
   const liveGpsCount = drivers.filter(d => {
@@ -364,7 +364,7 @@ export default function DriverListPage() {
         row.ref_id || `DRV-${row.id.slice(0, 5).toUpperCase()}`,
         `${row.first_name} ${row.last_name}`,
         row.phone_primary || 'N/A',
-        row.status,
+        dutyStatusOf(row),
         row.license_number,
         new Date(row.license_expiry).toLocaleDateString('en-GB'),
         assignedVehicle
@@ -393,7 +393,7 @@ export default function DriverListPage() {
         row.ref_id || `DRV-${row.id.slice(0, 5).toUpperCase()}`,
         `${row.first_name} ${row.last_name}`,
         row.phone_primary || 'N/A',
-        row.status,
+        dutyStatusOf(row),
         row.license_number,
         new Date(row.license_expiry).toLocaleDateString('en-GB'),
         assignedVehicle
@@ -411,7 +411,7 @@ export default function DriverListPage() {
         driver_id: row.ref_id || `DRV-${row.id.slice(0, 5).toUpperCase()}`,
         name: `${row.first_name} ${row.last_name}`,
         phone: row.phone_primary || '',
-        status: row.status,
+        status: dutyStatusOf(row),
         license_number: row.license_number,
         license_expiry_date: new Date(row.license_expiry).toLocaleDateString('en-GB'),
         assigned_vehicle: assignedVehicle,

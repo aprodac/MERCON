@@ -8,6 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import StatusBadge from '@/components/ui/StatusBadge';
+import { BookedDays, DutyStatusCell } from '@/components/drivers/DriverDuty';
+import { dutyStatusOf } from '@/components/drivers/driverDutyStatus';
 import PhoneDisplay from '@/components/ui/PhoneDisplay';
 import DriverAvatar from '@/components/ui/DriverAvatar';
 import { driverPhotoUrl } from '@/lib/documents';
@@ -80,7 +82,7 @@ export default function DriverPreviewModal({ driver, isOpen, onClose, onEdit, on
                 <DialogTitle className="text-base font-extrabold text-slate-900 dark:text-slate-100 truncate">
                   Driver Profile Preview
                 </DialogTitle>
-                <StatusBadge status={driver.status} />
+                <StatusBadge status={dutyStatusOf(driver)} />
                 <span className="text-[11px] font-mono font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200/80 dark:border-slate-700">
                   {driver.ref_id || `DRV-${driver.id.slice(0, 5).toUpperCase()}`}
                 </span>
@@ -169,8 +171,9 @@ export default function DriverPreviewModal({ driver, isOpen, onClose, onEdit, on
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
                 <ShieldCheck className="w-3.5 h-3.5 text-brand" /> Duty Status
               </span>
-              <div className="flex items-center gap-2 pt-0.5">
-                <StatusBadge status={driver.status} />
+              <div className="flex flex-col gap-1.5 pt-0.5">
+                <DutyStatusCell driver={driver} tz={tz} />
+                {driver.duty && <BookedDays driver={driver} tz={tz} />}
               </div>
             </div>
 

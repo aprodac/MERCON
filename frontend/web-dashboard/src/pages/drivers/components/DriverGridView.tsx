@@ -11,7 +11,8 @@ import {
 } from 'lucide-react';
 import { Driver } from '@/services/driverService';
 import DriverAvatar from '@/components/ui/DriverAvatar';
-import StatusBadge from '@/components/ui/StatusBadge';
+import { BookedDays, DutyStatusCell } from '@/components/drivers/DriverDuty';
+import { dutyStatusOf } from '@/components/drivers/driverDutyStatus';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatInDeploymentTz } from '@/lib/datetime';
@@ -161,7 +162,7 @@ export function DriverGridView({
                 className="bg-white dark:bg-slate-900 rounded-xl border border-black/[0.08] dark:border-slate-800 p-4 shadow-2xs flex flex-col justify-between gap-3 hover:border-brand/40 hover:-translate-y-0.5 hover:shadow-xs transition-all duration-150 ease-in-out cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
                 tabIndex={0}
                 role="button"
-                aria-label={`Driver: ${d.first_name} ${d.last_name}, status: ${d.status}`}
+                aria-label={`Driver: ${d.first_name} ${d.last_name}, status: ${dutyStatusOf(d)}`}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
@@ -189,7 +190,7 @@ export function DriverGridView({
                       </span>
                     </div>
                   </div>
-                  <StatusBadge status={d.status} />
+                  <DutyStatusCell driver={d} tz={tz} />
                 </div>
 
                 <div className="space-y-1.5 py-2 border-y border-slate-100 dark:border-slate-800 text-xs">
@@ -204,6 +205,10 @@ export function DriverGridView({
                     </span>
                   </div>
                   <DriverGpsStatus driver={d} />
+                  <div className="flex justify-between items-start gap-2 text-slate-600 dark:text-slate-400">
+                    <span className="font-medium text-slate-400 dark:text-slate-500">Booked:</span>
+                    <BookedDays driver={d} tz={tz} max={2} />
+                  </div>
                   {(() => {
                     const vehicle = d.assignedVehicle || d.trips?.[0]?.vehicle;
                     if (!vehicle?.capacity_kg) return null;

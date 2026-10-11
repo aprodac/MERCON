@@ -10,6 +10,7 @@ import ExcelJS from 'exceljs';
 import { logger } from '../utils/logger';
 import { DriverLoginConflict, claimLoginPhone, cleanPhone, driverUsername, findPhoneClash, phoneInUseMessage, phoneKey, releaseDeletedDriverPhones, syncDriverLogin } from '../services/driverLogin';
 import { OPERATIONAL_TRIP_STATUSES, resolveVehicleLocationsForTrips } from '../services/locationResolver';
+import { driverDutyFor, driversOnTripIds } from '../services/driverDuty';
 
 /**
  * Fields the driver roster search bar looks at. Full name has to work, so both
@@ -29,6 +30,19 @@ const DRIVER_SEARCH_FIELDS = [
   'assignedVehicle.plate_number',
   'assignedVehicle.ref_id',
 ];
+
+/**
+ * The roster's Duty status filter, by what drivers are doing (services/driverDuty):
+ * "OnTrip" = on a running trip, "Available" = marked Available (or a stale OnTrip
+ * flag) and not on one. Other statuses (OffDuty, Inactive) stay as stored.
+ */
+async function applyDutyStatusFilter(whereClause: any, status: unknown) {
+  if (status !== 'OnTrip' && status !== 'Available') return whereClause;
+  const onTrip = [...(await driversOnTripIds())];
+  const { status: _stored, ...rest } = whereClause;
+  if (status === 'OnTrip') return { ...rest, id: { ...(rest.id ?? {}), in: rest.id?.in ? rest.id.in.filter((id: string) => onTrip.includes(id)) : onTrip } };
+  return { ...rest, status: { in: ['Available', 'OnTrip'] as DriverStatus[] }, id: { ...(rest.id ?? {}), notIn: onTrip } };
+}
 
 export const buildDriverQueryOptions = (query: any) => {
   const { status, search, sortOrder = 'latest', licenseFilter = 'All', selectedIds } = query;
@@ -226,9 +240,10 @@ export const getDrivers = async (req: Request, res: Response) => {
       });
     }
 
+    const rosterWhere = await applyDutyStatusFilter(whereClause, req.query.status);
     const [drivers, total] = await Promise.all([
       prisma.driver.findMany({
-        where: whereClause,
+        where: rosterWhere,
         skip,
         take: limit,
         orderBy: orderByClause,
@@ -262,17 +277,21 @@ export const getDrivers = async (req: Request, res: Response) => {
           }
         }
       }),
-      prisma.driver.count({ where: whereClause })
+      prisma.driver.count({ where: rosterWhere })
     ]);
 
-    const driversWithGps = await attachDriverGpsStatus(drivers);
-
-    // Lifetime driver payout for the roster's Total Trip Charge column (finished trips only).
-    const tripChargeByDriver = await sumDriverTripCharges(drivers.map((d) => d.id));
+    // Lifetime driver payout for the roster's Total Trip Charge column (finished trips only),
+    // and what each driver is doing from their trips (Duty status / Scheduled days columns).
+    const [driversWithGps, tripChargeByDriver, dutyByDriver] = await Promise.all([
+      attachDriverGpsStatus(drivers),
+      sumDriverTripCharges(drivers.map((d) => d.id)),
+      driverDutyFor(drivers.map((d) => d.id)),
+    ]);
 
     const formatted = driversWithGps.map(d => ({
       ...d,
       total_trip_charges: tripChargeByDriver.get(d.id) || 0,
+      duty: dutyByDriver.get(d.id) ?? { on_trip: null, upcoming: [] },
       user: withoutPasswordHash(d.user),
       hasAccountPassword: Boolean(d.user?.password_hash || d.user),
     }));
@@ -699,14 +718,27 @@ export const deleteDriver = async (req: Request, res: Response) => {
 export const getDriverStats = async (_req: Request, res: Response) => {
   try {
     const where = { deletedAt: null };
-    const [byStatus, total, expiredLicenses] = await Promise.all([
+    const [byStatus, total, expiredLicenses, onTripIds] = await Promise.all([
       prisma.driver.groupBy({ by: ['status'], where, _count: { _all: true } }),
       prisma.driver.count({ where }),
       prisma.driver.count({ where: { ...where, license_expiry: { lt: new Date() } } }),
+      driversOnTripIds(),
     ]);
 
     const by_status: Record<string, number> = {};
     for (const row of byStatus) by_status[row.status] = row._count._all;
+
+    // "On trip" comes from running trips, not the stored flag (which drifts). A driver
+    // marked Available who is out on a trip counts as on trip, not available.
+    const onTrip = onTripIds.size > 0
+      ? await prisma.driver.findMany({ where: { ...where, id: { in: [...onTripIds] } }, select: { status: true } })
+      : [];
+    const onTripMarked = (st: string) => onTrip.filter((d) => d.status === st).length;
+    // And one still marked OnTrip with no running trip is free again (the flag wasn't reset).
+    const staleOnTrip = Math.max(0, (by_status.OnTrip ?? 0) - onTripMarked('OnTrip'));
+    by_status.Available = Math.max(0, (by_status.Available ?? 0) - onTripMarked('Available') + staleOnTrip);
+    for (const st of ['OffDuty', 'Inactive']) if (by_status[st]) by_status[st] = Math.max(0, by_status[st] - onTripMarked(st));
+    by_status.OnTrip = onTrip.length;
 
     res.json({
       success: true,
@@ -937,7 +969,13 @@ export const exportDrivers = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: { code: 'INVALID_REQUEST', message: 'Unsupported format. Use csv or xlsx' } });
     }
 
-    const { whereClause, orderByClause } = buildDriverQueryOptions(req.query);
+    const { whereClause: storedWhere, orderByClause } = buildDriverQueryOptions(req.query);
+    // Duty status from trips, as the roster shows it (services/driverDuty).
+    const [whereClause, onTripIds] = await Promise.all([applyDutyStatusFilter(storedWhere, req.query.status), driversOnTripIds()]);
+    const withDuty = <T extends { id?: string; status?: string }>(row: T): T => ({
+      ...row,
+      status: row.id && onTripIds.has(row.id) ? 'OnTrip' : row.status === 'OnTrip' ? 'Available' : row.status,
+    });
 
     let requestedColumns = Object.keys(AVAILABLE_EXPORT_COLUMNS);
     if (req.query.columns) {
@@ -990,7 +1028,7 @@ export const exportDrivers = async (req: Request, res: Response) => {
           break;
         }
 
-        for (const row of batch) {
+        for (const row of batch.map(withDuty)) {
           const values = requestedColumns.map(c => AVAILABLE_EXPORT_COLUMNS[c].accessor(row));
           res.write(values.map(v => csvEscape(v)).join(',') + '\n');
         }
@@ -1032,7 +1070,7 @@ export const exportDrivers = async (req: Request, res: Response) => {
           break;
         }
 
-        for (const row of batch) {
+        for (const row of batch.map(withDuty)) {
           const rowData: Record<string, string> = {};
           for (const col of requestedColumns) {
             rowData[col] = AVAILABLE_EXPORT_COLUMNS[col].accessor(row);
