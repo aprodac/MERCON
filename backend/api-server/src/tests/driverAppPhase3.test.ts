@@ -13,7 +13,7 @@ import { Response } from 'express';
 import { prisma } from '../db';
 import { env } from '../config/env';
 import { changePassword, resolveResetRequester } from '../controllers/authController';
-import { mobileLogin, phoneVariants } from '../controllers/mobileAuthController';
+import { mobileLogin, phoneVariants, saudiLocalNumber } from '../controllers/mobileAuthController';
 import { getDriverDocuments } from '../controllers/mobileDocumentController';
 import { getTripHistory } from '../controllers/mobileTripController';
 import { deliveryPunctuality, summarisePerformance, historyFinishedAt } from '../services/driverPerformance';
@@ -96,9 +96,30 @@ test('driver sign-in: password exactly as typed, mixed case, and licence with sp
   assert.equal(await login('ab 1234-56'), 200, 'licence typed in lower case with spaces and dashes');
 });
 
-test('phone variants cover +966, leading 0 and local number', () => {
-  assert.deepEqual(phoneVariants('+966510785259'), ['+966510785259', '0510785259', '510785259']);
-  assert.deepEqual(phoneVariants('0510785259'), ['0510785259', '+966510785259', '+91510785259', '510785259']);
+test('phone variants cover every way a Saudi number may be stored', () => {
+  const all = ['510785259', '0510785259', '+966510785259', '966510785259', '00966510785259', '+966 510785259'];
+  for (const typed of ['+966510785259', '0510785259', '510785259', '966510785259', '+966 51 078 5259', '051-078-5259']) {
+    const v = phoneVariants(typed);
+    for (const stored of all) assert.ok(v.includes(stored), `${typed} should match stored ${stored}`);
+  }
+  assert.equal(saudiLocalNumber('+966 51 078 5259'), '510785259');
+  assert.equal(saudiLocalNumber('12345'), null);
+  // Non-Saudi numbers keep the old behaviour.
+  assert.deepEqual(phoneVariants('+919876543210'), ['+919876543210', '09876543210', '9876543210']);
+});
+
+test('driver typing the local number logs in when the office stored +966 with spaces', async (t) => {
+  const hash = await bcrypt.hash('nadar@123', 4);
+  stub(t, prisma.driver, 'findFirst', async () => null); // no exact-format match
+  stub(t, prisma, '$queryRaw', async () => [{ id: 'd9' }]);
+  stub(t, prisma.driverActivityEvent, 'create', async () => ({}));
+  stub(t, prisma.driver, 'findUnique', async () => ({
+    id: 'd9', userId: 'u9', isActive: true, first_name: 'NADAR', last_name: 'KHAN', ref_id: 'DRV-9', status: 'Active',
+    phone_primary: '+966 55 123 4567', license_number: null, user: { password_hash: hash },
+  }));
+  const { res, result } = mockRes();
+  await mobileLogin({ body: { phone_primary: '551234567', password: 'nadar@123 ' }, ip: '::1' } as any, res);
+  assert.equal(result().status, 200, 'found by digits, trailing space from the keyboard ignored');
 });
 
 /* ── 8. Password reset request names who asked ────────────────────────────── */
