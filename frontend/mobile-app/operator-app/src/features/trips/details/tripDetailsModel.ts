@@ -9,7 +9,7 @@ import type { TripStatus } from '@mercon/mobile-shared/lib/trips';
 import { formatTripStatusMessage, haltActivityLabel, insertByTime, type StatusTrip } from '@mercon/shared-types';
 import { operatorService, type DriverUpdate, type OperatorTripDetail, type OperatorTripStop, type TripHalt, type TripPhase } from '../../../lib/operator';
 import { niceName } from '../create/components/ui';
-import { splitLegs } from '../tripLegs';
+import { legLabel, liveLegOf, splitLegs } from '../tripLegs';
 
 export type Stop = OperatorTripStop;
 
@@ -212,8 +212,8 @@ export function statePhrase(t: OperatorTripDetail, phase: TripPhase, f: Formatte
     const i = stops.findIndex((s) => !s.actual_arrival);
     if (i < 0) return 'At the last stop';
     const due = stops[i].planned_arrival ? ` · due ${f.smart(stops[i].planned_arrival)}` : '';
-    const leg = tripLegsOf(t).currentLeg;
-    const legText = leg === 1 ? 'Leg 1 going · ' : leg === 2 ? 'Leg 2 returning · ' : '';
+    const leg = liveLegOf(tripLegsOf(t), t.status);
+    const legText = leg ? `${legLabel(leg)} · ` : '';
     return `${legText}Heading to ${stopName(stops[i], i)}${due}`;
   }
   if (phase === 'done') return t.actual_end ? `Finished ${f.dateTime(t.actual_end)}` : 'Finished';

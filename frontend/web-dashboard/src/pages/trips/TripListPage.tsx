@@ -36,7 +36,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { TruckMotion, CheckBadge, RouteLine, ClockIcon, RiskAlert } from '@/components/ui/kpi-icons';
-import { parseTripRouteNodes, getLegEndpoints, splitLegs } from '@mercon/shared-types';
+import { parseTripRouteNodes, getLegEndpoints, legLabel, liveLegOf, splitLegs } from '@mercon/shared-types';
 
 import { format, subDays, addDays } from 'date-fns';
 import { DateRange } from 'react-day-picker';
@@ -1422,7 +1422,7 @@ export default function TripListPage() {
         const placeOf = (s?: any) =>
           (s?.location_name || s?.location?.name || s?.location_address || s?.location?.address || '').replace(/🔁\s*/g, '').replace(/\[RETURN:.*?\]/gi, '').trim();
         const backTo = legs.round ? placeOf(legs.ret[legs.ret.length - 1]) || placeOf(stops[0]) : '';
-        const running = ['InTransit', 'Loading', 'Delayed', 'Emergency'].includes(String(row.status));
+        const liveLeg = liveLegOf(legs, row.status);
 
         const stopNames = stops.map(placeOf).filter(Boolean);
 
@@ -1481,9 +1481,9 @@ export default function TripListPage() {
               <div className="flex items-center gap-1.5 min-w-0 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                 <span aria-hidden>↺</span>
                 <span className="truncate">Round trip · back to {backTo}</span>
-                {running && legs.currentLeg && (
+                {liveLeg && (
                   <span className="shrink-0 rounded-full bg-blue-50 dark:bg-blue-950/50 px-1.5 text-[10px] font-bold text-blue-700 dark:text-blue-300">
-                    {legs.currentLeg === 1 ? 'Leg 1 going' : 'Leg 2 returning'}
+                    {legLabel(liveLeg)}
                   </span>
                 )}
               </div>

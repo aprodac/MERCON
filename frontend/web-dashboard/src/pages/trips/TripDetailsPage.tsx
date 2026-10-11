@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { haltActivityLabel, insertByTime, splitLegs } from '@mercon/shared-types';
+import { haltActivityLabel, insertByTime, legLabel, liveLegOf, splitLegs } from '@mercon/shared-types';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Copy, Check, CornerUpLeft, Smartphone, XCircle, AlertTriangle, MoreHorizontal, MapPin, ArrowRight,
@@ -453,7 +453,8 @@ export default function TripDetailsPage() {
       return ms > 0 ? `Starts in ${formatDuration(ms / 1000)}` : 'Start time has passed';
     }
     if (phase === 'active') {
-      const leg = tripLegs.currentLeg === 1 ? 'Leg 1 going · ' : tripLegs.currentLeg === 2 ? 'Leg 2 returning · ' : '';
+      const live = liveLegOf(tripLegs, trip.status);
+      const leg = live ? `${legLabel(live)} · ` : '';
       return headingTo ? `${leg}Heading to ${resolveStopName(headingTo, 'the next stop')}` : 'At the last stop';
     }
     if (phase === 'done') return trip.actual_end ? `Finished ${formatDateTime(trip.actual_end)}` : null;

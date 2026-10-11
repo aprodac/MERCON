@@ -16,6 +16,7 @@ import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import type { OperatorTrip } from '../../../lib/operator';
 import { CompanyAvatar, initialsOf, niceName } from '../create/components/ui';
 import { DriverAvatar } from '../../drivers/components/DriverAvatar';
+import { legLabel } from '../tripLegs';
 import {
   PHASE_STYLE, delayReasonOf, driverNameOf, driverPhoneOf, phaseOf, plateOf, routeOf, statusText,
   type TimeFmt,
@@ -98,7 +99,7 @@ function TripCardBase({ trip: t, f, now, showDay, onPress, onLongPress }: Props)
             <RotateCcw size={12} color={MUTED} strokeWidth={2.4} />
             <Text style={s.backText} numberOfLines={1}>
               {`Round trip · back to ${niceName(route.back)}`}
-              {route.leg && open ? <Text style={s.legText}>{route.leg === 1 ? '  ·  Leg 1 going' : '  ·  Leg 2 returning'}</Text> : null}
+              {route.leg ? <Text style={s.legText}>{`  ·  ${legLabel(route.leg)}`}</Text> : null}
             </Text>
           </View>
         ) : null}
