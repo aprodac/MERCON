@@ -17,7 +17,7 @@ import { DriverNotificationManager } from '@/components/DriverNotificationManage
 import { AppToastHost } from '@/components/AppToast';
 import { AcknowledgeTripsPrompt } from '@/components/AcknowledgeTripsPrompt';
 import { PhoneHealthWatcher, PhoneSetupBanner, UpdateRequiredScreen } from '@/components/PhoneHealthManager';
-import { PhoneSetupGuide } from '@/components/PhoneSetupGuide';
+import { PhoneSetupGuide, PhoneSetupReminder } from '@/components/PhoneSetupGuide';
 import { signInDriver, syncPushToken, unregisterPushToken } from '@/services/auth';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -95,6 +95,7 @@ function RootNavigator() {
       {showBottomNav && (
         <View style={styles.floatingNavOverlay} pointerEvents="box-none">
           <PhoneSetupBanner />
+          <PhoneSetupReminder />
           <View style={{ height: 10 }} />
           <DriverBottomNav />
         </View>
