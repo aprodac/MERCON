@@ -20,6 +20,7 @@ import {
   Phone
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { DriverSignInMethods } from '@/components/drivers/DriverSignInMethods';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -163,10 +164,12 @@ export default function DriverPasswordModal({
                   : 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300'
               }`}>
                 <ShieldCheck size={10} />
-                {driver.hasAccountPassword ? 'Active' : 'Pending Setup'}
+                {driver.hasAccountPassword ? 'Licence + password' : 'Licence only'}
               </span>
             </div>
           </div>
+
+          <DriverSignInMethods phone={driver.phone_primary} license={driver.license_number} hasPassword={Boolean(driver.hasAccountPassword)} />
 
           {/* Login Note Banner */}
           {!hasPhone ? (

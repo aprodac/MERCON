@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import type { TripStatus } from '@mercon/mobile-shared/lib/trips';
-import type { DriverGroup, DriverReason } from '@mercon/shared-types';
+import type { AssignmentPreview, DriverGroup, DriverReason } from '@mercon/shared-types';
 
 export interface Kpi { value: number; delta: number | null }
 
@@ -1176,6 +1176,21 @@ export const operatorService = {
     return data.data as OperatorDriver;
   },
 
+  /**
+   * Which truck a driver drives — { driver_id, vehicle_id } pairs them, vehicle_id null takes the
+   * driver off their truck, driver_id null empties the truck. Preview says what else changes (the
+   * other truck left empty, the other driver left without a truck); apply does it in one step.
+   */
+  async previewTruckAssignment(body: { driver_id: string | null; vehicle_id: string | null }): Promise<AssignmentPreview> {
+    const { data } = await api.post('/drivers/truck-assignment/preview', body);
+    return data.data as AssignmentPreview;
+  },
+
+  async applyTruckAssignment(body: { driver_id: string | null; vehicle_id: string | null }): Promise<AssignmentPreview> {
+    const { data } = await api.post('/drivers/truck-assignment', body);
+    return data.data as AssignmentPreview;
+  },
+
   /** Every driver with its login account, for User management. */
   async driverAccounts(): Promise<OperatorDriver[]> {
     const { data } = await api.get('/drivers', { params: { per_page: 1000, sortOrder: 'name_asc' } });
@@ -1544,6 +1559,9 @@ export interface OperatorDriver {
   photo_url?: string | null;
   assigned_vehicle?: { plate_number?: string | null } | null;
   current_vehicle?: { plate_number?: string | null } | null;
+  /** The truck they usually drive (Driver.assignedVehicleId). */
+  assignedVehicleId?: string | null;
+  assignedVehicle?: { id?: string; plate_number?: string | null } | null;
   /** Linked login account — present once a password has been set. */
   user?: { id: string; username: string | null; phone: string | null } | null;
   /** Whether that login has a password (GET /drivers and /drivers/:id). */

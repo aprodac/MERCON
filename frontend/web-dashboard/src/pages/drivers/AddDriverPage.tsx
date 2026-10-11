@@ -21,6 +21,7 @@ import {
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import QuickCreateVehicleModal from '@/components/trips/QuickCreateVehicleModal';
 import { driverService, CreateDriverPayload } from '@/services/driverService';
+import { TruckAssignmentImpact } from '@/components/fleet/TruckAssignmentImpact';
 import { vehicleService, Vehicle } from '@/services/vehicleService';
 import { Card, CardContent } from '@/components/ui/card';
 import PhoneInput from '@/components/ui/PhoneInput';
@@ -68,11 +69,15 @@ export default function AddDriverPage() {
   });
 
   const vehicles = vehiclesRes?.data || [];
-  const vehicleOptions = vehicles.map((v) => ({
-    value: v.id,
-    label: `${v.plate_number} (${v.asset_type} • ${v.capacity_kg ? `${v.capacity_kg.toLocaleString()} kg` : 'N/A'})`,
-    keywords: `${v.plate_number} ${v.asset_type}`,
-  }));
+  // Each truck says who drives it now, so picking a taken one is a deliberate choice.
+  const vehicleOptions = vehicles.map((v) => {
+    const holder = v.assignedDriver ? `${v.assignedDriver.first_name} ${v.assignedDriver.last_name ?? ''}`.trim() : null;
+    return {
+      value: v.id,
+      label: `${v.plate_number} (${v.asset_type} • ${v.capacity_kg ? `${v.capacity_kg.toLocaleString()} kg` : 'N/A'})${holder ? ` — driven by ${holder}` : ' — free'}`,
+      keywords: `${v.plate_number} ${v.asset_type} ${holder ?? ''}`,
+    };
+  });
 
   const assignedVehicle = vehicles.find((v) => v.id === formData.assigned_vehicle_id);
 
@@ -408,6 +413,8 @@ export default function AddDriverPage() {
                     <p className="text-[10px] text-slate-400">
                       Pre-fills automatically when this driver is assigned to a trip.
                     </p>
+                    {/* A truck someone already drives: say who loses it before the driver is created. */}
+                    <TruckAssignmentImpact driverId={null} vehicleId={formData.assigned_vehicle_id || null} changed={Boolean(assignedVehicle?.assignedDriver)} />
                   </div>
                 </div>
 

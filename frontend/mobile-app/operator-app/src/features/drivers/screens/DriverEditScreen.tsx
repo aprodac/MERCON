@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { CircleUser, IdCard, KeyRound, Activity } from 'lucide-react-native';
+import { CircleUser, IdCard, KeyRound, Activity, Truck, CheckCircle2, CircleDashed } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { FilterChip } from '@mercon/mobile-shared/components/Badge';
 import { DatePickerModal } from '@mercon/mobile-shared/components/common/DateTimePickerModal';
@@ -22,6 +22,7 @@ import {
   type OperatorDriver, type UpdateDriverInput,
 } from '../../../lib/operator';
 import { Field, FormHeader, PasswordField, SaveBar, Section, formStyles } from '@/features/users/components/FormKit';
+import { AssignmentImpact, TruckPicker } from '@/features/vehicles/components/TruckAssignment';
 
 const STATUSES: NonNullable<UpdateDriverInput['status']>[] = ['Available', 'OnTrip', 'OffDuty', 'Inactive'];
 const STATUS_LABELS: Record<string, string> = {
@@ -93,6 +94,12 @@ function DriverForm({ driver, onDone }: { driver?: OperatorDriver; onDone: () =>
   const [status, setStatus] = useState<UpdateDriverInput['status']>((driver?.status as UpdateDriverInput['status']) ?? 'Available');
   const [password, setPassword] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
+  // The truck they usually drive — changed through the assignment rule (see "When you save").
+  const originalTruckId = driver?.assignedVehicleId ?? driver?.assignedVehicle?.id ?? null;
+  const [truckId, setTruckId] = useState<string | null>(originalTruckId);
+  const [truckLabel, setTruckLabel] = useState(driver?.assignedVehicle?.plate_number ?? '');
+  const [truckPickerOpen, setTruckPickerOpen] = useState(false);
+  const truckChanged = truckId !== originalTruckId;
   const [errors, setErrors] = useState<Errors>({});
   const [saving, setSaving] = useState(false);
 
@@ -122,6 +129,7 @@ function DriverForm({ driver, onDone }: { driver?: OperatorDriver; onDone: () =>
       const expiryIso = parseDDMMYYYY(licenseExpiry)!.toISOString();
       let driverId = driver?.id;
       if (isNew) {
+        // A new driver's truck is set after they exist, through the same rule as an edit.
         const created = await operatorService.createDriver({
           first_name: firstName.trim(),
           last_name: lastName.trim(),
@@ -139,6 +147,15 @@ function DriverForm({ driver, onDone }: { driver?: OperatorDriver; onDone: () =>
         if (licenseExpiry !== initialExpiry) payload.license_expiry = expiryIso;
         if (status !== driver.status) payload.status = status;
         if (Object.keys(payload).length) await operatorService.updateDriver(driver.id, payload);
+      }
+
+      if (truckChanged && driverId) {
+        try {
+          await operatorService.applyTruckAssignment({ driver_id: driverId, vehicle_id: truckId });
+        } catch (err) {
+          Alert.alert('Driver saved, truck not changed', getApiErrorMessage(err));
+        }
+        await queryClient.invalidateQueries({ queryKey: ['vehicles'] });
       }
 
       let passwordFailed = false;
@@ -226,11 +243,20 @@ function DriverForm({ driver, onDone }: { driver?: OperatorDriver; onDone: () =>
           </Section>
         )}
 
+        <Section title="Truck" Icon={Truck} note="Optional">
+          <Field label="Usual truck" value={truckLabel} placeholder="No truck" onPressBox={() => setTruckPickerOpen(true)} />
+          <AssignmentImpact driverId={driver?.id ?? null} vehicleId={truckId} changed={!isNew && truckChanged} />
+          {isNew && truckChanged ? (
+            <AssignmentImpact driverId={null} vehicleId={truckId} changed />
+          ) : null}
+        </Section>
+
         <Section
           title="App login"
           Icon={KeyRound}
           note={isNew ? 'Optional' : hasPassword ? 'Password is set' : 'No password yet'}
         >
+          <SignInMethods phone={loginPhone} license={licenseNumber.trim()} hasPassword={!isNew && hasPassword} />
           <Field
             label="Username (driver app)"
             value={loginPhone}
@@ -249,6 +275,14 @@ function DriverForm({ driver, onDone }: { driver?: OperatorDriver; onDone: () =>
 
       <SaveBar label={isNew ? 'Add driver' : 'Save changes'} onPress={handleSave} saving={saving} />
 
+      <TruckPicker
+        visible={truckPickerOpen}
+        driverId={driver?.id ?? null}
+        selectedId={truckId}
+        onPick={(nextId, truck) => { setTruckId(nextId); setTruckLabel(truck?.plate_number ?? ''); setTruckPickerOpen(false); }}
+        onClose={() => setTruckPickerOpen(false)}
+      />
+
       <DatePickerModal
         visible={pickerOpen}
         onClose={() => setPickerOpen(false)}
@@ -258,5 +292,41 @@ function DriverForm({ driver, onDone }: { driver?: OperatorDriver; onDone: () =>
     </KeyboardAvoidingView>
   );
 }
+
+/**
+ * How the driver signs in to the driver app, in plain words: mobile number + licence number
+ * always works; an app password works too once the office has set one. Passwords are stored
+ * scrambled (hashed), so nobody — office included — can read one back; setting a new one is the fix.
+ */
+export function SignInMethods({ phone, license, hasPassword }: { phone: string; license: string; hasPassword: boolean }) {
+  return (
+    <View style={signIn.box}>
+      <Text style={signIn.title}>How the driver signs in</Text>
+      <View style={signIn.row}>
+        <CheckCircle2 size={16} color="#15803D" />
+        <Text style={signIn.text}>
+          Mobile <Text style={signIn.mono}>{phone || '—'}</Text> + licence number <Text style={signIn.mono}>{license || '—'}</Text>
+          <Text style={signIn.muted}> — always works</Text>
+        </Text>
+      </View>
+      <View style={signIn.row}>
+        {hasPassword ? <CheckCircle2 size={16} color="#15803D" /> : <CircleDashed size={16} color="#9898A4" />}
+        <Text style={signIn.text}>
+          {hasPassword ? 'Mobile + app password — set' : 'App password — not set'}
+          <Text style={signIn.muted}>{hasPassword ? ' (hidden for safety; type a new one below to change it)' : ' — only the licence number works for now'}</Text>
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+const signIn = {
+  box: { backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', padding: 12, gap: 8 } as const,
+  title: { fontSize: 12, fontWeight: '800' as const, letterSpacing: 0.5, color: '#52525B', textTransform: 'uppercase' as const },
+  row: { flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: 8 },
+  text: { flex: 1, fontSize: 14, lineHeight: 20, color: '#3E3C3D' },
+  mono: { fontWeight: '700' as const, fontVariant: ['tabular-nums' as const] },
+  muted: { color: '#6B6B76' },
+};
 
 export default DriverEditScreen;

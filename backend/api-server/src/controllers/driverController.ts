@@ -11,6 +11,7 @@ import { logger } from '../utils/logger';
 import { DriverLoginConflict, claimLoginPhone, cleanPhone, driverUsername, findPhoneClash, phoneInUseMessage, phoneKey, releaseDeletedDriverPhones, syncDriverLogin } from '../services/driverLogin';
 import { OPERATIONAL_TRIP_STATUSES, resolveVehicleLocationsForTrips } from '../services/locationResolver';
 import { driverDutyFor, driversOnTripIds } from '../services/driverDuty';
+import { AssignmentError, applyTruckAssignment } from '../services/truckAssignment';
 
 /**
  * Fields the driver roster search bar looks at. Full name has to work, so both
@@ -396,14 +397,23 @@ export const createDriver = async (req: Request, res: Response) => {
         phone_primary: cleanPhone(phone_primary),
         license_number: String(license_number).trim(),
         license_expiry: new Date(license_expiry),
-        assignedVehicleId: assigned_vehicle_id || null,
         avatar_url: avatar_url || null,
         created_by: (req as any).user?.id
       }
     });
 
+    // The truck goes through the assignment rule: a truck someone else drives is moved to the
+    // new driver (the form shows that first) instead of failing on the unique index.
+    if (assigned_vehicle_id) {
+      await applyTruckAssignment({ driver_id: newDriver.id, vehicle_id: assigned_vehicle_id }, (req as any).user?.id ?? null);
+      newDriver.assignedVehicleId = assigned_vehicle_id;
+    }
+
     res.status(201).json({ success: true, data: newDriver });
   } catch (error: any) {
+    if (error instanceof AssignmentError) {
+      return res.status(error.status).json({ success: false, error: { code: error.code, message: error.message } });
+    }
     if (error.code === 'P2002') {
       const message = error.meta?.target?.includes?.('assignedVehicleId')
         ? 'That vehicle is already assigned to another driver'
@@ -589,7 +599,6 @@ export const updateDriver = async (req: Request, res: Response) => {
         where: { id },
         data: {
           ...rest,
-          ...(assigned_vehicle_id !== undefined ? { assignedVehicleId: assigned_vehicle_id } : {}),
           updated_by: (req as any).user?.id
         }
       });
@@ -598,8 +607,18 @@ export const updateDriver = async (req: Request, res: Response) => {
       return driver;
     });
 
+    // Older clients still send the truck here: same rule as POST /drivers/truck-assignment
+    // (the truck's other driver is taken off it rather than a 409).
+    if (assigned_vehicle_id !== undefined && (assigned_vehicle_id || null) !== existing.assignedVehicleId) {
+      await applyTruckAssignment({ driver_id: id, vehicle_id: assigned_vehicle_id || null }, (req as any).user?.id ?? null);
+      updatedDriver.assignedVehicleId = assigned_vehicle_id || null;
+    }
+
     res.json({ success: true, data: updatedDriver });
   } catch (error: any) {
+    if (error instanceof AssignmentError) {
+      return res.status(error.status).json({ success: false, error: { code: error.code, message: error.message } });
+    }
     if (error instanceof DriverLoginConflict) {
       return res.status(409).json({ success: false, error: { code: 'PHONE_IN_USE', message: error.message } });
     }
