@@ -119,6 +119,17 @@ export const createUser = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * A driver's app login (role Driver, or linked to a Driver) is managed from the
+ * Drivers module only: here it could be renamed off the driver's phone, given a
+ * staff role, or deleted out from under the driver.
+ */
+const isDriverLogin = (u: { role: string; driver: { id: string } | null }) => u.role === 'Driver' || Boolean(u.driver);
+const DRIVER_LOGIN_FORBIDDEN = {
+  success: false,
+  error: { code: 'DRIVER_ACCOUNT', message: 'Driver logins are managed from the Drivers page (phone, password, delete).' },
+};
+
 // Update an existing user
 export const updateUser = async (req: Request, res: Response) => {
   try {
@@ -129,10 +140,11 @@ export const updateUser = async (req: Request, res: Response) => {
     const requester = requesterId ? await prisma.user.findUnique({ where: { id: requesterId }, select: { role: true, isSuperAdmin: true } }) : null;
     const isRequesterSuperAdmin = Boolean(requester?.isSuperAdmin || requester?.role === 'SuperAdmin');
 
-    const targetUser = await prisma.user.findUnique({ where: { id: id as string }, select: { id: true, role: true, isSuperAdmin: true } });
+    const targetUser = await prisma.user.findUnique({ where: { id: id as string }, select: { id: true, role: true, isSuperAdmin: true, driver: { select: { id: true } } } });
     if (!targetUser) {
       return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found' } });
     }
+    if (isDriverLogin(targetUser)) return res.status(403).json(DRIVER_LOGIN_FORBIDDEN);
 
     // Protection rule: Only a SuperAdmin can edit a SuperAdmin account
     const isTargetSuperAdmin = Boolean(targetUser.isSuperAdmin || targetUser.role === 'SuperAdmin');
@@ -225,10 +237,11 @@ export const deleteUser = async (req: Request, res: Response) => {
        return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Cannot delete your own account' } });
     }
 
-    const targetUser = await prisma.user.findUnique({ where: { id: id as string }, select: { id: true, isSuperAdmin: true, role: true } });
+    const targetUser = await prisma.user.findUnique({ where: { id: id as string }, select: { id: true, isSuperAdmin: true, role: true, driver: { select: { id: true } } } });
     if (!targetUser) {
       return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found' } });
     }
+    if (isDriverLogin(targetUser)) return res.status(403).json(DRIVER_LOGIN_FORBIDDEN);
 
     const requester = requesterId ? await prisma.user.findUnique({ where: { id: requesterId }, select: { isSuperAdmin: true, role: true } }) : null;
     const isRequesterSuperAdmin = Boolean(requester?.isSuperAdmin || requester?.role === 'SuperAdmin');

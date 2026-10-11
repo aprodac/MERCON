@@ -8,7 +8,7 @@ import { DriverStatus } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import ExcelJS from 'exceljs';
 import { logger } from '../utils/logger';
-import { DriverLoginConflict, claimLoginPhone, cleanPhone, driverUsername, phoneKey, syncDriverLogin } from '../services/driverLogin';
+import { DriverLoginConflict, claimLoginPhone, cleanPhone, driverUsername, findPhoneClash, phoneInUseMessage, phoneKey, releaseDeletedDriverPhones, syncDriverLogin } from '../services/driverLogin';
 import { OPERATIONAL_TRIP_STATUSES, resolveVehicleLocationsForTrips } from '../services/locationResolver';
 
 /**
@@ -359,6 +359,13 @@ export const createDriver = async (req: Request, res: Response) => {
   try {
     const { first_name, last_name, phone_primary, license_number, license_expiry, assigned_vehicle_id, avatar_url } = req.body; // validated by createDriverBody
 
+    // Same number in another spelling ("+966 5…" vs "05…") would make two drivers one login.
+    const clash = await findPhoneClash(prisma, phone_primary);
+    if (clash.live) {
+      return res.status(409).json({ success: false, error: { code: 'PHONE_IN_USE', message: phoneInUseMessage(clash.live) } });
+    }
+    await releaseDeletedDriverPhones(prisma, clash.deleted);
+
     const ref_id = await generateRefId('DRV', () =>
       prisma.driver.findMany({ select: { ref_id: true } }));
 
@@ -437,13 +444,17 @@ export const bulkImportDrivers = async (req: Request, res: Response) => {
       const label = `${row.first_name} ${row.last_name}`.trim();
 
       try {
-        const phone = row.phone_primary.trim();
+        const phone = cleanPhone(row.phone_primary) ?? '';
         const expiry = new Date(row.license_expiry);
         if (isNaN(expiry.getTime())) {
           throw new Error(`License expiry "${row.license_expiry}" isn't a date we can read — use YYYY-MM-DD`);
         }
 
-        const existing = await prisma.driver.findFirst({ where: { phone_primary: phone } });
+        // Upsert on the number in any spelling, so "+966 5…" in the sheet updates the driver saved as "05…".
+        const clash = await findPhoneClash(prisma, phone);
+        const existing = clash.live
+          ? await prisma.driver.findUnique({ where: { id: clash.live.id } })
+          : clash.deleted.length ? await prisma.driver.findUnique({ where: { id: clash.deleted[0] } }) : null;
 
         if (existing) {
           // Deliberately does not touch status: a driver mid-trip is OnTrip, and
@@ -502,8 +513,10 @@ export const bulkImportDrivers = async (req: Request, res: Response) => {
           continue;
         }
 
-        const driver = await prisma.driver.findFirst({ where: { phone_primary: row.phone_primary.trim() } });
-        if (!driver) continue;
+        const found = await findPhoneClash(prisma, row.phone_primary);
+        const driverId = found.live?.id ?? found.deleted[0];
+        if (!driverId) continue;
+        const driver = { id: driverId };
 
         await prisma.driver.update({
           where: { id: driver.id },
@@ -545,34 +558,13 @@ export const updateDriver = async (req: Request, res: Response) => {
     // The phone is the driver's app username: refuse one another driver has,
     // in any spelling (+966…, 05…, 5…), before the unique index does it with a 500.
     const phoneChanged = rest.phone_primary !== undefined && phoneKey(rest.phone_primary) !== phoneKey(existing.phone_primary);
-    if (phoneChanged && rest.phone_primary) {
-      const sameKey = phoneKey(rest.phone_primary);
-      const candidates = await prisma.driver.findMany({
-        where: { id: { not: id }, phone_primary: { endsWith: sameKey } },
-        select: { id: true, first_name: true, last_name: true, ref_id: true, phone_primary: true, deletedAt: true },
-      });
-      const clash = candidates.find((d) => phoneKey(d.phone_primary) === sameKey);
-      if (clash && !clash.deletedAt) {
-        const name = `${clash.first_name} ${clash.last_name}`.trim();
-        return res.status(409).json({
-          success: false,
-          error: { code: 'PHONE_IN_USE', message: `This phone is already used by driver ${name}${clash.ref_id ? ` (${clash.ref_id})` : ''}.` },
-        });
-      }
+    const clash = phoneChanged && rest.phone_primary ? await findPhoneClash(prisma, rest.phone_primary, id) : null;
+    if (clash?.live) {
+      return res.status(409).json({ success: false, error: { code: 'PHONE_IN_USE', message: phoneInUseMessage(clash.live) } });
     }
 
     const updatedDriver = await prisma.$transaction(async (tx) => {
-      // A deleted driver keeps its number; let the live driver have it.
-      if (phoneChanged && rest.phone_primary) {
-        const sameKey = phoneKey(rest.phone_primary);
-        const deleted = await tx.driver.findMany({
-          where: { id: { not: id }, deletedAt: { not: null }, phone_primary: { endsWith: sameKey } },
-          select: { id: true, phone_primary: true },
-        });
-        for (const d of deleted.filter((d) => phoneKey(d.phone_primary) === sameKey)) {
-          await tx.driver.update({ where: { id: d.id }, data: { phone_primary: null } });
-        }
-      }
+      if (clash) await releaseDeletedDriverPhones(tx, clash.deleted);
 
       const driver = await tx.driver.update({
         where: { id },

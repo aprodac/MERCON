@@ -273,7 +273,8 @@ test('User Controller - SuperAdmin Escalation Protection Suite', async (t) => {
     const result = getResult();
     assert.equal(result.status, 403);
     assert.equal(result.body.success, false);
-    assert.equal(result.body.error.code, 'FORBIDDEN');
+    // Driver logins are refused outright now — they're managed from the Drivers page.
+    assert.equal(result.body.error.code, 'DRIVER_ACCOUNT');
   });
 
   await t.test('10. Admin promotes SELF -> SuperAdmin -> 403 FORBIDDEN', async () => {

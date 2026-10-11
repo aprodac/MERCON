@@ -7,7 +7,9 @@ import assert from 'node:assert/strict';
 import bcrypt from 'bcrypt';
 import { Response } from 'express';
 import { prisma } from '../db';
-import { updateDriver, setDriverPassword, getDriverById } from '../controllers/driverController';
+import { updateDriver, setDriverPassword, getDriverById, createDriver } from '../controllers/driverController';
+import { updateUser, deleteUser } from '../controllers/userController';
+import { loginAccountKey } from '../middlewares/rateLimit';
 import { mobileLogin, phoneVariants } from '../controllers/mobileAuthController';
 import { claimLoginPhone, DriverLoginConflict, phoneKey } from '../services/driverLogin';
 
@@ -165,4 +167,50 @@ test('driver sign-in finds a phone saved from the web with a space ("+966 502222
   const { res, result } = mockRes();
   await mobileLogin({ body: { phone_primary: '0502222222', password: 'Pass@123' }, ip: '::1' } as any, res);
   assert.equal(result().status, 200);
+});
+
+/* ── Loopholes closed 2026-10-11 ─────────────────────────────────────────── */
+
+test('adding a driver with a number another driver has in another spelling answers 409', async (t) => {
+  stub(t, prisma.driver, 'findMany', async () => [
+    { id: 'd2', first_name: 'Omar', last_name: 'Ali', ref_id: 'DRV-002', phone_primary: '+966 502222222', deletedAt: null },
+  ]);
+  stub(t, prisma.driver, 'create', async () => { throw new Error('must not create'); });
+  const { res, result } = mockRes();
+  await createDriver({ body: { first_name: 'A', last_name: 'B', phone_primary: '0502222222', license_number: '2123456789', license_expiry: '2030-01-01' } } as any, res);
+  assert.equal(result().status, 409);
+  assert.match(result().body.error.message, /Omar Ali/);
+});
+
+test('adding a driver frees the number from a deleted driver instead of "already exists"', async (t) => {
+  stub(t, prisma.driver, 'findMany', async (args: any) => args.select?.ref_id && !args.where
+    ? []
+    : [{ id: 'dx', first_name: 'Gone', last_name: 'Driver', ref_id: 'DRV-009', phone_primary: '0502222222', deletedAt: new Date() }]);
+  let released: any = null;
+  stub(t, prisma.driver, 'updateMany', async (args: any) => { released = args; return { count: 1 }; });
+  stub(t, prisma.driver, 'create', async (args: any) => ({ id: 'new', ...args.data }));
+  const { res, result } = mockRes();
+  await createDriver({ body: { first_name: 'A', last_name: 'B', phone_primary: '050 222 2222', license_number: '2123456789', license_expiry: '2030-01-01' } } as any, res);
+  assert.equal(result().status, 201);
+  assert.deepEqual(released.where.id.in, ['dx']);
+  assert.equal(result().body.data.phone_primary, '0502222222');
+});
+
+test('a driver login cannot be edited or deleted from User management', async (t) => {
+  stub(t, prisma.user, 'findUnique', async (args: any) => args.where.id === 'admin'
+    ? { role: 'Admin', isSuperAdmin: false }
+    : { id: 'u1', role: 'Driver', isSuperAdmin: false, driver: { id: 'd1' } });
+  stub(t, prisma.user, 'update', async () => { throw new Error('must not update'); });
+  const upd = mockRes();
+  await updateUser({ params: { id: 'u1' }, body: { role: 'Admin' }, user: { id: 'admin' } } as any, upd.res);
+  assert.equal(upd.result().status, 403);
+  const del = mockRes();
+  await deleteUser({ params: { id: 'u1' }, body: {}, user: { id: 'admin' } } as any, del.res);
+  assert.equal(del.result().status, 403);
+});
+
+test('login rate limit counts every spelling of a number as one account', () => {
+  const keys = ['0502222222', '+966502222222', '+966 50 222 2222', '502222222', '00966502222222', '966502222222'].map(loginAccountKey);
+  assert.equal(new Set(keys).size, 1);
+  assert.equal(loginAccountKey('Admin'), 'admin');
 });

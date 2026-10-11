@@ -102,3 +102,31 @@ export async function syncDriverLogin(
     },
   });
 }
+
+/**
+ * Other drivers holding the same Saudi number in any spelling ("+966 5…",
+ * "05…", "5…"). `live` blocks the save; `deleted` drivers only keep their old
+ * number on the unique index and are released by `releaseDeletedDriverPhones`.
+ */
+export async function findPhoneClash(db: Db, phone: string, excludeDriverId?: string) {
+  const key = phoneKey(phone);
+  if (key.length < 9) return { live: null, deleted: [] as string[] };
+  const rows = await db.driver.findMany({
+    where: { ...(excludeDriverId ? { id: { not: excludeDriverId } } : {}), phone_primary: { endsWith: key.slice(-4) } },
+    select: { id: true, first_name: true, last_name: true, ref_id: true, phone_primary: true, deletedAt: true },
+  });
+  const same = rows.filter((d) => phoneKey(d.phone_primary) === key);
+  return {
+    live: same.find((d) => !d.deletedAt) ?? null,
+    deleted: same.filter((d) => d.deletedAt).map((d) => d.id),
+  };
+}
+
+export function phoneInUseMessage(d: { first_name: string; last_name: string; ref_id: string | null }): string {
+  return `This phone is already used by driver ${`${d.first_name} ${d.last_name}`.trim()}${d.ref_id ? ` (${d.ref_id})` : ''}.`;
+}
+
+/** A deleted driver keeps its number; let a live driver have it. */
+export async function releaseDeletedDriverPhones(db: Db, ids: string[]) {
+  if (ids.length) await db.driver.updateMany({ where: { id: { in: ids }, deletedAt: { not: null } }, data: { phone_primary: null } });
+}

@@ -203,6 +203,11 @@ export default function EditDriverPage() {
 
   const isExpiryValid = formData.license_expiry ? new Date(formData.license_expiry) > new Date() : false;
   const isExpired = formData.license_expiry !== '' && !isExpiryValid;
+  // An already-expired date that wasn't touched must not block other edits
+  // (phone, password…); it is only re-validated — and re-sent — when changed.
+  const originalExpiry = driver?.license_expiry ? new Date(driver.license_expiry).toISOString().split('T')[0] : '';
+  const expiryChanged = formData.license_expiry !== originalExpiry;
+  const expiryOk = isExpiryValid || (!expiryChanged && formData.license_expiry !== '');
   const isPhoneValid = validateSaudiPhone(formData.phone_primary);
   const isLicenseValid = validateSaudiLicense(formData.license_number);
 
@@ -212,7 +217,7 @@ export default function EditDriverPage() {
     isPhoneValid &&
     isLicenseValid &&
     formData.license_expiry !== '' &&
-    isExpiryValid;
+    expiryOk;
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -229,7 +234,7 @@ export default function EditDriverPage() {
       setError('License Expiry is required and must be a valid date.');
       return;
     }
-    if (!isExpiryValid) {
+    if (!expiryOk) {
       setError('License is already expired. Driver must have a future-dated valid license.');
       return;
     }
@@ -241,8 +246,10 @@ export default function EditDriverPage() {
     }
     if (!id) return;
 
+    const { license_expiry, ...profile } = formData;
     updateMutation.mutate({
-      ...formData,
+      ...profile,
+      ...(expiryChanged ? { license_expiry } : {}),
       assigned_vehicle_id: formData.assigned_vehicle_id || null,
     });
   };
@@ -452,7 +459,7 @@ export default function EditDriverPage() {
                       />
                       {isExpired && (
                         <p className="text-[10px] text-rose-500 font-semibold mt-0.5">
-                          License is expired — choose a future date.
+                          {expiryChanged ? 'License is expired — choose a future date.' : 'License is expired — other changes can still be saved.'}
                         </p>
                       )}
                     </div>
