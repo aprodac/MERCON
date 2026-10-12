@@ -51,6 +51,21 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
   const lastEvent = returnHome ?? (slot.dropoffTime ? outboundArrival : null);
   const runMinutes = slot.pickupTime && lastEvent ? (lastEvent.day ?? 0) * 1440 + toMin(lastEvent.time) - toMin(slot.pickupTime) : null;
   const returnFrom = (slot.returnOrigin || '').trim() || slot.destination;
+  /** Minutes after pickup of a planned time, for the route timing. */
+  const afterPickup = (v: WhenValue | null) => (slot.pickupTime && v?.time ? (v.day ?? 0) * 1440 + toMin(v.time) - toMin(slot.pickupTime) : null);
+  const routeTiming = (
+    <RouteTiming
+      eta={form.eta}
+      pending={form.etaPending}
+      startTime={pickupSet ? slot.pickupTime : undefined}
+      dutyMinutes={form.dutyMinutes}
+      returnLoadAt={returnLoadAt}
+      onEditPickup={() => setPicker('pickup')}
+      plannedDropoff={{ at: slot.dropoffTime ? afterPickup(outboundArrival) : null, auto: !form.dropoffTouched, onEdit: () => setPicker('dropoff') }}
+      plannedReturnLoad={round ? { at: returnLoadAt, onEdit: () => setPicker('returnPickup') } : undefined}
+      plannedHome={round ? { at: afterPickup(returnHome), auto: !form.returnDropoffTouched, onEdit: () => (returnLoad ? setPicker('returnDropoff') : setPicker('returnPickup')) } : undefined}
+    />
+  );
 
   function wayBack() {
     const homeBadge = !form.returnDropoffTouched && slot.returnDropoffTime ? <Chip label="Suggested" /> : null;
@@ -82,7 +97,7 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
         ) : (
           <View style={styles.wayBackFoot}>
             <Text style={[styles.hint, { flex: 1, marginTop: 0 }]}>
-              {!form.returnDropoffTouched ? 'Arrival home is filled in from the drive back. Tap to change.' : 'Arrival home set by you.'}
+              {!form.returnDropoffTouched ? 'Arrival home is filled in from the drive back, no rest included. Tap to plan it.' : 'Arrival home set by you.'}
             </Text>
             <TouchableOpacity
               onPress={() => {
@@ -108,7 +123,7 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
             <View style={styles.row}>
               <ValueTile caption="Pickup" value={slot.pickupTime} placeholder="--:--" onPress={() => setPicker('pickup')} error={Boolean(err('pickup'))} style={{ flex: 1 }} />
               <ValueTile
-                caption="Drop-off"
+                caption="Planned drop-off"
                 value={round && slot.dropoffTime ? show(outboundArrival) : slot.dropoffTime}
                 placeholder="--:--"
                 onPress={() => setPicker('dropoff')}
@@ -123,7 +138,7 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
             </Text>
           </Section>
           {round ? wayBack() : null}
-          <RouteTiming eta={form.eta} pending={form.etaPending} startTime={slot.pickupTime || undefined} dutyMinutes={form.dutyMinutes} returnLoadAt={returnLoadAt} />
+          {routeTiming}
         </>
       ) : (
         <>
@@ -155,9 +170,9 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
             <ErrorText>{err('date') || err('pickup')}</ErrorText>
           </Section>
 
-          <RouteTiming eta={form.eta} pending={form.etaPending} startTime={pickupSet ? slot.pickupTime : undefined} dutyMinutes={form.dutyMinutes} returnLoadAt={returnLoadAt} />
+          {routeTiming}
 
-          <Section icon={Flag} tone="coral" title="Drop-off" badge={suggestedBadge}>
+          <Section icon={Flag} tone="coral" title="Planned drop-off" badge={suggestedBadge}>
             <View style={styles.row}>
               <ValueTile caption="Date" value={slot.dropoffTime ? fmtDay(slot.dropoffDate || slot.date) : ''} placeholder="—" onPress={() => setPicker('dropoff')} error={Boolean(err('dropoff'))} style={{ flex: 1 }} />
               <ValueTile caption="Time" value={slot.dropoffTime} placeholder="--:--" onPress={() => setPicker('dropoff')} error={Boolean(err('dropoff'))} style={{ width: 104 }} />
@@ -167,7 +182,7 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
               <Text style={styles.hint}>Set the pickup first — the drop-off is then suggested from the {form.dutyMinutes ? 'duty length' : 'drive time'}.</Text>
             ) : !form.dropoffTouched ? (
               <Text style={styles.hint}>
-                Filled in from the {form.dutyMinutes ? 'duty length' : 'route timing above, every stop included'}. Tap to change.
+                {form.dutyMinutes ? 'Filled in from the duty length' : 'Filled in from the drive-only time — no rest included'}. Tap to plan the real arrival.
               </Text>
             ) : null}
           </Section>
