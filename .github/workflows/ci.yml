@@ -33,8 +33,38 @@ jobs:
       - name: Typecheck Backend API Server
         run: cd backend/api-server && npx tsc --noEmit
 
+      # The API's unit tests (every `test:*` script that needs no database — scripts/run-unit-tests.js).
+      - name: Test Backend API Server
+        run: cd backend/api-server && npm run test:unit
+
+      # tsconfig.json is a solution file with `files: []` — `-p .` checked nothing; the app config holds the sources.
       - name: Typecheck Frontend Web Dashboard
-        run: cd frontend/web-dashboard && npx tsc --noEmit
+        run: cd frontend/web-dashboard && npx tsc --noEmit -p tsconfig.app.json
 
       - name: Build All Monorepo Workspaces
         run: npm run build
+
+  mobile:
+    name: Typecheck Mobile Apps
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4.2.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/mobile-app/package-lock.json
+
+      # frontend/mobile-app is its own npm workspace (driver app, operator app, shared).
+      - name: Install Mobile Dependencies
+        run: cd frontend/mobile-app && npm ci
+
+      - name: Typecheck Driver App
+        run: cd frontend/mobile-app/driver-app && npx tsc --noEmit
+
+      - name: Typecheck Operator App
+        run: cd frontend/mobile-app/operator-app && npx tsc --noEmit

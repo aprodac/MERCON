@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Alert } from 'react-native';
 import {
-  FileText, Link2, MapPin, Pencil, Send, TriangleAlert, Package, ShieldAlert, Trash2, Truck, XCircle, type LucideIcon,
+  FileText, Link2, MapPin, Pencil, Send, TriangleAlert, Package, ShieldAlert, Trash2, Truck, Undo2, XCircle, type LucideIcon,
 } from 'lucide-react-native';
 import { SUGGESTED_CHARGE_TYPES, SUGGESTED_UNIT_BY_CHARGE_TYPE } from '@mercon/shared-types';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
@@ -14,7 +14,7 @@ import { ACTION, Divider, INK, MUTED, SheetRow } from './parts';
 // ── More ──────────────────────────────────────────────────────────────────────
 
 export function MoreSheet({
-  visible, trip, active, assignment, onClose, onEdit, onCancel, onQuick, tracking,
+  visible, trip, active, assignment, onClose, onEdit, onCancel, onQuick, tracking, onStepBack,
 }: {
   visible: boolean;
   trip: OperatorTripDetail;
@@ -27,6 +27,8 @@ export function MoreSheet({
   onCancel: () => void;
   /** The customer tracking link row — absent when the trip has no link (draft, cancelled, tracking off). */
   tracking?: { sub: string; onPress: () => void } | null;
+  /** "Undo driver's step" — absent when there's no driver progress to take back. */
+  onStepBack?: () => void;
 }) {
   const go = (fn: () => void) => () => { onClose(); setTimeout(fn, 250); };
   return (
@@ -46,6 +48,9 @@ export function MoreSheet({
             <SheetRow icon={MapPin} tint={TONE.red.bg} fg={TONE.red.fg} label="Send location" sub="WhatsApp the truck's live position" onPress={go(() => onQuick('location'))} />
             <SheetRow icon={TriangleAlert} tint="#FFF3D6" fg="#7A4F00" label="Send delay notice" sub="Tell the customer about a delay" onPress={go(() => onQuick('delay'))} />
           </>
+        ) : null}
+        {onStepBack ? (
+          <SheetRow icon={Undo2} tint="#F1F3F7" fg={INK} label="Undo driver's step" sub="Driver tapped ahead? Take the trip back" onPress={go(onStepBack)} />
         ) : null}
         {canCancel(trip) ? (
           <>

@@ -193,6 +193,24 @@ export async function completeTrip(
 const RUNNING_TRIP_STATUSES: TripStatus[] = [TripStatus.Loading, TripStatus.InTransit, TripStatus.Delayed];
 
 /**
+ * The trip is on the road: its driver, co-driver and truck are "On trip". Only
+ * Available is flipped — OffDuty / Inactive / Maintenance are someone's decision.
+ * The driver app's status path didn't do this, so drivers out on a trip kept
+ * reading "Available" everywhere that looks at the stored status.
+ */
+export async function markOnTrip(
+  tx: Prisma.TransactionClient,
+  trip: { driverId?: string | null; co_driver_id?: string | null; vehicleId?: string | null },
+) {
+  for (const id of [trip.driverId, trip.co_driver_id]) {
+    if (id) await tx.driver.updateMany({ where: { id, status: DriverStatus.Available }, data: { status: DriverStatus.OnTrip } });
+  }
+  if (trip.vehicleId) {
+    await tx.vehicle.updateMany({ where: { id: trip.vehicleId, status: AssetStatus.Available }, data: { status: AssetStatus.OnTrip } });
+  }
+}
+
+/**
  * Put drivers back to Available once a trip lets go of them — but only when
  * they have no other trip running. Releasing unconditionally (on complete,
  * cancel, reassign, …) freed drivers who were still on another trip, so the

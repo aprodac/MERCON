@@ -1,3 +1,4 @@
+import { countStepBackRemoved } from '../services/tripStepBack';
 import { Request, Response } from 'express';
 import { linkInlineImage } from '../services/inlineImages';
 import { normalizeAssistantConfig } from '@mercon/shared-types';
@@ -530,6 +531,38 @@ export const getTrips = async (req: Request, res: Response) => {
   }
 };
 
+/** The trip's "Undo driver's step" history, newest first (audit log TRIP_STEPPED_BACK). */
+async function tripStepBacks(tripId: string) {
+  try {
+    const rows = await prisma.auditLog.findMany({
+      where: { entityType: 'Trip', entityId: tripId, action: 'TRIP_STEPPED_BACK' },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      select: { createdAt: true, metadata: true, user: { select: { name: true, username: true } } },
+    });
+    return Promise.all(rows.map(async (r) => {
+      const m = (r.metadata ?? {}) as any;
+      const removedAt: string | null = m.photos?.removed_at ?? null;
+      return {
+        at: r.createdAt.toISOString(),
+        by: r.user?.name || r.user?.username || null,
+        from: m.from?.label ?? null,
+        to: m.to?.label ?? null,
+        photos: m.photos ? {
+          choice: m.photos.choice ?? 'keep',
+          count: Number(m.photos.count) || 0,
+          moved_to: m.photos.moved_to ?? null,
+          removed_at: removedAt,
+          // Still removed (0 once restored) — the "Restore" button shows while > 0.
+          restorable: removedAt ? await countStepBackRemoved(tripId, removedAt) : 0,
+        } : null,
+      };
+    }));
+  } catch {
+    return [];
+  }
+}
+
 export const getTripById = async (req: Request, res: Response) => {
   try {
     const idOrRef = (req.params.id as string || '').trim();
@@ -671,6 +704,8 @@ export const getTripById = async (req: Request, res: Response) => {
         : null,
       rateCard: mappedRateCard,
       route_timeline: buildTripRouteTimeline(trip as any),
+      // When the office took the trip back a step (services/tripStepBack): who, when, from → to.
+      step_backs: await tripStepBacks(trip.id),
     };
 
     res.json({ success: true, data: tripData });

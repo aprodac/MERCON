@@ -15,7 +15,7 @@ const vehicle = (id: string, over: Partial<LiveVehicleRow> = {}): LiveVehicleRow
 
 const trip = (id: string, over: Partial<LiveTripRow> = {}): LiveTripRow => ({
   id, ref_id: `TRP-${id}`, status: 'InTransit', vehicleId: null, planned_start: null, planned_end: null,
-  updatedAt: ago(60), customer: { name: 'SABIC' }, driver: null,
+  updatedAt: ago(60), customer: { name: 'SABIC', logo_url: null }, driver: null,
   stops: [
     { id: 's2', stop_sequence: 2, stop_type: 'Dropoff', location_name: 'Jubail', location_address: null, location_lat: 27, location_lng: 49.6, planned_arrival: null, actual_arrival: null, actual_departure: null },
     { id: 's1', stop_sequence: 1, stop_type: 'Pickup', location_name: 'Riyadh', location_address: null, location_lat: 24.7, location_lng: 46.7, planned_arrival: null, actual_arrival: ago(3600), actual_departure: ago(3000) },

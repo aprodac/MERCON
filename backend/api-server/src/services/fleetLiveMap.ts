@@ -517,7 +517,14 @@ export interface LiveMediaItem {
   stage: LiveMediaStage;
   url: string;
   mime: string | null;
+  /** When the photo was taken (the phone's GPS fix time), else when it was uploaded. */
   captured_at: string;
+  /** When it reached the server. */
+  uploaded_at?: string;
+  /** Where the phone was when the photo was taken (geotag), if the app sent it. */
+  gps?: { lat: number; lng: number } | null;
+  /** Set when the office moved it here while taking the trip back a step (services/tripStepBack). */
+  moved_at?: string | null;
 }
 
 export interface LiveStopMedia {
@@ -611,11 +618,20 @@ export function groupTripMedia(stops: TripMediaStopRow[], docs: TripMediaDocRow[
   const unplaced: LiveMediaItem[] = [];
 
   for (const d of [...docs].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())) {
-    const meta = (d.ai_extracted_json ?? {}) as { stop_id?: unknown; operation?: unknown; gps?: { captured_at?: unknown } };
+    const meta = (d.ai_extracted_json ?? {}) as {
+      stop_id?: unknown; operation?: unknown;
+      gps?: { captured_at?: unknown; latitude?: unknown; longitude?: unknown };
+      moved_by_step_back?: { at?: unknown };
+    };
     const captured = typeof meta.gps?.captured_at === 'string' ? meta.gps.captured_at : iso(d.createdAt)!;
     const stage = mediaStage(meta.operation, d.doc_type);
+    const lat = Number(meta.gps?.latitude);
+    const lng = Number(meta.gps?.longitude);
+    const gps = Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0) ? { lat, lng } : null;
+    const movedAt = typeof meta.moved_by_step_back?.at === 'string' ? meta.moved_by_step_back.at : null;
     const item = (id: string, url: string, mime: string | null): LiveMediaItem => ({
       id, kind: mediaKind(d.doc_type, url, mime), stage, url, mime, captured_at: captured,
+      uploaded_at: iso(d.createdAt)!, gps, moved_at: movedAt,
     });
     const items = [item(d.id, d.file_url, d.mime_type), ...d.files.map((f) => item(f.id, f.file_url, f.mime_type))];
 
