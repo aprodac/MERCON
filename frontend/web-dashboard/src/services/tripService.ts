@@ -469,6 +469,23 @@ export interface UpdateTripFinancialsPayload {
   update_quotation_payout?: boolean;
 }
 
+/** backend services/tripStepBack.ts */
+export interface TripProgressStep { index: number; key: string; label: string; next: string; done: boolean; at: string | null }
+export interface TripProgressSteps {
+  steps: TripProgressStep[];
+  current: number;
+  can_step_back: boolean;
+  blocked_reason: string | null;
+  photos_after: Record<number, number>;
+}
+export interface StepBackResult {
+  trip_id: string;
+  from: { index: number; label: string };
+  to: { index: number; label: string; next: string };
+  cleared: number;
+  photos: { choice: 'move' | 'remove' | 'keep'; count: number; moved_to: string | null };
+}
+
 export const tripService = {
   async getAll(filters: TripFilters = {}): Promise<ApiResponse<Trip[]>> {
     const res = await api.get<ApiResponse<Trip[]>>('/trips', { params: filters });
@@ -548,6 +565,18 @@ export const tripService = {
     } catch {
       return [];
     }
+  },
+
+  /** The trip's steps (done / not done) and how many photos each "go back to here" affects. */
+  async progressSteps(id: string): Promise<TripProgressSteps> {
+    const res = await api.get<ApiResponse<TripProgressSteps>>(`/trips/${id}/progress-steps`);
+    return res.data.data;
+  },
+
+  /** Take the trip back to step `to_index` (-1 = not started). Photos taken after it: move onto the redone step, remove, or keep. */
+  async stepBack(id: string, body: { to_index: number; photos: 'move' | 'remove' | 'keep' }): Promise<StepBackResult> {
+    const res = await api.post<ApiResponse<StepBackResult>>(`/trips/${id}/step-back`, body);
+    return res.data.data;
   },
 
   async updateStatus(id: string, status: TripStatus): Promise<Trip> {

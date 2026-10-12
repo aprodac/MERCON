@@ -1,7 +1,7 @@
 /** Every stop in order: planned vs actual time, lateness, delay reason, photos, and screenshots to check. */
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking, Image } from 'react-native';
-import { Check, CheckCheck, Clock3, Image as ImageIcon, ImageOff, MapPin, MessageCircle, Navigation, Play, TriangleAlert } from 'lucide-react-native';
+import { Check, CheckCheck, Clock3, Image as ImageIcon, ImageOff, MapPin, MessageCircle, Navigation, Play, TriangleAlert, Undo2 } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import type { DriverUpdate, LiveMediaItem, OperatorTripDetail, OperatorTripDocument, TripPhase } from '../../../../lib/operator';
@@ -27,13 +27,15 @@ interface Props {
   focusStopId?: string | null;
   /** Where each stop's row sits inside the tab, so the page can scroll to it. */
   onStopLayout?: (stopId: string, y: number) => void;
+  /** "Undo driver's step" — shown while the driver has progress the office can take back. */
+  onStepBack?: () => void;
 }
 
 /** Only an EXACT pin can be trusted for ETA, navigation and arrival — anything else needs one. */
 export const needsPin = (st: Stop) =>
   st.location_coordinate_precision !== 'EXACT' || !Number.isFinite(st.location_lat) || !(st.location_lat || st.location_lng);
 
-export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, onCheckTimes, onSetPin, focusStopId, onStopLayout }: Props) {
+export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, onCheckTimes, onSetPin, focusStopId, onStopLayout, onStepBack }: Props) {
   const stops = sortedStops(trip);
   // Round trip: a heading over each leg — "Leg 1 · Riyadh → Jeddah", "Leg 2 · Jeddah → Riyadh".
   const legs = tripLegsOf(trip);
@@ -59,6 +61,12 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
 
   return (
     <Card style={{ paddingVertical: 8 }}>
+      {onStepBack ? (
+        <TouchableOpacity style={s.undoBar} activeOpacity={0.75} onPress={onStepBack} accessibilityRole="button" accessibilityLabel="Undo driver's step">
+          <Undo2 size={14} color={INK} />
+          <Text style={s.undoText}>Driver tapped ahead? <Text style={{ fontWeight: '800' }}>Undo a step</Text></Text>
+        </TouchableOpacity>
+      ) : null}
       {purged ? (
         <View style={s.purged}>
           <ImageIcon size={13} color={MUTED} />
@@ -210,6 +218,8 @@ function PhotoSet({ u, onOpen, onSend }: { u: DriverUpdate; onOpen: (index: numb
 }
 
 const s = StyleSheet.create({
+  undoBar: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginHorizontal: 8, marginTop: 4, marginBottom: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: '#F1F3F7' },
+  undoText: { fontSize: 13, color: INK },
   muted: { fontSize: 12, color: MUTED, marginTop: 2 },
   legHead: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: 2 },
   legHeadGap: { marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#ECECEF' },

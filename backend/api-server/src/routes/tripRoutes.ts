@@ -12,7 +12,8 @@ import { getTripDriverTrail } from '../controllers/driverPhoneController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles, requireModuleEnabled } from '../middlewares/rbac';
 import { validate } from '../middlewares/validate';
-import { createTripBody, listQuery, logStopDelayBody, confirmEvidenceTimeBody, confirmTripTimesBody, bulkImportTripsBody, updateTripStopBody, updateTripStopsRouteBody, pinBody, reviewTripChargesBody } from '../schemas';
+import { createTripBody, listQuery, logStopDelayBody, confirmEvidenceTimeBody, confirmTripTimesBody, bulkImportTripsBody, updateTripStopBody, updateTripStopsRouteBody, pinBody, reviewTripChargesBody, tripStepBackBody } from '../schemas';
+import { getProgressSteps, stepBack } from '../controllers/tripStepBackController';
 
 import { getDriverRecommendations, getVehicleRecommendations } from '../controllers/fleetDispatchController';
 
@@ -42,6 +43,9 @@ router.get('/:id', getTripById);
 // What the driver was sent for this trip, whether it reached the phone, and what they did.
 router.get('/:id/driver-trail', getTripDriverTrail);
 router.patch('/:id/status', updateTripStatus);
+// Undo the driver's progress back to an earlier step (driver tapped ahead by mistake).
+router.get('/:id/progress-steps', validate({ params: idParam }), getProgressSteps);
+router.post('/:id/step-back', validate({ params: idParam, body: tripStepBackBody }), stepBack);
 router.patch('/:id/financials', updateTripFinancials);
 router.post('/:id/charge-review', validate({ body: reviewTripChargesBody }), reviewTripCharges);
 

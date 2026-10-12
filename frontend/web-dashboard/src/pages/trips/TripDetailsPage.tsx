@@ -5,7 +5,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Copy, Check, CornerUpLeft, Smartphone, XCircle, AlertTriangle, MoreHorizontal, MapPin, ArrowRight,
   CalendarClock, Repeat, Receipt, FileText, Clock, ChevronDown, Navigation, Image as ImageIcon,
-  User as UserIcon, Truck, UploadCloud, SquarePen, X, Coins, ListOrdered, Link2, ExternalLink, RefreshCw, Eye,
+  User as UserIcon, Truck, UploadCloud, SquarePen, X, Coins, ListOrdered, Link2, ExternalLink, RefreshCw, Eye, Undo2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -37,6 +37,7 @@ import { computeTripFinancials } from '@/utils/financialCalculations';
 
 import TripMap from '@/components/maps/live/TripMap';
 import TripStopsPanel from '@/components/trips/details/TripStopsPanel';
+import { StepBackDialog } from '@/components/trips/details/StepBackDialog';
 import { DriverPhoneLine, TripDriverTrailList, currentAcknowledgement } from '@/components/trips/details/TripDriverTrail';
 import { driverPhoneKey } from '@/components/drivers/phone/DriverPhoneSheet';
 import { driverPhoneService } from '@/services/driverPhoneService';
@@ -128,6 +129,8 @@ export default function TripDetailsPage() {
   const [isReassignModalOpen, setIsReassignModalOpen] = useState(false);
   const [reassignMode, setReassignMode] = useState<ReassignMode>('driver');
   const [isActivityLogOpen, setIsActivityLogOpen] = useState(false);
+  // Undo the driver's progress back to an earlier step (driver tapped ahead by mistake).
+  const [isStepBackOpen, setIsStepBackOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isLaborModalOpen, setIsLaborModalOpen] = useState(false);
 
@@ -446,6 +449,10 @@ export default function TripDetailsPage() {
     return a ? fmt(a) : b ? `by ${fmt(b)}` : '—';
   };
 
+  // A driver who has started (or finished, not yet invoiced) can be taken back a step.
+  const canStepBack = ['Loading', 'InTransit', 'Delayed', 'Completed'].includes(String(trip.status))
+    || (trip.status === 'Scheduled' && !!(trip as any).driver_workflow_state && (trip as any).driver_workflow_state !== 'ASSIGNED');
+
   const statePhrase = (() => {
     if (phase === 'planned') {
       if (!trip.planned_start) return null;
@@ -590,6 +597,14 @@ export default function TripDetailsPage() {
                                 ))}
                               </>
                             )}
+                            {canStepBack && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onSelect={() => setIsStepBackOpen(true)} className="gap-2 text-sm">
+                                  <Undo2 className="size-3.5 text-muted-foreground" /> Undo driver's step…
+                                </DropdownMenuItem>
+                              </>
+                            )}
                             {statusMoves.cancel && (
                               <>
                                 <DropdownMenuSeparator />
@@ -707,6 +722,11 @@ export default function TripDetailsPage() {
                       <DropdownMenuItem onClick={() => { setUploadDocType(undefined); setIsUploadModalOpen(true); }}>
                         <UploadCloud size={14} className="mr-2 text-muted-foreground" /> Upload document
                       </DropdownMenuItem>
+                      {canStepBack && (
+                        <DropdownMenuItem onClick={() => setIsStepBackOpen(true)}>
+                          <Undo2 size={14} className="mr-2 text-muted-foreground" /> Undo driver's step…
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem onClick={() => setIsActivityLogOpen(true)}>
                         <ListOrdered size={14} className="mr-2 text-muted-foreground" /> Activity log
                       </DropdownMenuItem>
@@ -887,6 +907,7 @@ export default function TripDetailsPage() {
       </Sheet>
 
       {/* ── Status Confirmation Modal ── */}
+      <StepBackDialog tripId={trip.id} tripRef={trip.ref_id} open={isStepBackOpen} onOpenChange={setIsStepBackOpen} />
       <ConfirmModal
         isOpen={renewLinkOpen}
         onClose={() => setRenewLinkOpen(false)}

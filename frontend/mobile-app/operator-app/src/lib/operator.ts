@@ -83,6 +83,8 @@ export interface OperatorTripDetail {
   ref_id: string | null;
   status: TripStatus;
   driver_workflow?: 'NATIVE' | 'EXTERNAL_APP';
+  /** Where the driver's app is in the trip (ARRIVED_AT_PICKUP, IN_TRANSIT, …). */
+  driver_workflow_state?: string | null;
   planned_distance: number | null;
   planned_start: string | null;
   actual_start: string | null;
@@ -505,6 +507,23 @@ export interface OperatorQuotationDetail {
 }
 
 /** A driver as the create-trip form needs them: status and assigned truck. */
+/** backend services/tripStepBack.ts */
+export interface TripProgressStep { index: number; key: string; label: string; next: string; done: boolean; at: string | null }
+export interface TripProgressSteps {
+  steps: TripProgressStep[];
+  current: number;
+  can_step_back: boolean;
+  blocked_reason: string | null;
+  photos_after: Record<number, number>;
+}
+export interface StepBackResult {
+  trip_id: string;
+  from: { index: number; label: string };
+  to: { index: number; label: string; next: string };
+  cleared: number;
+  photos: { choice: 'move' | 'remove' | 'keep'; count: number; moved_to: string | null };
+}
+
 export interface OperatorDriverOption extends OperatorDriver {
   assignedVehicleId?: string | null;
   assigned_vehicle_id?: string | null;
@@ -1181,6 +1200,18 @@ export const operatorService = {
    * driver off their truck, driver_id null empties the truck. Preview says what else changes (the
    * other truck left empty, the other driver left without a truck); apply does it in one step.
    */
+  /** The trip's steps (done / not done) and how many photos each "go back to here" affects (backend services/tripStepBack.ts). */
+  async tripProgressSteps(id: string): Promise<TripProgressSteps> {
+    const { data } = await api.get(`/trips/${id}/progress-steps`);
+    return data.data as TripProgressSteps;
+  },
+
+  /** Take the trip back to step `to_index` (-1 = not started); photos taken since: move onto the redone step, remove, or keep. */
+  async stepBackTrip(id: string, body: { to_index: number; photos: 'move' | 'remove' | 'keep' }): Promise<StepBackResult> {
+    const { data } = await api.post(`/trips/${id}/step-back`, body);
+    return data.data as StepBackResult;
+  },
+
   async previewTruckAssignment(body: { driver_id: string | null; vehicle_id: string | null }): Promise<AssignmentPreview> {
     const { data } = await api.post('/drivers/truck-assignment/preview', body);
     return data.data as AssignmentPreview;

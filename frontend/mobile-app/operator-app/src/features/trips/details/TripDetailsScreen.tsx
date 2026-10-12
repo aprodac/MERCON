@@ -35,6 +35,7 @@ import { MediaViewer, type ViewerItem } from './components/MediaViewer';
 import { TripTimesSheet } from './components/TripTimesSheet';
 import { PinSheet } from './components/PinSheet';
 import { ActivitySheet, ChargesSheet, MoreSheet, UploadSheet } from './components/Sheets';
+import { StepBackSheet } from './components/StepBackSheet';
 import { ACTION, INK, MUTED, PAGE, WA, WA_INK, WA_LIGHT, tap } from './components/parts';
 import { shareTextToWhatsApp } from '../../dashboard/components/ActiveTripsSection';
 
@@ -62,7 +63,7 @@ export default function TripDetailsScreen() {
   const [viewer, setViewer] = useState<{ items: ViewerItem[]; index: number; title: string; update?: DriverUpdate } | null>(null);
   const [checkingTimes, setCheckingTimes] = useState(false);
   const [pinTarget, setPinTarget] = useState<{ stop: Stop; label: string } | null>(null);
-  const [sheet, setSheet] = useState<'more' | 'upload' | 'activity' | 'charges' | null>(null);
+  const [sheet, setSheet] = useState<'more' | 'upload' | 'activity' | 'charges' | 'stepback' | null>(null);
   const [fullMap, setFullMap] = useState(false);
   const [picker, setPicker] = useState<{ kind: 'driver' | 'truck'; drivers?: OperatorDriver[]; vehicles?: OperatorVehicle[] } | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -153,6 +154,11 @@ export default function TripDetailsScreen() {
   const position = overview?.unit?.position ? { lat: overview.unit.position.lat, lng: overview.unit.position.lng } : null;
   const gps = overview?.unit?.position;
   const liveView = phase === 'active' && !!gps;
+  // The driver has progress the office can take back (not before Start, not once invoiced / cancelled).
+  const canStepBack = !!trip && (
+    ['Loading', 'InTransit', 'Delayed', 'Completed'].includes(trip.status)
+    || (trip.status === 'Scheduled' && !!trip.driver_workflow_state && trip.driver_workflow_state !== 'ASSIGNED')
+  );
 
   // ── Actions ────────────────────────────────────────────────────────────────
   const advance = () => {
@@ -378,6 +384,7 @@ export default function TripDetailsScreen() {
               onSetPin={(st) => setPinTarget({ stop: st, label: stopName(st, stops.indexOf(st)) })}
               focusStopId={focusStop}
               onStopLayout={params.stop ? onStopLayout : undefined}
+              onStepBack={canStepBack ? () => setSheet('stepback') : undefined}
             />
           ) : (
             <DetailsTab
@@ -449,7 +456,9 @@ export default function TripDetailsScreen() {
         active={phase === 'active'}
         assignment={phase === 'planned' || phase === 'active'}
         tracking={tracking?.enabled && tracking.url ? { sub: trackingSub(tracking.open_count, tracking.last_opened_at), onPress: trackingActions } : null}
+        onStepBack={canStepBack ? () => setSheet('stepback') : undefined}
       />
+      <StepBackSheet visible={sheet === 'stepback'} tripId={trip.id} f={f} onClose={() => setSheet(null)} onDone={reload} />
       <UploadSheet visible={sheet === 'upload'} onClose={() => setSheet(null)} onPick={upload} />
       <ActivitySheet visible={sheet === 'activity'} trip={trip} f={f} halts={overview?.halts ?? null} onClose={() => setSheet(null)} />
       <ChargesSheet visible={sheet === 'charges'} trip={trip} onClose={() => setSheet(null)} onSaved={reload} />
