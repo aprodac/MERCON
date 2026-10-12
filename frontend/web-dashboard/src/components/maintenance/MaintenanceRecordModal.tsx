@@ -293,7 +293,7 @@ export default function MaintenanceRecordModal({
                   <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Vehicle System *</Label>
                   <Select
                     value={formData.system || 'others'}
-                    onValueChange={(val: VehicleSystemCategory) => setFormData(prev => ({ ...prev, system: val }))}
+                    onValueChange={(val) => setFormData(prev => ({ ...prev, system: val as VehicleSystemCategory }))}
                   >
                     <SelectTrigger className="h-9.5 text-xs bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl font-semibold">
                       <SelectValue placeholder="Select Vehicle System" />
@@ -314,7 +314,7 @@ export default function MaintenanceRecordModal({
                   <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Maintenance Type *</Label>
                   <Select
                     value={formData.maintenance_type}
-                    onValueChange={(val: MaintenanceType) => setFormData(prev => ({ ...prev, maintenance_type: val }))}
+                    onValueChange={(val) => setFormData(prev => ({ ...prev, maintenance_type: val as MaintenanceType }))}
                   >
                     <SelectTrigger className="h-9.5 text-xs bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl font-semibold">
                       <SelectValue placeholder="Select Type" />
@@ -334,7 +334,7 @@ export default function MaintenanceRecordModal({
                 <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Status *</Label>
                 <Select
                   value={formData.status}
-                  onValueChange={(val: MaintenanceStatus) => setFormData(prev => ({ ...prev, status: val }))}
+                  onValueChange={(val) => setFormData(prev => ({ ...prev, status: val as MaintenanceStatus }))}
                 >
                   <SelectTrigger className="h-9.5 text-xs bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl">
                     <SelectValue placeholder="Select Status" />
