@@ -422,7 +422,7 @@ export default function ChartOfAccountsPage() {
                   </label>
                   <Select
                     value={formData.account_type}
-                    onValueChange={(val: AccountType) => setFormData({ ...formData, account_type: val })}
+                    onValueChange={(val) => setFormData({ ...formData, account_type: val as AccountType })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select type" />
