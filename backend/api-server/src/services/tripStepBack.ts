@@ -23,15 +23,15 @@
  * Photos uploaded after step k can move onto the step being redone (loading
  * photos that went in as delivery POD), be removed from the trip, or stay.
  */
-import { DocType, TripStatus, AssetStatus, DriverStatus, type Prisma, type TripStop } from '@prisma/client';
+import { DocType, TripStatus, type Prisma, type TripStop } from '@prisma/client';
 import { getLegEndpoints, isRoundTrip } from '@mercon/shared-types';
 import { prisma } from '../db';
-import { releaseDriversIfFree, releaseVehiclesIfFree } from './tripLifecycle';
+import { markOnTrip, releaseDriversIfFree, releaseVehiclesIfFree } from './tripLifecycle';
 
 type StopField = 'actual_arrival' | 'actual_departure';
 type Role = 'pickup' | 'stop' | 'delivery';
 
-interface StepDef {
+export interface StepDef {
   key: string;
   label: string;
   /** What the driver does next once the trip is back right after this step. */
@@ -77,7 +77,7 @@ const placeName = (s: Pick<TripStop, 'location_name'> | null | undefined) =>
 
 type StopRow = TripStop;
 
-function buildSteps(stops: StopRow[]): StepDef[] {
+export function buildSteps(stops: StopRow[]): StepDef[] {
   const sorted = [...stops].sort((a, b) => a.stop_sequence - b.stop_sequence);
   if (sorted.length === 0) return [];
   const round = isRoundTrip({ stops: sorted });
@@ -176,7 +176,7 @@ function buildSteps(stops: StopRow[]): StepDef[] {
 
 type TripRow = Prisma.TripGetPayload<{ include: { stops: true } }>;
 
-function stepState(trip: TripRow, steps: StepDef[]) {
+export function stepState(trip: TripRow, steps: StepDef[]) {
   const byId = new Map(trip.stops.map((s) => [s.id, s]));
   const stampOf = (m: { stopId: string; field: StopField }) => byId.get(m.stopId)?.[m.field] ?? null;
   const started = !!trip.driver_workflow_state && trip.driver_workflow_state !== 'ASSIGNED'
@@ -256,7 +256,8 @@ export interface StepBackResult {
   from: { index: number; label: string };
   to: { index: number; label: string; next: string };
   cleared: number;
-  photos: { choice: PhotoChoice; count: number; moved_to: string | null };
+  /** `removed_at`: the tag on removed photos — POST /trips/:id/step-back/restore-photos brings them back. */
+  photos: { choice: PhotoChoice; count: number; moved_to: string | null; removed_at?: string | null };
   driver_id: string | null;
 }
 
@@ -307,13 +308,11 @@ export async function stepBackTrip(tripId: string, toIndex: number, photoChoice:
       await releaseDriversIfFree(tx, [trip.driverId, trip.co_driver_id], [tripId]);
       await releaseVehiclesIfFree(tx, [trip.vehicleId], [tripId]);
     } else {
-      for (const d of [trip.driverId, trip.co_driver_id]) {
-        if (d) await tx.driver.updateMany({ where: { id: d, status: DriverStatus.Available }, data: { status: DriverStatus.OnTrip } });
-      }
-      if (trip.vehicleId) await tx.vehicle.updateMany({ where: { id: trip.vehicleId, status: AssetStatus.Available }, data: { status: AssetStatus.OnTrip } });
+      await markOnTrip(tx, trip);
     }
 
     // 4. Photos taken during the undone steps.
+    const stepAt = new Date().toISOString();
     const redo = redoStopOf(steps, toIndex);
     const photos = photosAfter(await tripPhotos(tx, tripId), target ? state[toIndex].at : null, redo?.stopId ?? null);
     let movedTo: string | null = null;
@@ -334,10 +333,18 @@ export async function stepBackTrip(tripId: string, toIndex: number, photoChoice:
         });
       }
     } else if (photos.length && photoChoice === 'remove') {
-      await tx.document.updateMany({
-        where: { id: { in: photos.map((p) => p.id) } },
-        data: { deletedAt: new Date(), deleted_by: userId ?? undefined },
-      });
+      // Soft-deleted and tagged with this step-back, so "Restore" can bring exactly these back.
+      for (const p of photos) {
+        const meta = (p.ai_extracted_json ?? {}) as Record<string, unknown>;
+        await tx.document.update({
+          where: { id: p.id },
+          data: {
+            deletedAt: new Date(stepAt),
+            deleted_by: userId ?? undefined,
+            ai_extracted_json: { ...meta, removed_by_step_back: { at: stepAt } } as Prisma.InputJsonValue,
+          },
+        });
+      }
     }
 
     return {
@@ -345,8 +352,41 @@ export async function stepBackTrip(tripId: string, toIndex: number, photoChoice:
       from: { index: current, label: steps[current].label },
       to: { index: toIndex, label: target ? target.label : 'Not started', next: target ? target.next : 'Start the trip' },
       cleared,
-      photos: { choice: photos.length ? photoChoice : 'keep', count: photos.length, moved_to: movedTo },
+      photos: { choice: photos.length ? photoChoice : 'keep', count: photos.length, moved_to: movedTo, removed_at: photos.length && photoChoice === 'remove' ? stepAt : null },
       driver_id: trip.driverId,
     };
+  });
+}
+
+/** Bring back the photos a step-back removed (tagged with its time). Returns how many came back. */
+export async function restoreStepBackPhotos(tripId: string, removedAt: string, userId: string | null): Promise<number> {
+  const docs = await prisma.document.findMany({
+    where: {
+      entity_type: 'Trip',
+      entity_id: tripId,
+      deletedAt: { not: null },
+      ai_extracted_json: { path: ['removed_by_step_back', 'at'], equals: removedAt },
+    },
+    select: { id: true, ai_extracted_json: true },
+  });
+  for (const d of docs) {
+    const { removed_by_step_back: _gone, ...meta } = (d.ai_extracted_json ?? {}) as Record<string, unknown>;
+    await prisma.document.update({
+      where: { id: d.id },
+      data: { deletedAt: null, deleted_by: null, updated_by: userId ?? undefined, ai_extracted_json: meta as Prisma.InputJsonValue },
+    });
+  }
+  return docs.length;
+}
+
+/** How many photos removed by that step-back are still removed (0 once restored). */
+export async function countStepBackRemoved(tripId: string, removedAt: string): Promise<number> {
+  return prisma.document.count({
+    where: {
+      entity_type: 'Trip',
+      entity_id: tripId,
+      deletedAt: { not: null },
+      ai_extracted_json: { path: ['removed_by_step_back', 'at'], equals: removedAt },
+    },
   });
 }

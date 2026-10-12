@@ -123,6 +123,15 @@ export interface VehicleRecommendation {
   unavailabilityReason?: string;
 }
 
+/** "Undo driver's step" history (GET /trips/:id step_backs). */
+export interface TripStepBackEntry {
+  at: string;
+  by: string | null;
+  from: string | null;
+  to: string | null;
+  photos: { choice: 'move' | 'remove' | 'keep'; count: number; moved_to: string | null; removed_at?: string | null; restorable?: number } | null;
+}
+
 export interface Trip {
   id: string;
   ref_id: string;
@@ -230,6 +239,8 @@ export interface Trip {
     billing_type?: string | null;
     driver_payout?: number | null;
   } | null;
+  /** Times the office took the trip back a step, newest first. */
+  step_backs?: TripStepBackEntry[];
 }
 
 export function getTripPayloadCapacity(trip: Partial<Trip>): string {
@@ -574,6 +585,12 @@ export const tripService = {
   },
 
   /** Take the trip back to step `to_index` (-1 = not started). Photos taken after it: move onto the redone step, remove, or keep. */
+  /** Bring back the photos a step-back removed. */
+  async restoreStepBackPhotos(id: string, removedAt: string): Promise<number> {
+    const res = await api.post<ApiResponse<{ restored: number }>>(`/trips/${id}/step-back/restore-photos`, { removed_at: removedAt });
+    return res.data.data.restored;
+  },
+
   async stepBack(id: string, body: { to_index: number; photos: 'move' | 'remove' | 'keep' }): Promise<StepBackResult> {
     const res = await api.post<ApiResponse<StepBackResult>>(`/trips/${id}/step-back`, body);
     return res.data.data;

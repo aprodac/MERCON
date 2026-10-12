@@ -1,3 +1,4 @@
+import { countStepBackRemoved } from '../services/tripStepBack';
 import { Request, Response } from 'express';
 import { linkInlineImage } from '../services/inlineImages';
 import { normalizeAssistantConfig } from '@mercon/shared-types';
@@ -539,16 +540,24 @@ async function tripStepBacks(tripId: string) {
       take: 20,
       select: { createdAt: true, metadata: true, user: { select: { name: true, username: true } } },
     });
-    return rows.map((r) => {
+    return Promise.all(rows.map(async (r) => {
       const m = (r.metadata ?? {}) as any;
+      const removedAt: string | null = m.photos?.removed_at ?? null;
       return {
         at: r.createdAt.toISOString(),
         by: r.user?.name || r.user?.username || null,
         from: m.from?.label ?? null,
         to: m.to?.label ?? null,
-        photos: m.photos ? { choice: m.photos.choice ?? 'keep', count: Number(m.photos.count) || 0, moved_to: m.photos.moved_to ?? null } : null,
+        photos: m.photos ? {
+          choice: m.photos.choice ?? 'keep',
+          count: Number(m.photos.count) || 0,
+          moved_to: m.photos.moved_to ?? null,
+          removed_at: removedAt,
+          // Still removed (0 once restored) — the "Restore" button shows while > 0.
+          restorable: removedAt ? await countStepBackRemoved(tripId, removedAt) : 0,
+        } : null,
       };
-    });
+    }));
   } catch {
     return [];
   }

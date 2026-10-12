@@ -238,6 +238,24 @@ export default function TripDetailsScreen() {
   };
 
 
+  // Undo the "remove photos" of a step-back.
+  const restorePhotos = (removedAt: string) => {
+    Alert.alert('Restore the photos?', 'They go back onto the stops they were on before.', [
+      { text: 'Not now', style: 'cancel' },
+      {
+        text: 'Restore', onPress: async () => {
+          try {
+            const n = await operatorService.restoreStepBackPhotos(trip!.id, removedAt);
+            Alert.alert('Photos restored', `${n} photo${n === 1 ? '' : 's'} back on the trip.`);
+            reload();
+          } catch (e) {
+            Alert.alert('Could not restore', getApiErrorMessage(e));
+          }
+        },
+      },
+    ]);
+  };
+
   // Set pin for a stop, offering the driver's geotagged photos there as the pin.
   const openPin = (st: Stop, preselect: string | null = null) =>
     setPinTarget({ stop: st, label: stopName(st, stops.indexOf(st)), photoPins: photoPinsForStop(updates, st.id), preselect });
@@ -416,6 +434,7 @@ export default function TripDetailsScreen() {
               focusStopId={focusStop}
               onStopLayout={params.stop ? onStopLayout : undefined}
               onStepBack={canStepBack ? () => setSheet('stepback') : undefined}
+              onRestorePhotos={restorePhotos}
             />
           ) : (
             <DetailsTab

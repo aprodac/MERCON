@@ -6,7 +6,7 @@
  *                                  driver is told where their app now is.
  */
 import { Request, Response } from 'express';
-import { StepBackError, getTripProgressSteps, stepBackTrip } from '../services/tripStepBack';
+import { StepBackError, getTripProgressSteps, restoreStepBackPhotos, stepBackTrip } from '../services/tripStepBack';
 import { createDriverNotification } from './notificationController';
 import { logAuditEvent } from '../services/auditService';
 import { logger } from '../utils/logger';
@@ -45,7 +45,8 @@ export const stepBack = async (req: Request, res: Response) => {
         result.driver_id,
         'Trip step undone by the office',
         `Your trip was taken back to: ${result.to.label}. Next: ${result.to.next}.`,
-        'TRIP_STEPPED_BACK',
+        // The driver app's notification types are PascalCase (TripCancelled, TripReassigned …).
+        'TripSteppedBack',
         'Trip',
         result.trip_id,
       );
@@ -53,5 +54,19 @@ export const stepBack = async (req: Request, res: Response) => {
     res.json({ success: true, data: result });
   } catch (error) {
     fail(res, error, 'take the trip back');
+  }
+};
+
+/** POST /trips/:id/step-back/restore-photos { removed_at } — undo the "remove photos" of a step-back. */
+export const restoreStepBackPhotosHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id ?? null;
+    const removedAt = String(req.body?.removed_at ?? '');
+    if (!removedAt) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Which step-back? (removed_at)' } });
+    const restored = await restoreStepBackPhotos(req.params.id as string, removedAt, userId);
+    void logAuditEvent({ req, action: 'TRIP_STEP_BACK_PHOTOS_RESTORED', entityType: 'Trip', entityId: req.params.id as string, metadata: { removed_at: removedAt, restored } });
+    res.json({ success: true, data: { restored } });
+  } catch (error) {
+    fail(res, error, 'restore the photos');
   }
 };

@@ -186,6 +186,24 @@ export function DriverNotificationManager() {
                 },
               ]
             );
+          } else if (eventType === 'TripSteppedBack') {
+            // The office took the trip back a step: whatever screen is open is now ahead of the
+            // trip. Refetch, and go Home — it opens the right step from the trip's state.
+            queryClient.invalidateQueries();
+            Alert.alert(
+              payload?.title || 'Trip step undone',
+              payload?.message || 'The office took your trip back a step.',
+              [
+                {
+                  text: 'OK',
+                  onPress: () => {
+                    if (notifId) notificationService.markRead(notifId).catch(() => {});
+                    router.replace('/' as any);
+                  },
+                },
+              ],
+              { cancelable: false },
+            );
           } else if (eventType === 'TripReassigned') {
             void stopTripTrackingFor(tripId);
             queryClient.invalidateQueries();
@@ -286,6 +304,9 @@ export function DriverNotificationManager() {
         void stopTripTrackingFor(tripId);
         queryClient.invalidateQueries();
         Alert.alert('Trip Reassigned', 'This trip is no longer assigned to you.');
+      } else if (eventType === 'TripSteppedBack') {
+        queryClient.invalidateQueries();
+        router.replace('/' as any);
       }
     };
 

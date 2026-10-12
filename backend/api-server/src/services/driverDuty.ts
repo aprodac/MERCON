@@ -74,7 +74,7 @@ const placeOf = (s: DutyRow['stops'][number] | null) =>
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
 
-function toDutyTrip(t: DutyRow, driverId: string): DutyTrip {
+export function toDutyTrip(t: DutyRow, driverId: string): DutyTrip {
   const ends = tripEnds(t.stops, t.rate_category);
   const legs = splitLegs(t.stops, t.rate_category);
   // Free again at the latest of planned end and the last stop's planned arrival.

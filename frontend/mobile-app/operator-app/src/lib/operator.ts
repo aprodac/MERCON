@@ -266,7 +266,7 @@ export interface TripStepBackEntry {
   by: string | null;
   from: string | null;
   to: string | null;
-  photos: { choice: 'move' | 'remove' | 'keep'; count: number; moved_to: string | null } | null;
+  photos: { choice: 'move' | 'remove' | 'keep'; count: number; moved_to: string | null; removed_at?: string | null; restorable?: number } | null;
 }
 
 export type ShareRecipient = 'customer_contact' | 'customer_group' | 'internal' | 'other';
@@ -1228,6 +1228,12 @@ export const operatorService = {
   async stepBackTrip(id: string, body: { to_index: number; photos: 'move' | 'remove' | 'keep' }): Promise<StepBackResult> {
     const { data } = await api.post(`/trips/${id}/step-back`, body);
     return data.data as StepBackResult;
+  },
+
+  /** Bring back the photos a step-back removed. */
+  async restoreStepBackPhotos(id: string, removedAt: string): Promise<number> {
+    const { data } = await api.post(`/trips/${id}/step-back/restore-photos`, { removed_at: removedAt });
+    return Number(data.data?.restored ?? 0);
   },
 
   async previewTruckAssignment(body: { driver_id: string | null; vehicle_id: string | null }): Promise<AssignmentPreview> {

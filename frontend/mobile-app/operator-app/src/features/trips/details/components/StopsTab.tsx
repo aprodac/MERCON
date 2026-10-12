@@ -29,13 +29,15 @@ interface Props {
   onStopLayout?: (stopId: string, y: number) => void;
   /** "Undo driver's step" — shown while the driver has progress the office can take back. */
   onStepBack?: () => void;
+  /** Bring back the photos a step-back removed. */
+  onRestorePhotos?: (removedAt: string) => void;
 }
 
 /** Only an EXACT pin can be trusted for ETA, navigation and arrival — anything else needs one. */
 export const needsPin = (st: Stop) =>
   st.location_coordinate_precision !== 'EXACT' || !Number.isFinite(st.location_lat) || !(st.location_lat || st.location_lng);
 
-export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, onCheckTimes, onSetPin, focusStopId, onStopLayout, onStepBack }: Props) {
+export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, onCheckTimes, onSetPin, focusStopId, onStopLayout, onStepBack, onRestorePhotos }: Props) {
   const stops = sortedStops(trip);
   // Round trip: a heading over each leg — "Leg 1 · Riyadh → Jeddah", "Leg 2 · Jeddah → Riyadh".
   const legs = tripLegsOf(trip);
@@ -74,6 +76,11 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
                 ? ` · ${b.photos.count} photo${b.photos.count === 1 ? '' : 's'} ${b.photos.choice === 'move' ? `moved to ${b.photos.moved_to ?? 'the redone step'}` : b.photos.choice === 'remove' ? 'removed' : 'left as they were'}`
                 : ''}
             </Text>
+            {b.photos?.removed_at && (b.photos.restorable ?? 0) > 0 && onRestorePhotos ? (
+              <TouchableOpacity style={s.restore} onPress={() => onRestorePhotos(b.photos!.removed_at!)} hitSlop={6} accessibilityRole="button">
+                <Text style={s.restoreText}>Restore {b.photos.restorable} photo{b.photos.restorable === 1 ? '' : 's'}</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
       ))}
@@ -291,6 +298,8 @@ const s = StyleSheet.create({
   backNote: { flexDirection: 'row', gap: 8, alignItems: 'flex-start', marginHorizontal: 8, marginTop: 4, marginBottom: 6, padding: 10, borderRadius: 12, backgroundColor: '#F5F2FD' },
   backNoteTitle: { fontSize: 12, fontWeight: '800', color: '#4A2A93' },
   backNoteText: { fontSize: 13, color: INK, marginTop: 1, lineHeight: 18 },
+  restore: { alignSelf: 'flex-start', marginTop: 6, backgroundColor: '#FFFFFF', borderRadius: 999, borderWidth: 1, borderColor: '#D9CFF5', paddingHorizontal: 10, paddingVertical: 4 },
+  restoreText: { fontSize: 12, fontWeight: '800', color: '#4A2A93' },
   timeGrid: { flexDirection: 'row', gap: 6, marginTop: 8 },
   timeCell: { flex: 1, backgroundColor: '#F6F7F9', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 6 },
   timeLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5, color: '#8A8A96' },

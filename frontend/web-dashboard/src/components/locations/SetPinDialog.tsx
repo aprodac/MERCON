@@ -17,13 +17,27 @@ interface SetPinDialogProps {
   footnote?: string;
   /** Saves the pin; throw to show the error in the box. */
   onSave: (pin: PinPayload) => Promise<void>;
+  /** The driver's geotagged photos at this place — click one to put the pin where it was taken. */
+  photoPins?: { id: string; lat: number; lng: number; label: string }[];
+  /** Start on this photo's GPS (opened from a photo). */
+  preselectPhotoId?: string | null;
 }
+
+/** Great-circle metres. */
+function metersBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+  const R = 6371000;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+const metersText = (m: number) => (m < 1000 ? `${Math.max(1, Math.round(m / 10) * 10)} m` : `${(m / 1000).toFixed(m < 10000 ? 1 : 0)} km`);
 
 /**
  * The one "Set pin" box, used wherever a stop or location shows "Pin needed":
  * paste a Google Maps / WhatsApp link or search, drag the pin to the gate, save.
  */
-export default function SetPinDialog({ open, onOpenChange, placeName, lat, lng, footnote, onSave }: SetPinDialogProps) {
+export default function SetPinDialog({ open, onOpenChange, placeName, lat, lng, footnote, onSave, photoPins = [], preselectPhotoId = null }: SetPinDialogProps) {
   const [pinLat, setPinLat] = useState<number | null>(lat);
   const [pinLng, setPinLng] = useState<number | null>(lng);
   const [address, setAddress] = useState('');
@@ -31,6 +45,7 @@ export default function SetPinDialog({ open, onOpenChange, placeName, lat, lng, 
   const [moved, setMoved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fromPhoto, setFromPhoto] = useState<string | null>(null);
 
   // Start from the current pin every time the box opens.
   useEffect(() => {
@@ -41,7 +56,14 @@ export default function SetPinDialog({ open, onOpenChange, placeName, lat, lng, 
     setName(placeName);
     setMoved(false);
     setError(null);
+    setFromPhoto(null);
+    const pre = preselectPhotoId ? photoPins.find((p) => p.id === preselectPhotoId) : null;
+    if (pre) { setPinLat(pre.lat); setPinLng(pre.lng); setMoved(true); setFromPhoto(pre.id); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, lat, lng, placeName]);
+
+  // Cross-check before saving: how far the pin moves from the current one.
+  const shift = moved && pinLat != null && pinLng != null && lat != null && lng != null ? metersBetween({ lat, lng }, { lat: pinLat, lng: pinLng }) : null;
 
   const save = async () => {
     if (pinLat == null || pinLng == null) {
@@ -78,6 +100,30 @@ export default function SetPinDialog({ open, onOpenChange, placeName, lat, lng, 
           </DialogDescription>
         </DialogHeader>
 
+        {photoPins.length > 0 && (
+          <div className="space-y-1.5 rounded-lg bg-blue-50 p-2.5 dark:bg-blue-950/30">
+            <p className="text-xs font-semibold text-blue-900 dark:text-blue-200">From the driver's photos ({photoPins.length} with GPS)</p>
+            <div className="flex flex-wrap gap-1.5">
+              {photoPins.map((p, i) => {
+                const away = lat != null && lng != null ? metersBetween({ lat, lng }, p) : null;
+                const on = fromPhoto === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => { setPinLat(p.lat); setPinLng(p.lng); setMoved(true); setFromPhoto(p.id); setError(null); }}
+                    className={on
+                      ? 'rounded-full bg-blue-700 px-2.5 py-1 text-xs font-semibold text-white'
+                      : 'rounded-full border border-blue-200 bg-white px-2.5 py-1 text-xs font-semibold text-blue-900 hover:border-blue-400 dark:border-blue-800 dark:bg-slate-900 dark:text-blue-200'}
+                  >
+                    Photo {i + 1} · {p.label}{away != null ? ` · ${metersText(away)} away` : ''}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {open && (
           <LocationPickerMap
             label=""
@@ -91,6 +137,15 @@ export default function SetPinDialog({ open, onOpenChange, placeName, lat, lng, 
             address={address}
             onAddressChange={setAddress}
           />
+        )}
+
+        {shift != null && (
+          <p className={shift > 2000
+            ? 'rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-900 dark:bg-amber-950/30 dark:text-amber-200'
+            : 'rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-medium text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200'}>
+            {fromPhoto ? 'From the photo GPS · ' : ''}{metersText(shift)} from the current pin
+            {shift > 2000 ? ' — far off; check it is the right place before saving' : ''}
+          </p>
         )}
 
         {error && <p className="text-xs font-medium text-rose-600">{error}</p>}
