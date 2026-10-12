@@ -81,6 +81,7 @@ function RootNavigator() {
         <Stack.Screen name="trip/navigate" />
         <Stack.Screen name="trip/stop" />
         <Stack.Screen name="trip/delivery" />
+        <Stack.Screen name="trip/round-done" />
         <Stack.Screen name="trip/completed" />
         <Stack.Screen name="cargo-pod-photos" />
       </Stack>

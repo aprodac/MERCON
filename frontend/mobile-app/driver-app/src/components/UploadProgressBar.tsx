@@ -1,8 +1,9 @@
 /**
- * Thin bar under the Loading / Delivery photo boxes: fills as photos 1–3
- * (or the one screenshot on external-app trips)
- * upload ("Uploading photo 2 of 3 · 47%"), green with "All 3 photos uploaded"
- * when done, red when one failed (it is retried on the Complete button).
+ * Thin bar under the Loading / Delivery / Stop photo boxes: fills as the
+ * photos the driver took (up to 3, at least 1 — or the one screenshot on
+ * external-app trips) upload ("Uploading photo 2 of 2 · 47%"), green with
+ * "2 photos uploaded" when done, red when one failed (it is retried on the
+ * Complete button).
  */
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -31,8 +32,10 @@ export function UploadProgressBar({ items, total = 3, accent }: Props) {
   const uploaded = items.filter((i) => i.done).length;
   const failedIdx = items.findIndex((i) => i.failed);
   const activeIdx = items.findIndex((i) => !i.done && !i.failed);
-  const allDone = items.length >= total && uploaded >= total;
-  const pct = Math.round((items.reduce((a, i) => a + (i.done ? 1 : i.progress), 0) / total) * 100);
+  // Only the photos actually taken count: 1 of the 3 boxes is enough to continue.
+  const taken = items.length;
+  const allDone = uploaded >= taken;
+  const pct = Math.round((items.reduce((a, i) => a + (i.done ? 1 : i.progress), 0) / taken) * 100);
 
   let label: string;
   if (total === 1) {
@@ -40,10 +43,13 @@ export function UploadProgressBar({ items, total = 3, accent }: Props) {
     if (allDone) label = ur ? 'اپ لوڈ ہو گئی' : 'Uploaded';
     else if (failedIdx >= 0) label = ur ? 'اپ لوڈ نہیں ہوئی — دوبارہ کوشش ہوگی' : "Didn't upload — will retry";
     else label = ur ? 'اپ لوڈ ہو رہی ہے' : 'Uploading';
-  } else if (allDone) label = ur ? `تمام ${total} تصاویر اپ لوڈ ہو گئیں` : `All ${total} photos uploaded`;
-  else if (failedIdx >= 0) label = ur ? `تصویر ${failedIdx + 1} اپ لوڈ نہیں ہوئی — دوبارہ کوشش ہوگی` : `Photo ${failedIdx + 1} didn't upload — will retry`;
-  else if (activeIdx >= 0) label = ur ? `تصویر ${activeIdx + 1} از ${total} اپ لوڈ ہو رہی ہے` : `Uploading photo ${activeIdx + 1} of ${total}`;
-  else label = ur ? `${uploaded} از ${total} اپ لوڈ · ${total - items.length} مزید لیں` : `${uploaded} of ${total} uploaded · take ${total - items.length} more`;
+  } else if (allDone) {
+    label = ur
+      ? `${taken} ${taken === 1 ? 'تصویر' : 'تصاویر'} اپ لوڈ ہو گئیں`
+      : `${taken} ${taken === 1 ? 'photo' : 'photos'} uploaded`;
+  } else if (failedIdx >= 0) label = ur ? `تصویر ${failedIdx + 1} اپ لوڈ نہیں ہوئی — دوبارہ کوشش ہوگی` : `Photo ${failedIdx + 1} didn't upload — will retry`;
+  else if (activeIdx >= 0) label = ur ? `تصویر ${activeIdx + 1} از ${taken} اپ لوڈ ہو رہی ہے` : `Uploading photo ${activeIdx + 1} of ${taken}`;
+  else label = ur ? `${uploaded} از ${taken} اپ لوڈ` : `${uploaded} of ${taken} uploaded`;
 
   const color = allDone ? '#16A34A' : failedIdx >= 0 ? '#DC2626' : accent;
   const textColor = allDone ? '#15803D' : failedIdx >= 0 ? '#B91C1C' : '#334155';

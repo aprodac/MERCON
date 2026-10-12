@@ -15,6 +15,8 @@ import { useScheduledTrips } from '../hooks/use-scheduled-trips';
 import { safeSecureStore as SecureStore } from '@mercon/mobile-shared/lib/secure-store';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
+import { RoundBreakRow, RoundTimeline } from '../components/RoundTimeline';
+import { buildRoundTripSummary, roundTimes } from '../services/roundTimes';
 
 const FILE_BASE = API_URL ? API_URL.replace(/\/api\/?$/, '') : '';
 
@@ -178,6 +180,19 @@ const TripCompletedScreen = () => {
   const returnPodList = apiReturnPod.length > 0 ? apiReturnPod : localReturnDeliveryPhotos;
 
   const isRound = isRoundTrip(activeTrip);
+  // Round trips: what was done in each round and when, and the break between them.
+  const [roundLocal, setRoundLocal] = useState<{ round1DoneAt: string | null; round2StartedAt: string | null } | null>(null);
+  useEffect(() => {
+    if (!isRound || !activeTrip?.id) return;
+    let cancelled = false;
+    roundTimes.get(activeTrip.id).then((v) => {
+      if (!cancelled) setRoundLocal(v);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isRound, activeTrip?.id]);
+  const roundSummary = isRound && activeTrip && roundLocal ? buildRoundTripSummary(activeTrip, roundLocal) : null;
 
   const rawRef = activeTrip?.ref_id || (activeTrip?.id ? activeTrip.id.slice(0, 8) : '');
   const tripIdDisplay = rawRef ? (rawRef.startsWith('TRP-') ? rawRef : `TRP-${rawRef}`) : '—';
@@ -385,6 +400,16 @@ const TripCompletedScreen = () => {
               </View>
             ) : null}
           </View>
+
+          {/* Round trips: each round's steps and times, and the break in between */}
+          {roundSummary ? (
+            <View style={styles.roundsBlock}>
+              <Text style={styles.roundsTitle}>{t('label_rounds', 'Rounds')}</Text>
+              <RoundTimeline title={t('label_round_1', 'Round 1')} round={roundSummary.round1} />
+              <RoundBreakRow start={roundSummary.breakStart} end={roundSummary.breakEnd} minutes={roundSummary.breakMinutes} />
+              <RoundTimeline title={t('label_round_2', 'Round 2')} round={roundSummary.round2} />
+            </View>
+          ) : null}
 
           {/* What's next */}
           {nextTrip && nextTripText ? (
@@ -846,6 +871,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     gap: 20,
   },
+  roundsBlock: { gap: 10, marginTop: 16 },
+  roundsTitle: { fontSize: 13, fontWeight: '800', color: '#64748B', letterSpacing: 0.4, textTransform: 'uppercase' },
   detailCard: {
     backgroundColor: '#F8FAFC',
     borderWidth: 1,

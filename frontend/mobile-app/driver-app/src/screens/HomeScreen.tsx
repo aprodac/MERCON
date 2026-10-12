@@ -286,7 +286,8 @@ const HomeScreen = () => {
         return {
           badgeLabel: 'Round 1 of 2 completed',
           btnLabel: 'Start Round 2 of 2',
-          onPress: () => router.push('/trip/pickup'),
+          // Round 1 page (times, break, Start Round 2); it forwards to loading once round 2 has started.
+          onPress: () => router.push('/trip/round-done' as any),
         };
       }
       if (ws === 'ARRIVED_AT_PICKUP' || ws === 'LOADING') {

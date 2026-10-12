@@ -103,7 +103,9 @@ export default function StopVerificationScreen() {
   const isRound = isRoundTrip(trip);
   // 3 geotagged photos, or 1 customer-app screenshot on EXTERNAL_APP trips.
   const evidence = getEvidencePolicy(trip, 'stop');
+  /** Photo boxes shown (up to 3); one photo is enough to continue (getEvidencePolicy). */
   const MIN_STOP_PHOTOS = evidence.count;
+  const minStopPhotos = evidence.min;
   const primarySource: 'camera' | 'gallery' = evidence.screenshot ? 'gallery' : 'camera';
   const otherSource: 'camera' | 'gallery' = evidence.screenshot ? 'camera' : 'gallery';
   const isReturnLeg = isRound && (paramLegIndex === '1' || (trip?.driver_workflow_state || '').includes('RETURN'));
@@ -186,12 +188,12 @@ export default function StopVerificationScreen() {
     if (!trip || submitting) return;
     // Same rule as loading/delivery (see getEvidencePolicy).
     const totalPhotos = photos.filter((p) => !!p?.uri).length + uploadedCountRef.current;
-    if (totalPhotos < MIN_STOP_PHOTOS) {
+    if (totalPhotos < minStopPhotos) {
       Alert.alert(
         t('title_stop_photos_required', 'Stop Photos Required'),
         evidence.screenshot
-          ? `${t('hint_upload_screenshot', "Attach a screenshot of the customer's app showing this update. Hold to use the camera instead.")} (${totalPhotos}/${MIN_STOP_PHOTOS})`
-          : `${t('msg_min_stop_photos', 'Please add at least 3 photos for this stop')} (${totalPhotos}/${MIN_STOP_PHOTOS}).`,
+          ? `${t('hint_upload_screenshot', "Attach a screenshot of the customer's app showing this update. Hold to use the camera instead.")} (${totalPhotos}/${minStopPhotos})`
+          : `${t('msg_min_stop_photos', 'Please add at least 1 photo for this stop')} (${totalPhotos}/${minStopPhotos}).`,
       );
       return;
     }
@@ -275,7 +277,7 @@ export default function StopVerificationScreen() {
           title={stopHeaderTitle}
           subtitle={evidence.screenshot
             ? t('sub_stage_screenshot', "Add a screenshot of the customer's app")
-            : t('sub_stage_stop', 'Take 3 photos at this stop')}
+            : t('sub_stage_stop', 'Take photos at this stop (1 is enough, up to 3)')}
           isReturn={isReturnLeg}
           trip={trip}
           target={{ kind: 'stop', leg: isReturnLeg ? 1 : 0, stopIndex: parsedIndex }}
