@@ -25,7 +25,8 @@ import {
 } from '../../../lib/operator';
 import { PickerSheet, niceName } from '../create/components/ui';
 import { useTripDetails } from './useTripDetails';
-import { ago, digits, hoursText, makeFormatters, mapsLink, nextActionFor, sendStatus, sortedStops, stopName, updateTitle, type QuickKind, type Stop } from './tripDetailsModel';
+import { ago, digits, distanceFromStop, hoursText, makeFormatters, mapsLink, metersText, minutesText, nextActionFor, photoPinsForStop, sendStatus, sortedStops, stopName, updateTitle, type PhotoPin, type QuickKind, type Stop } from './tripDetailsModel';
+import { needsPin } from './components/StopsTab';
 import { TripMap } from './components/TripMap';
 import { TripHeader } from './components/TripHeader';
 import { StopsTab } from './components/StopsTab';
@@ -62,7 +63,7 @@ export default function TripDetailsScreen() {
   const [share, setShare] = useState<ShareTarget | null>(null);
   const [viewer, setViewer] = useState<{ items: ViewerItem[]; index: number; title: string; update?: DriverUpdate } | null>(null);
   const [checkingTimes, setCheckingTimes] = useState(false);
-  const [pinTarget, setPinTarget] = useState<{ stop: Stop; label: string } | null>(null);
+  const [pinTarget, setPinTarget] = useState<{ stop: Stop; label: string; photoPins?: PhotoPin[]; preselect?: string | null } | null>(null);
   const [sheet, setSheet] = useState<'more' | 'upload' | 'activity' | 'charges' | 'stepback' | null>(null);
   const [fullMap, setFullMap] = useState(false);
   const [picker, setPicker] = useState<{ kind: 'driver' | 'truck'; drivers?: OperatorDriver[]; vehicles?: OperatorVehicle[] } | null>(null);
@@ -237,9 +238,39 @@ export default function TripDetailsScreen() {
   };
 
 
+  // Set pin for a stop, offering the driver's geotagged photos there as the pin.
+  const openPin = (st: Stop, preselect: string | null = null) =>
+    setPinTarget({ stop: st, label: stopName(st, stops.indexOf(st)), photoPins: photoPinsForStop(updates, st.id), preselect });
+
   const openPhotos = (u: DriverUpdate, index: number) => {
     const st = stops.find((x) => x.id === u.stop?.id);
-    const items = u.items.map((m) => ({ id: m.id, url: m.url, kind: m.kind, caption: `${updateTitle(u)} · ${f.smart(m.captured_at)}`, sent: u.sent_ids.includes(m.id) }));
+    const name = st ? stopName(st, stops.indexOf(st)) : null;
+    const items = u.items.map((m) => {
+      const away = st && m.gps ? distanceFromStop(st, m.gps) : null;
+      const late = m.uploaded_at ? (new Date(m.uploaded_at).getTime() - new Date(m.captured_at).getTime()) / 60000 : 0;
+      const facts = [
+        `Taken ${f.smart(m.captured_at)}`,
+        // Uploaded much later than taken: the phone was offline, or it's an old photo.
+        m.uploaded_at && late > 5 ? `uploaded ${f.smart(m.uploaded_at)} (${minutesText(late)} later)` : null,
+        !m.gps ? 'no GPS on this photo' : st && needsPin(st) ? `${name}'s pin is approximate` : away != null ? `${metersText(away)} from the ${name} pin` : null,
+        m.moved_at ? `moved here by the office ${f.smart(m.moved_at)}` : null,
+      ].filter(Boolean).join(' · ');
+      // A geotagged photo can fix a guessed pin (or one that's clearly off).
+      const canPin = !!st && !!m.gps && m.kind !== 'video' && phase !== 'cancelled' && (needsPin(st) || (away != null && away > 300));
+      return {
+        id: m.id,
+        url: m.url,
+        kind: m.kind,
+        caption: `${updateTitle(u)} · ${f.smart(m.captured_at)}`,
+        sent: u.sent_ids.includes(m.id),
+        geo: m.gps ? { lat: m.gps.lat, lng: m.gps.lng, captured_at: m.captured_at, place: name, address: st?.location?.city ?? null, customer: trip.customer?.name ?? null } : null,
+        info: facts,
+        pinAction: canPin ? {
+          label: needsPin(st!) ? `Use this photo's GPS as ${name}'s pin` : `Move ${name}'s pin to this photo's GPS`,
+          onPress: () => { setViewer(null); setTimeout(() => openPin(st!, m.id), 300); },
+        } : null,
+      };
+    });
     if (items.length) setViewer({ title: st ? stopName(st, stops.indexOf(st)) : updateTitle(u), index, items, update: u });
   };
 
@@ -381,7 +412,7 @@ export default function TripDetailsScreen() {
               onOpenPhotos={openPhotos}
               onSendUpdate={(u) => setShare({ type: 'update', update: u })}
               onCheckTimes={() => setCheckingTimes(true)}
-              onSetPin={(st) => setPinTarget({ stop: st, label: stopName(st, stops.indexOf(st)) })}
+              onSetPin={(st) => openPin(st)}
               focusStopId={focusStop}
               onStopLayout={params.stop ? onStopLayout : undefined}
               onStepBack={canStepBack ? () => setSheet('stepback') : undefined}
@@ -444,7 +475,7 @@ export default function TripDetailsScreen() {
         status={viewer?.update ? sendStatus(viewer.update) : undefined}
         onSend={viewer?.update ? () => { const u = viewer.update!; setViewer(null); setTimeout(() => setShare({ type: 'update', update: u }), 250); } : undefined}
       />
-      <PinSheet target={pinTarget} tripId={trip.id} onClose={() => setPinTarget(null)} onSaved={reload} />
+      <PinSheet target={pinTarget} tripId={trip.id} timeOf={f.time} onClose={() => setPinTarget(null)} onSaved={reload} />
       <TripTimesSheet visible={checkingTimes} trip={trip} tz={tz} onClose={() => setCheckingTimes(false)} onDone={reload} />
       <MoreSheet
         visible={sheet === 'more'}

@@ -1,11 +1,11 @@
 /** Every stop in order: planned vs actual time, lateness, delay reason, photos, and screenshots to check. */
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking, Image } from 'react-native';
-import { Check, CheckCheck, Clock3, Image as ImageIcon, ImageOff, MapPin, MessageCircle, Navigation, Play, TriangleAlert, Undo2 } from 'lucide-react-native';
+import { Check, CheckCheck, Clock3, Image as ImageIcon, ImageOff, MapPin, MessageCircle, Navigation, Play, TriangleAlert, Undo2, Crosshair, ArrowRightLeft } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import type { DriverUpdate, LiveMediaItem, OperatorTripDetail, OperatorTripDocument, TripPhase } from '../../../../lib/operator';
-import { ON_TIME_GRACE_MIN, TONE, delayText, mapsLink, minutesLate, sendStatus, sortedStops, stopName, tripLegsOf, updateTitle, type Formatters, type Stop } from '../tripDetailsModel';
+import { ON_TIME_GRACE_MIN, TONE, delayText, mapsLink, minutesLate, minutesText, photoPinsForStop, sendStatus, sortedStops, stopName, stopTiming, tripLegsOf, updateTitle, type Formatters, type Stop } from '../tripDetailsModel';
 import { liveLegOf } from '../../tripLegs';
 import { Card, Chip, INK, MUTED, WA, WA_INK, WA_LIGHT, tap } from './parts';
 import { isAppScreenshot, pendingTimeCheck } from './TripTimesSheet';
@@ -61,6 +61,22 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
 
   return (
     <Card style={{ paddingVertical: 8 }}>
+      {(trip.step_backs ?? []).slice(0, 3).map((b, k) => (
+        <View key={`${b.at}-${k}`} style={s.backNote}>
+          <Undo2 size={14} color="#5B34B0" />
+          <View style={{ flex: 1 }}>
+            <Text style={s.backNoteTitle}>
+              Taken back by {b.by ?? 'the office'} · {f.smart(b.at)}
+            </Text>
+            <Text style={s.backNoteText}>
+              {b.from ? `${b.from} → ` : ''}{b.to ?? 'an earlier step'}
+              {b.photos && b.photos.count > 0
+                ? ` · ${b.photos.count} photo${b.photos.count === 1 ? '' : 's'} ${b.photos.choice === 'move' ? `moved to ${b.photos.moved_to ?? 'the redone step'}` : b.photos.choice === 'remove' ? 'removed' : 'left as they were'}`
+                : ''}
+            </Text>
+          </View>
+        </View>
+      ))}
       {onStepBack ? (
         <TouchableOpacity style={s.undoBar} activeOpacity={0.75} onPress={onStepBack} accessibilityRole="button" accessibilityLabel="Undo driver's step">
           <Undo2 size={14} color={INK} />
@@ -93,6 +109,8 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
         const sets = updates.filter((u) => u.stop?.id === st.id);
         const check = docs.find((d) => pendingTimeCheck(d) && d.ai_extracted_json?.stop_id === st.id);
         const pinNeeded = (phase === 'planned' || phase === 'active') && !st.actual_arrival && needsPin(st);
+        // Driver photos at this stop that carry a GPS fix — a better pin than a guessed one.
+        const gpsPhotos = photoPinsForStop(updates, st.id).length;
         const bubbleBg = phase === 'cancelled' ? '#D6D3D1' : done ? TONE.green.dot : isNext ? TONE.blue.dot : phase === 'planned' ? '#F5F2FD' : Colors.white;
         const bubbleBorder = done || isNext || phase === 'cancelled' ? 'transparent' : phase === 'planned' ? '#B7A6EC' : '#B8BCC8';
         const leg = legs.round && legs.ret.includes(st) ? ' · return' : '';
@@ -129,7 +147,24 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
                   <Chip label={late > ON_TIME_GRACE_MIN ? `${late} min late` : 'On time'} tone={late > ON_TIME_GRACE_MIN ? 'red' : 'green'} />
                 ) : null}
               </View>
-              <Text style={s.muted}>{st.stop_type}{leg} · {times}</Text>
+              <Text style={s.muted}>{st.stop_type}{leg}{st.actual_arrival ? '' : ` · ${times}`}</Text>
+              {st.actual_arrival ? (() => {
+                const { late: lateMin, dwell } = stopTiming(st);
+                return (
+                  <>
+                    {/* Planned vs real, side by side */}
+                    <View style={s.timeGrid}>
+                      <TimeCell label="PLANNED" value={st.planned_arrival ? f.smart(st.planned_arrival) : '—'} />
+                      <TimeCell label="ARRIVED" value={f.smart(st.actual_arrival)} tone={lateMin != null && lateMin > ON_TIME_GRACE_MIN ? 'red' : lateMin != null ? 'green' : undefined} />
+                      <TimeCell label="LEFT" value={st.actual_departure ? f.time(st.actual_departure) : phase === 'active' ? 'Still there' : '—'} />
+                    </View>
+                    <Text style={s.timeNote}>
+                      {lateMin == null ? 'No planned time' : lateMin > ON_TIME_GRACE_MIN ? `${minutesText(lateMin)} late` : lateMin < -ON_TIME_GRACE_MIN ? `${minutesText(lateMin)} early` : 'On time'}
+                      {dwell != null ? ` · ${minutesText(dwell)} at the stop` : ''}
+                    </Text>
+                  </>
+                );
+              })() : null}
 
               {delay ? (
                 <View style={s.delay}>
@@ -138,10 +173,14 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
                 </View>
               ) : null}
 
-              {pinNeeded ? (
+              {pinNeeded || (needsPin(st) && gpsPhotos > 0) ? (
                 <TouchableOpacity style={s.pin} activeOpacity={0.8} onPress={() => onSetPin(st)}>
-                  <MapPin size={13} color="#8A5200" />
-                  <Text style={s.pinText}>Pin needed · ETA is a guess · tap to set</Text>
+                  {gpsPhotos > 0 ? <Crosshair size={13} color="#8A5200" /> : <MapPin size={13} color="#8A5200" />}
+                  <Text style={s.pinText}>
+                    {gpsPhotos > 0
+                      ? `${pinNeeded ? 'Pin needed' : 'Pin is approximate'} · ${gpsPhotos} photo${gpsPhotos === 1 ? ' has' : 's have'} GPS — check & use`
+                      : 'Pin needed · ETA is a guess · tap to set'}
+                  </Text>
                 </TouchableOpacity>
               ) : null}
 
@@ -152,7 +191,7 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
                 </TouchableOpacity>
               ) : null}
 
-              {sets.map((u) => <PhotoSet key={u.key} u={u} onOpen={(i) => onOpenPhotos(u, i)} onSend={() => onSendUpdate(u)} />)}
+              {sets.map((u) => <PhotoSet key={u.key} u={u} f={f} onOpen={(i) => onOpenPhotos(u, i)} onSend={() => onSendUpdate(u)} />)}
 
               <View style={s.links}>
                 {Number.isFinite(st.location_lat) && (st.location_lat || st.location_lng) ? (
@@ -171,11 +210,20 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
   );
 }
 
+function TimeCell({ label, value, tone }: { label: string; value: string; tone?: 'red' | 'green' }) {
+  return (
+    <View style={s.timeCell}>
+      <Text style={s.timeLabel}>{label}</Text>
+      <Text style={[s.timeValue, tone === 'red' && { color: '#B42318' }, tone === 'green' && { color: '#15803D' }]} numberOfLines={1}>{value}</Text>
+    </View>
+  );
+}
+
 const THUMBS = 4;
 const isVideo = (m: LiveMediaItem) => m.kind === 'video' || !!m.mime?.startsWith('video/');
 
 /** One photo set at a stop: the pictures themselves, each marked sent or not, and whether the customer has them. */
-function PhotoSet({ u, onOpen, onSend }: { u: DriverUpdate; onOpen: (index: number) => void; onSend: () => void }) {
+function PhotoSet({ u, f, onOpen, onSend }: { u: DriverUpdate; f: Formatters; onOpen: (index: number) => void; onSend: () => void }) {
   const status = sendStatus(u);
   // One photo sent is enough: the set is done, the unsent photos keep their "not sent" mark.
   const sent = status.state !== 'unsent';
@@ -184,6 +232,28 @@ function PhotoSet({ u, onOpen, onSend }: { u: DriverUpdate; onOpen: (index: numb
   return (
     <View style={[s.set, sent ? s.setSent : s.setUnsent]}>
       <Text style={s.setTitle}>{updateTitle(u)} · {u.items.length} {u.items.length === 1 ? 'photo' : 'photos'}</Text>
+      {(() => {
+        // When they were taken and when they reached us — a big gap means the phone was offline.
+        const taken = u.items.map((m) => m.captured_at).sort();
+        const uploaded = u.items.map((m) => m.uploaded_at).filter((x): x is string => !!x).sort();
+        const gps = u.items.filter((m) => m.gps).length;
+        const moved = u.items.filter((m) => m.moved_at).length;
+        return (
+          <>
+            <Text style={s.setMeta} numberOfLines={2}>
+              Taken {f.smart(taken[0])}{taken.length > 1 && f.time(taken[taken.length - 1]) !== f.time(taken[0]) ? `–${f.time(taken[taken.length - 1])}` : ''}
+              {uploaded.length ? ` · uploaded ${f.smart(uploaded[uploaded.length - 1])}` : ''}
+              {` · ${gps === u.items.length ? 'all geotagged' : gps > 0 ? `${gps} geotagged` : 'no GPS'}`}
+            </Text>
+            {moved > 0 ? (
+              <View style={s.movedTag}>
+                <ArrowRightLeft size={11} color="#5B34B0" />
+                <Text style={s.movedTagText}>{moved === u.items.length ? 'Moved here by the office' : `${moved} moved here by the office`}</Text>
+              </View>
+            ) : null}
+          </>
+        );
+      })()}
       <View style={s.thumbs}>
         {shown.map((m, i) => {
           const uri = isVideo(m) ? null : resolveMediaUrl(m.url);
@@ -218,6 +288,17 @@ function PhotoSet({ u, onOpen, onSend }: { u: DriverUpdate; onOpen: (index: numb
 }
 
 const s = StyleSheet.create({
+  backNote: { flexDirection: 'row', gap: 8, alignItems: 'flex-start', marginHorizontal: 8, marginTop: 4, marginBottom: 6, padding: 10, borderRadius: 12, backgroundColor: '#F5F2FD' },
+  backNoteTitle: { fontSize: 12, fontWeight: '800', color: '#4A2A93' },
+  backNoteText: { fontSize: 13, color: INK, marginTop: 1, lineHeight: 18 },
+  timeGrid: { flexDirection: 'row', gap: 6, marginTop: 8 },
+  timeCell: { flex: 1, backgroundColor: '#F6F7F9', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 6 },
+  timeLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5, color: '#8A8A96' },
+  timeValue: { fontSize: 14, fontWeight: '700', color: INK, marginTop: 1, fontVariant: ['tabular-nums'] },
+  timeNote: { fontSize: 13, color: MUTED, marginTop: 6 },
+  setMeta: { fontSize: 12, color: MUTED, marginTop: -2, marginBottom: 6 },
+  movedTag: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', backgroundColor: '#F5F2FD', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 6 },
+  movedTagText: { fontSize: 11, fontWeight: '700', color: '#5B34B0' },
   undoBar: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginHorizontal: 8, marginTop: 4, marginBottom: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: '#F1F3F7' },
   undoText: { fontSize: 13, color: INK },
   muted: { fontSize: 12, color: MUTED, marginTop: 2 },

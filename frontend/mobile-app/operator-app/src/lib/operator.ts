@@ -85,6 +85,8 @@ export interface OperatorTripDetail {
   driver_workflow?: 'NATIVE' | 'EXTERNAL_APP';
   /** Where the driver's app is in the trip (ARRIVED_AT_PICKUP, IN_TRANSIT, …). */
   driver_workflow_state?: string | null;
+  /** Times the office took the trip back a step, newest first. */
+  step_backs?: TripStepBackEntry[];
   planned_distance: number | null;
   planned_start: string | null;
   actual_start: string | null;
@@ -248,7 +250,23 @@ export interface LiveMediaItem {
   stage: LiveMediaStage;
   url: string;
   mime: string | null;
+  /** When the photo was taken (phone GPS time), else when it was uploaded. */
   captured_at: string;
+  /** When it reached the server. */
+  uploaded_at?: string;
+  /** Where the phone was when it was taken (geotag). */
+  gps?: { lat: number; lng: number } | null;
+  /** The office moved it to this stop while taking the trip back a step. */
+  moved_at?: string | null;
+}
+
+/** "Undo driver's step" history on a trip (backend tripController tripStepBacks). */
+export interface TripStepBackEntry {
+  at: string;
+  by: string | null;
+  from: string | null;
+  to: string | null;
+  photos: { choice: 'move' | 'remove' | 'keep'; count: number; moved_to: string | null } | null;
 }
 
 export type ShareRecipient = 'customer_contact' | 'customer_group' | 'internal' | 'other';
