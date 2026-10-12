@@ -4,7 +4,7 @@ import path from 'path';
 import { prisma } from '../db';
 import { logger } from '../utils/logger';
 import { TripStatus, DocType } from '@prisma/client';
-import { isValidTransition, completeTripAndInvoice, stampStopTransition, stampWorkflowTransition, stampIntermediateStopVisit, resolveAuthoritativeActiveStop, type DelayDetection } from '../services/tripLifecycle';
+import { isValidTransition, markOnTrip, completeTripAndInvoice, stampStopTransition, stampWorkflowTransition, stampIntermediateStopVisit, resolveAuthoritativeActiveStop, type DelayDetection } from '../services/tripLifecycle';
 import { buildTripRouteTimeline, getLegEndpoints } from '../services/tripRouteTimeline';
 import { notifyOperatorsOfDelay } from './notificationController';
 import { recordDriverActivity } from '../services/driverPhone/activity';
@@ -373,6 +373,10 @@ export const updateTripStatus = async (req: Request, res: Response) => {
             data: { delay_note: delayReason, delay_logged_at: new Date() },
           });
         }
+      }
+      // Loading / under way: the driver and truck are on the road now.
+      if (status === TripStatus.Loading || status === TripStatus.InTransit || status === TripStatus.Delayed) {
+        await markOnTrip(tx, trip);
       }
       return tx.trip.update({
         where: { id },

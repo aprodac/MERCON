@@ -79,7 +79,14 @@ export interface LiveMediaItem {
   stage: LiveMediaStage;
   url: string;
   mime: string | null;
+  /** When it was taken (phone GPS time), else when uploaded. */
   captured_at: string;
+  /** When it reached the server. */
+  uploaded_at?: string;
+  /** Where the phone was (geotag). */
+  gps?: { lat: number; lng: number } | null;
+  /** The office moved it here while taking the trip back a step. */
+  moved_at?: string | null;
 }
 
 export interface LiveStopMedia {

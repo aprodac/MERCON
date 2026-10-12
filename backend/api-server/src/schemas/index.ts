@@ -705,6 +705,12 @@ export const setDriverPasswordBody = z.object({
   password: z.string().trim().min(4, 'Password must be at least 4 characters'),
 });
 
+/** Take a running trip back to an earlier step (services/tripStepBack.ts); -1 = before it started. */
+export const tripStepBackBody = z.object({
+  to_index: z.number().int().min(-1),
+  photos: z.enum(['move', 'remove', 'keep']).default('move'),
+});
+
 /** Pair a driver with a truck (both set), take a driver off their truck (vehicle_id null), or empty a truck (driver_id null). */
 export const truckAssignmentBody = z
   .object({
