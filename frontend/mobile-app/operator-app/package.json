@@ -37,6 +37,7 @@
     "expo-web-browser": "~57.0.2",
     "lucide-react-native": "^1.23.0",
     "nativewind": "^4.2.6",
+    "pdf-lib": "^1.17.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.0",
