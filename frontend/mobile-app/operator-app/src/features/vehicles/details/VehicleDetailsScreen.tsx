@@ -7,13 +7,14 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, Image, Linking, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, ChevronRight, FileText, MapPin, MessageCircle, Navigation, Phone, Satellite, SquarePen, Truck, UserRoundCog, Wrench, type LucideIcon } from 'lucide-react-native';
+import { ArrowLeft, ChevronRight, FileText, MapPin, MessageCircle, Navigation, Phone, Satellite, Send, SquarePen, Truck, UserRoundCog, Wrench, type LucideIcon } from 'lucide-react-native';
 import { EmptyHint, SectionLabel, TabIcon, Tile, FactRow } from '@/components/pageCues';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { Toast } from '@mercon/mobile-shared/components/Toast';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import { truckClassOfVehicle } from '@mercon/shared-types';
 import { DriverAvatar } from '../../drivers/components/DriverAvatar';
+import { DocumentPackSheet } from '../../documents/DocumentPackSheet';
 import { operatorService, type OperatorDriverOption } from '../../../lib/operator';
 import { SAUDI_CITY_COORDS } from '../../trips/services/travelTimeService';
 import { TONE, statusChip, haversineKm, type Tone } from '../../trips/details/tripDetailsModel';
@@ -80,6 +81,7 @@ export default function VehicleDetailsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<Tab>('overview');
   const [driverSheet, setDriverSheet] = useState(false);
+  const [packOpen, setPackOpen] = useState(false);
   const [drivers, setDrivers] = useState<OperatorDriverOption[] | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
@@ -430,6 +432,11 @@ export default function VehicleDetailsScreen() {
           ) : null}
 
           {tab === 'documents' ? (
+            <>
+            <TouchableOpacity style={s.sendDocs} onPress={() => { tap(); setPackOpen(true); }} activeOpacity={0.85}>
+              <Send size={16} color={Colors.white} strokeWidth={2.3} />
+              <Text style={s.sendDocsText}>Send documents as one PDF</Text>
+            </TouchableOpacity>
             <Card style={s.listCard}>
               {v.docSlotsLoading ? (
                 <View style={s.listEmpty}><SkeletonRows rows={3} height={32} /></View>
@@ -441,6 +448,7 @@ export default function VehicleDetailsScreen() {
                 v.docSlots.map((x, i) => <DocRow key={x.documentType.id} slot={x} first={i === 0} />)
               )}
             </Card>
+            </>
           ) : null}
 
           {tab === 'service' ? (
@@ -473,6 +481,9 @@ export default function VehicleDetailsScreen() {
           ) : null}
         </View>
       </ScrollView>
+      {vehicle && packOpen ? (
+        <DocumentPackSheet visible onClose={() => setPackOpen(false)} kind="Vehicle" ownerId={vehicle.id} ownerName={vehicle.plate_number || 'Truck'} />
+      ) : null}
 
       {/* Back and edit, floating over the map */}
       <TouchableOpacity style={[s.float, s.floatLeft, { top: insets.top + 8 }]} onPress={goBack} accessibilityLabel="Back">
@@ -646,6 +657,8 @@ const s = StyleSheet.create({
   hintText: { fontSize: 12.5, fontWeight: '600', color: TONE.amber.fg },
 
   listCard: { paddingVertical: 4 },
+  sendDocs: { height: 46, borderRadius: 14, backgroundColor: Colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  sendDocsText: { color: Colors.white, fontSize: 15, fontWeight: '700' },
   listEmpty: { paddingVertical: 12 },
   line: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11 },
   lineBorder: { borderTopWidth: 1, borderTopColor: '#F1F1F3' },
