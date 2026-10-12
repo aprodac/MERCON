@@ -85,6 +85,7 @@ function RootNavigator() {
         <Stack.Screen name="trip-live" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="needs-action" />
         <Stack.Screen name="driver-details" />
+        <Stack.Screen name="driver-activity" />
         <Stack.Screen name="driver-edit" />
         <Stack.Screen name="vehicle-details" />
         <Stack.Screen name="vehicle-edit" />
