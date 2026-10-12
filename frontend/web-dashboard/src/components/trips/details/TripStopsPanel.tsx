@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Check, CheckCheck, Clock3, Play, RefreshCw, TriangleAlert } from 'lucide-react';
+import { ArrowRightLeft, Check, CheckCheck, Clock3, Crosshair, Play, RefreshCw, TriangleAlert, Undo2 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
 import { cn } from '@/lib/utils';
@@ -64,6 +65,7 @@ function stopTitle(s: TripStop, i: number): string {
 export default function TripStopsPanel({ trip, phase, documents, tz, formatTime, formatDateTime, onEvidenceUpdated, onPinned, top, bottom }: Props) {
   const [sharing, setSharing] = useState<DriverUpdate | null>(null);
   const [pinning, setPinning] = useState<TripStop | null>(null);
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [viewer, setViewer] = useState<{ items: LightboxPhotoItem[]; index: number } | null>(null);
   const [checkingTimes, setCheckingTimes] = useState(false);
@@ -119,6 +121,20 @@ export default function TripStopsPanel({ trip, phase, documents, tz, formatTime,
   };
 
   const updatesFor = (stopId: string | null) => updates.filter((u) => (u.stop?.id ?? null) === stopId);
+  // The driver's geotagged photos at a stop — offered as its pin.
+  const photoPinsFor = (stopId: string) =>
+    updatesFor(stopId).flatMap((u) => u.items.filter((m) => m.gps && m.kind !== 'video').map((m) => ({ id: m.id, lat: m.gps!.lat, lng: m.gps!.lng, label: `${STAGE_LABEL[u.stage]} ${formatTime(m.captured_at)}` })));
+
+  const restorePhotos = async (removedAt: string) => {
+    try {
+      const n = await tripService.restoreStepBackPhotos(trip.id, removedAt);
+      toast.success(`${n} photo${n === 1 ? '' : 's'} restored`);
+      queryClient.invalidateQueries({ queryKey: ['operator-inbox', 'trip-driver-updates', trip.id] });
+      onEvidenceUpdated();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.error?.message || 'Could not restore the photos');
+    }
+  };
   const unplaced = updatesFor(null);
 
   const openViewer = (u: DriverUpdate, index: number, stop: TripStop | undefined, name: string) =>
@@ -150,6 +166,25 @@ export default function TripStopsPanel({ trip, phase, documents, tz, formatTime,
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {top}
+        {(trip.step_backs ?? []).slice(0, 3).map((b, k) => (
+          <div key={`${b.at}-${k}`} className="mx-4 mt-3 flex items-start gap-2 rounded-lg bg-violet-50 px-3 py-2 text-xs dark:bg-violet-950/30">
+            <Undo2 className="mt-0.5 size-3.5 shrink-0 text-violet-700 dark:text-violet-300" />
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-violet-900 dark:text-violet-200">Taken back by {b.by ?? 'the office'} · {formatDateTime(b.at)}</p>
+              <p className="text-slate-700 dark:text-slate-300">
+                {b.from ? `${b.from} → ` : ''}{b.to ?? 'an earlier step'}
+                {b.photos && b.photos.count > 0
+                  ? ` · ${b.photos.count} photo${b.photos.count === 1 ? '' : 's'} ${b.photos.choice === 'move' ? `moved to ${b.photos.moved_to ?? 'the redone step'}` : b.photos.choice === 'remove' ? 'removed' : 'left as they were'}`
+                  : ''}
+              </p>
+            </div>
+            {b.photos?.removed_at && (b.photos.restorable ?? 0) > 0 && (
+              <Button size="sm" variant="outline" className="h-6 shrink-0 px-2 text-[11px]" onClick={() => restorePhotos(b.photos!.removed_at!)}>
+                Restore {b.photos.restorable}
+              </Button>
+            )}
+          </div>
+        ))}
         <ol>
           {stops.map((s, i) => {
             const name = stopTitle(s, i);
@@ -174,21 +209,38 @@ export default function TripStopsPanel({ trip, phase, documents, tz, formatTime,
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <p className={cn('min-w-0 truncate text-sm', isNext ? 'font-semibold text-foreground' : 'font-medium text-foreground')}>{name}</p>
-                    {canPin && !done && (
+                    {canPin && (!done || (!isExactPin(s.location_coordinate_precision, s.location_lat, s.location_lng) && photoPinsFor(s.id).length > 0)) && (
                       <PinChip exact={isExactPin(s.location_coordinate_precision, s.location_lat, s.location_lng)} onClick={() => setPinning(s)} />
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {s.stop_type}
-                    {s.actual_arrival
-                      ? ` · arrived ${formatDateTime(s.actual_arrival)}${s.actual_departure ? ` · left ${formatTime(s.actual_departure)}` : ''}`
-                      : s.planned_arrival ? ` · due ${formatDateTime(s.planned_arrival)}` : ''}
-                    {late != null && (
-                      <span className={cn('ml-1 font-medium', late > ON_TIME_GRACE_MIN ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400')}>
-                        · {late > ON_TIME_GRACE_MIN ? `${late} min late` : 'on time'}
-                      </span>
-                    )}
+                    {!s.actual_arrival && s.planned_arrival ? ` · due ${formatDateTime(s.planned_arrival)}` : ''}
                   </p>
+                  {s.actual_arrival && (() => {
+                    const dwell = s.actual_departure ? Math.max(0, Math.round((new Date(s.actual_departure).getTime() - new Date(s.actual_arrival).getTime()) / 60000)) : null;
+                    const mins = (m: number) => (Math.abs(m) < 60 ? `${Math.abs(m)} min` : `${Math.floor(Math.abs(m) / 60)} h ${String(Math.abs(m) % 60).padStart(2, '0')} min`);
+                    const cell = 'rounded-md bg-slate-50 px-2 py-1 dark:bg-slate-800/60';
+                    return (
+                      <>
+                        {/* Planned vs real, side by side */}
+                        <div className="mt-1.5 grid grid-cols-3 gap-1.5 text-xs">
+                          <div className={cell}><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Planned</p><p className="font-medium tabular-nums">{s.planned_arrival ? formatDateTime(s.planned_arrival) : '—'}</p></div>
+                          <div className={cell}><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Arrived</p><p className={cn('font-medium tabular-nums', late != null && (late > ON_TIME_GRACE_MIN ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'))}>{formatDateTime(s.actual_arrival)}</p></div>
+                          <div className={cell}><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Left</p><p className="font-medium tabular-nums">{s.actual_departure ? formatTime(s.actual_departure) : phase === 'active' ? 'Still there' : '—'}</p></div>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {late == null ? 'No planned time' : late > ON_TIME_GRACE_MIN ? `${mins(late)} late` : late < -ON_TIME_GRACE_MIN ? `${mins(late)} early` : 'On time'}
+                          {dwell != null ? ` · ${mins(dwell)} at the stop` : ''}
+                        </p>
+                      </>
+                    );
+                  })()}
+                  {canPin && done && !isExactPin(s.location_coordinate_precision, s.location_lat, s.location_lng) && photoPinsFor(s.id).length > 0 && (
+                    <button type="button" onClick={() => setPinning(s)} className="mt-1 inline-flex items-center gap-1 rounded-md bg-amber-500/12 px-2 py-0.5 text-[11px] font-medium text-amber-800 hover:bg-amber-500/20 dark:text-amber-300">
+                      <Crosshair className="size-3" /> Pin is approximate · {photoPinsFor(s.id).length} photo{photoPinsFor(s.id).length === 1 ? ' has' : 's have'} GPS — check & use
+                    </button>
+                  )}
                   {(s.delay_note || s.delay_reason) && (
                     <p className="mt-1 flex items-start gap-1.5 rounded-lg bg-rose-500/8 px-2 py-1 text-xs text-rose-700 dark:text-rose-300">
                       <TriangleAlert className="mt-0.5 size-3 shrink-0" />
@@ -205,7 +257,7 @@ export default function TripStopsPanel({ trip, phase, documents, tz, formatTime,
                     </button>
                   )}
                   {stopUpdates.map((u) => (
-                    <MediaRow key={u.key} update={u} onOpen={(idx) => openViewer(u, idx, s, name)} onSend={() => setSharing(u)} />
+                    <MediaRow key={u.key} update={u} formatTime={formatTime} onOpen={(idx) => openViewer(u, idx, s, name)} onSend={() => setSharing(u)} />
                   ))}
                 </div>
               </li>
@@ -217,7 +269,7 @@ export default function TripStopsPanel({ trip, phase, documents, tz, formatTime,
           <div className="border-t border-black/[0.06] px-4 py-3 dark:border-white/10">
             <p className="mb-1 text-xs font-medium text-muted-foreground">Other uploads from this trip</p>
             {unplaced.map((u) => (
-              <MediaRow key={u.key} update={u} onOpen={(idx) => openViewer(u, idx, undefined, trip.ref_id)} onSend={() => setSharing(u)} />
+              <MediaRow key={u.key} update={u} formatTime={formatTime} onOpen={(idx) => openViewer(u, idx, undefined, trip.ref_id)} onSend={() => setSharing(u)} />
             ))}
           </div>
         )}
@@ -232,6 +284,7 @@ export default function TripStopsPanel({ trip, phase, documents, tz, formatTime,
         lng={pinning && (pinning.location_lat || pinning.location_lng) ? pinning.location_lng : null}
         footnote={pinning && sharesCustomerPin(pinning) ? `Also saved to ${pinning.location!.name}, so other open and future trips use it.` : undefined}
         onSave={(pin) => savePin(pinning!, pin)}
+        photoPins={pinning ? photoPinsFor(pinning.id) : []}
       />
       <TripTimesReviewDialog
         open={checkingTimes}
@@ -258,11 +311,27 @@ export default function TripStopsPanel({ trip, phase, documents, tz, formatTime,
 }
 
 /** One step's uploads at a stop: label, thumbnails, and Send / Sent. */
-function MediaRow({ update, onOpen, onSend }: { update: DriverUpdate; onOpen: (index: number) => void; onSend: () => void }) {
+function MediaRow({ update, formatTime, onOpen, onSend }: { update: DriverUpdate; formatTime: (iso: string) => string; onOpen: (index: number) => void; onSend: () => void }) {
   const last = update.shares[0];
   const delivered = update.stage === 'delivered';
+  // When they were taken and reached us (a big gap = the phone was offline), how many carry GPS, and office moves.
+  const taken = update.items.map((m) => m.captured_at).sort();
+  const uploaded = update.items.map((m) => m.uploaded_at).filter((x): x is string => !!x).sort();
+  const gps = update.items.filter((m) => m.gps).length;
+  const moved = update.items.filter((m) => m.moved_at).length;
   return (
-    <div className="mt-2 flex items-center gap-2">
+    <div className="mt-2">
+    <p className="mb-1 flex flex-wrap items-center gap-x-1.5 text-[11px] text-muted-foreground">
+      <span>Taken {formatTime(taken[0])}{taken.length > 1 && formatTime(taken[taken.length - 1]) !== formatTime(taken[0]) ? `–${formatTime(taken[taken.length - 1])}` : ''}</span>
+      {uploaded.length > 0 && <span>· uploaded {formatTime(uploaded[uploaded.length - 1])}</span>}
+      <span>· {gps === update.items.length ? 'all geotagged' : gps > 0 ? `${gps} geotagged` : 'no GPS'}</span>
+      {moved > 0 && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-1.5 font-medium text-violet-800 dark:bg-violet-950/40 dark:text-violet-300">
+          <ArrowRightLeft className="size-3" /> {moved === update.items.length ? 'moved here by the office' : `${moved} moved here by the office`}
+        </span>
+      )}
+    </p>
+    <div className="flex items-center gap-2">
       <span className={cn('w-[70px] shrink-0 text-[11px] font-semibold', delivered ? 'text-emerald-700 dark:text-emerald-300' : 'text-muted-foreground')}>
         {STAGE_LABEL[update.stage]}{delivered && ' · POD'}
       </span>
@@ -303,6 +372,7 @@ function MediaRow({ update, onOpen, onSend }: { update: DriverUpdate; onOpen: (i
           </span>
         )}
       </div>
+    </div>
     </div>
   );
 }

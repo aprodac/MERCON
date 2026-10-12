@@ -617,3 +617,55 @@ export function activitySteps(t: OperatorTripDetail, f: Formatters, halts?: Trip
   }));
   return insertByTime(steps, fromGps);
 }
+
+// ── Stop timing & photo geotags ───────────────────────────────────────────────
+
+/** "40 m", "1.2 km", "18 km". */
+export function metersText(m: number): string {
+  if (m < 1000) return `${Math.max(1, Math.round(m / 10) * 10)} m`;
+  const km = m / 1000;
+  return `${km < 10 ? km.toFixed(1) : Math.round(km)} km`;
+}
+
+/** Planned vs real at a stop: how late it arrived (negative = early) and how long the truck stood there. */
+export function stopTiming(st: Pick<Stop, 'planned_arrival' | 'actual_arrival' | 'actual_departure'>) {
+  const late = minutesLate(st.planned_arrival, st.actual_arrival);
+  const dwell = st.actual_arrival && st.actual_departure
+    ? Math.max(0, Math.round((new Date(st.actual_departure).getTime() - new Date(st.actual_arrival).getTime()) / 60000))
+    : null;
+  return { late, dwell };
+}
+
+/** "22 min", "1 h 05 min". */
+export function minutesText(min: number): string {
+  const m = Math.abs(Math.round(min));
+  if (m < 60) return `${m} min`;
+  return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min`;
+}
+
+/** A place a driver photo was taken at (its geotag) — offered as the stop's pin. */
+export interface PhotoPin {
+  id: string;
+  lat: number;
+  lng: number;
+  captured_at: string;
+  label: string;
+}
+
+/** The geotagged photos taken at a stop, oldest first. */
+export function photoPinsForStop(updates: DriverUpdate[], stopId: string): PhotoPin[] {
+  const out: PhotoPin[] = [];
+  for (const u of updates) {
+    if (u.stop?.id !== stopId) continue;
+    for (const m of u.items) {
+      if (m.gps && m.kind !== 'video') out.push({ id: m.id, lat: m.gps.lat, lng: m.gps.lng, captured_at: m.captured_at, label: updateTitle(u) });
+    }
+  }
+  return out.sort((a, b) => a.captured_at.localeCompare(b.captured_at));
+}
+
+/** Distance from a stop's current pin to a point, or null when the stop has no pin. */
+export function distanceFromStop(st: Pick<Stop, 'location_lat' | 'location_lng'>, p: { lat: number; lng: number }): number | null {
+  if (!Number.isFinite(st.location_lat) || !(st.location_lat || st.location_lng)) return null;
+  return haversineKm({ lat: st.location_lat, lng: st.location_lng }, p) * 1000;
+}

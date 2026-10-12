@@ -5,7 +5,8 @@
 import React, { useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Modal, FlatList, Image, Linking, useWindowDimensions, StatusBar } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CheckCheck, Clock3, ExternalLink, MessageCircle, Play, Route, X } from 'lucide-react-native';
+import { CheckCheck, Clock3, Crosshair, ExternalLink, Info, MessageCircle, Play, Route, X } from 'lucide-react-native';
+import { GoogleMapsGeotagPreview } from '@mercon/mobile-shared/components/GoogleMapsGeotagPreview';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import type { SendState } from '../tripDetailsModel';
@@ -18,6 +19,12 @@ export interface ViewerItem {
   caption: string;
   /** Set for driver photos: has this one reached the customer? */
   sent?: boolean;
+  /** The photo's geotag — shown with the same panel the driver app stamps on its photos. */
+  geo?: { lat: number; lng: number; captured_at: string; place?: string | null; address?: string | null; customer?: string | null } | null;
+  /** One line of facts, e.g. "Taken 08:23 · uploaded 08:25 · 40 m from the Jeddah pin". */
+  info?: string | null;
+  /** E.g. "Use as Jeddah's pin" when the stop's pin is a guess and this photo has GPS. */
+  pinAction?: { label: string; onPress: () => void } | null;
 }
 
 interface Props {
@@ -86,7 +93,22 @@ export function MediaViewer({ items, startIndex, title, onClose, onSend, status,
                       </View>
                     </TouchableOpacity>
                   ) : uri ? (
-                    <Image source={{ uri }} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
+                    <View style={{ flex: 1 }}>
+                      <Image source={{ uri }} style={{ width: '100%', flex: 1 }} resizeMode="contain" />
+                      {item.geo ? (
+                        <View style={s.geo}>
+                          <GoogleMapsGeotagPreview
+                            latitude={item.geo.lat}
+                            longitude={item.geo.lng}
+                            timestamp={item.geo.captured_at}
+                            locationName={item.geo.place ?? null}
+                            fullAddress={item.geo.address ?? null}
+                            companyName={item.geo.customer ?? null}
+                            bottomPadding={10}
+                          />
+                        </View>
+                      ) : null}
+                    </View>
                   ) : null}
                   {item.sent != null ? (
                     <View style={[s.mark, { backgroundColor: item.sent ? WA : '#B45309' }]}>
@@ -98,6 +120,23 @@ export function MediaViewer({ items, startIndex, title, onClose, onSend, status,
               );
             }}
           />
+        ) : null}
+
+        {current?.info || current?.pinAction ? (
+          <View style={s.facts}>
+            {current.info ? (
+              <View style={s.factRow}>
+                <Info size={14} color="#C9C9D2" />
+                <Text style={s.factText} numberOfLines={2}>{current.info}</Text>
+              </View>
+            ) : null}
+            {current.pinAction ? (
+              <TouchableOpacity style={s.pinBtn} activeOpacity={0.85} onPress={current.pinAction.onPress} accessibilityRole="button">
+                <Crosshair size={15} color="#1E3A8A" />
+                <Text style={s.pinBtnText}>{current.pinAction.label}</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
         ) : null}
 
         {status ? (
@@ -135,6 +174,12 @@ export function MediaViewer({ items, startIndex, title, onClose, onSend, status,
 }
 
 const s = StyleSheet.create({
+  geo: { borderRadius: 14, overflow: 'hidden', marginTop: 10 },
+  facts: { marginHorizontal: 16, marginBottom: 10, gap: 8 },
+  factRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  factText: { flex: 1, color: '#E4E4E9', fontSize: 13 },
+  pinBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 44, borderRadius: 12, backgroundColor: '#DBEAFE' },
+  pinBtnText: { color: '#1E3A8A', fontSize: 14, fontWeight: '800' },
   root: { flex: 1, backgroundColor: '#3E3C3D' },
   top: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16 },
   title: { color: Colors.white, fontSize: 15, fontWeight: '800' },
