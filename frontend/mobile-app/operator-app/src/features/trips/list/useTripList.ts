@@ -15,8 +15,9 @@ import { makeTime } from './tripListModel';
 
 export type View = 'now' | 'delayed' | 'schedule' | 'history';
 
-export const SCHEDULE_BEFORE = 7;
-export const SCHEDULE_AFTER = 13;
+// Two weeks back, and two months ahead — month plans are booked well into next month.
+export const SCHEDULE_BEFORE = 14;
+export const SCHEDULE_AFTER = 62;
 const HISTORY_PAGE = 30;
 const OPEN_STATUSES = 'Draft,Scheduled,Loading,InTransit,Delayed';
 
@@ -65,7 +66,7 @@ export function useTripList(view: View, search: string, now: number, scope?: Rec
 
   const schedule = useQuery({
     queryKey: ['trips', 'window', todayKey, scopeKey ?? 'all'],
-    queryFn: () => fetchTrips({ start_date: windowStart.toISOString(), end_date: new Date(windowEnd.getTime() - 1).toISOString(), per_page: 500, ...filter }),
+    queryFn: () => fetchTrips({ start_date: windowStart.toISOString(), end_date: new Date(windowEnd.getTime() - 1).toISOString(), per_page: 1000, ...filter }),
     enabled: view === 'schedule',
     refetchInterval: view === 'schedule' ? 60_000 : false,
   });

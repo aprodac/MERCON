@@ -47,7 +47,7 @@ export function buildDriverFacts(
   else chips.push({ text: 'No truck', tone: 'neutral' });
 
   const laneTrips = rec?.routeTripCount ?? 0;
-  if (laneTrips > 0) chips.push({ text: `${laneTrips}× this lane`, tone: 'good' });
+  if (laneTrips > 0) chips.push({ text: `${laneTrips}× done on this lane`, tone: 'good' });
 
   // The recommendation flags a truck that doesn't fit the trip ("⚠️ …").
   const warning = rec?.badges?.find((b) => b.startsWith('⚠'));
