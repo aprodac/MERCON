@@ -7,6 +7,8 @@ import { useOperatorExpenses, type OperatorExpense } from '@/lib/operator';
 import { EmptyState, ErrorState } from '@mercon/mobile-shared/ui';
 import { OperatorSidebarDrawer } from '@/components/OperatorSidebarDrawer';
 import { AppTopBar } from '@/components/AppTopBar';
+import { DeleteLink } from '@/components/DeleteRecord';
+import { api } from '@mercon/mobile-shared/lib/api';
 
 export default function ExpensesScreen() {
   const router = useRouter();
@@ -57,6 +59,7 @@ export default function ExpensesScreen() {
           </Text>
         </View>
       </View>
+      <DeleteLink what="this expense" consequence="It is removed from the expense list and its totals. Admins can restore it from Trash." run={() => api.delete(`/expenses/${item.id}`)} onDeleted={refetch} />
     </View>
   );
 
