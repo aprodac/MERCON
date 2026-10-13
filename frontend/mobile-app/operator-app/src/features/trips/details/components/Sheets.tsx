@@ -14,7 +14,7 @@ import { ACTION, Divider, INK, MUTED, SheetRow } from './parts';
 // ── More ──────────────────────────────────────────────────────────────────────
 
 export function MoreSheet({
-  visible, trip, active, assignment, onClose, onEdit, onCancel, onQuick, tracking, onStepBack,
+  visible, trip, active, assignment, onClose, onEdit, onCancel, onQuick, tracking, onStepBack, onDelete,
 }: {
   visible: boolean;
   trip: OperatorTripDetail;
@@ -29,6 +29,8 @@ export function MoreSheet({
   tracking?: { sub: string; onPress: () => void } | null;
   /** "Undo driver's step" — absent when there's no driver progress to take back. */
   onStepBack?: () => void;
+  /** "Delete trip" — absent while the trip runs or once it is invoiced. */
+  onDelete?: () => void;
 }) {
   const go = (fn: () => void) => () => { onClose(); setTimeout(fn, 250); };
   return (
@@ -56,6 +58,12 @@ export function MoreSheet({
           <>
             <Divider style={{ marginVertical: 6 }} />
             <SheetRow icon={XCircle} tint={TONE.red.bg} fg="#B42318" label="Cancel trip" sub="Frees the driver and truck" danger onPress={go(onCancel)} />
+          </>
+        ) : null}
+        {onDelete ? (
+          <>
+            {canCancel(trip) ? null : <Divider style={{ marginVertical: 6 }} />}
+            <SheetRow icon={Trash2} tint={TONE.red.bg} fg="#B42318" label="Delete trip" sub="Made by mistake? Remove it from every list" danger onPress={go(onDelete)} />
           </>
         ) : null}
       </View>

@@ -7,6 +7,7 @@
  * customer and driver and were created within the same minute or two. Only
  * not-started ones (Draft / Scheduled) are offered.
  */
+import { Alert } from 'react-native';
 import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { operatorService, type OperatorTrip, type OperatorTripDetail, type UpdateTripRouteInput } from '../../../lib/operator';
 import { sortedStops } from '../details/tripDetailsModel';
@@ -14,7 +15,9 @@ import { sortedStops } from '../details/tripDetailsModel';
 const MADE_TOGETHER_MS = 2 * 60_000;
 
 /** The other not-started trips made by the same Create Trip as `trip`. */
-export async function tripsMadeWith(trip: OperatorTripDetail): Promise<OperatorTrip[]> {
+type TripKey = { id: string; createdAt?: string | null; driver?: { id?: string } | null; customer?: { id?: string } | null };
+
+export async function tripsMadeWith(trip: TripKey): Promise<OperatorTrip[]> {
   const driverId = trip.driver?.id;
   const customerId = trip.customer?.id;
   if (!driverId || !customerId || !trip.createdAt) return [];
@@ -91,4 +94,49 @@ export function deltaText(ms: number): string {
   const hours = Math.round(abs / 3_600_000);
   if (hours < 24) return `${hours} h ${later}`;
   return `${Math.floor(days)} d ${hours % 24} h ${later}`;
+}
+
+/** Soft-deletes trips (POST /trips/bulk-delete); invoiced or paid ones are kept and named. */
+export async function deleteTrips(ids: string[]): Promise<{ deleted: number; kept: string[] }> {
+  const { data } = await api.post('/trips/bulk-delete', { ids });
+  const d = data?.data ?? {};
+  return { deleted: Number(d.deletedCount ?? 0), kept: (d.skippedTrips ?? []).map((t: { ref_id?: string | null }) => t.ref_id ?? 'a trip') };
+}
+
+/** A trip can be deleted from the app: not running (cancel it instead) and not invoiced. */
+export const canDeleteTrip = (status: string) => ['Draft', 'Scheduled', 'Cancelled', 'Completed'].includes(status);
+
+/**
+ * Asks, then deletes a trip — and, when other not-started trips were created
+ * together with it (a month plan), offers to delete those too.
+ */
+export async function askDeleteTrip(
+  trip: TripKey & { ref_id: string | null },
+  hooks: { busy?: (on: boolean) => void; deleted: () => void },
+): Promise<void> {
+  const others = await tripsMadeWith(trip).catch(() => [] as OperatorTrip[]);
+  const remove = async (ids: string[]) => {
+    hooks.busy?.(true);
+    try {
+      const r = await deleteTrips(ids);
+      if (r.kept.length) Alert.alert(`Deleted ${r.deleted} of ${ids.length}`, `Kept because they are invoiced or paid: ${r.kept.join(', ')}`);
+      hooks.deleted();
+    } catch (e) {
+      Alert.alert('Could not delete', getApiErrorMessage(e));
+    } finally {
+      hooks.busy?.(false);
+    }
+  };
+  const what = 'It disappears from the trip lists, the driver app and the customer link. Admins can restore it from Trash.';
+  Alert.alert(
+    `Delete ${trip.ref_id ?? 'this trip'}?`,
+    others.length
+      ? `${what}\n\n${others.length} other not-started ${others.length === 1 ? 'trip was' : 'trips were'} created together with it (same customer and driver).`
+      : what,
+    [
+      { text: 'Keep', style: 'cancel' },
+      ...(others.length ? [{ text: `Delete all ${others.length + 1}`, style: 'destructive' as const, onPress: () => remove([trip.id, ...others.map((o) => o.id)]) }] : []),
+      { text: others.length ? 'Only this trip' : 'Delete', style: 'destructive' as const, onPress: () => remove([trip.id]) },
+    ],
+  );
 }

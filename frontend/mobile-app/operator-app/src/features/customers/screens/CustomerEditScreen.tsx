@@ -11,7 +11,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Building2, MessageCircle, Phone, Smartphone, Truck } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { FilterChip } from '@mercon/mobile-shared/components/Badge';
-import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
+import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
+import { DeleteRecord } from '@/components/DeleteRecord';
 import {
   operatorService, invalidateOperatorCustomers, useOperatorCustomerById,
   type CreateCustomerInput, type OperatorCustomer,
@@ -177,6 +178,16 @@ function CustomerForm({ customer, onDone }: { customer?: OperatorCustomer; onDon
           ) : null}
         </Section>
         <View />
+        {customer ? (
+          <DeleteRecord
+            label="Delete customer"
+            name={customer.name}
+            consequence="The customer leaves the customer list. Their past trips and invoices stay. To keep them on the list but stop new trips, switch Active off instead."
+            run={() => api.delete(`/customers/${customer.id}`)}
+            backTo="/customers"
+            onDeleted={invalidateOperatorCustomers}
+          />
+        ) : null}
       </ScrollView>
 
       <SaveBar label={isNew ? 'Add customer' : 'Save changes'} onPress={handleSave} saving={saving} />
