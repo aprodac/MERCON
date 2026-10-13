@@ -1,0 +1,76 @@
+name: TestFlight Feedback
+
+# Pulls tester feedback (screenshot feedback + crash reports) from TestFlight
+# through the App Store Connect API — the same ASC_* secrets as the iOS build:
+#   Actions → "TestFlight Feedback" → Run workflow → pick the app + days
+#   or: gh workflow run testflight-feedback.yml -f app=both -f days=30
+#
+# The run's summary lists every item; screenshots, crash logs and the full JSON
+# are in the run's artifacts (kept 30 days).
+# One-time setup of the ASC_* secrets: docs/XCODE_CLOUD_SETUP.md
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: 'Which app'
+        type: choice
+        options: [driver, operator, both]
+        default: both
+      days:
+        description: 'How many days back'
+        type: number
+        default: 30
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Pick apps
+    runs-on: ubuntu-latest
+    outputs:
+      apps: ${{ steps.pick.outputs.apps }}
+    steps:
+      - id: pick
+        run: |
+          case "${{ inputs.app }}" in
+            driver)   echo 'apps=["tech.merconapp.driver"]' >> "$GITHUB_OUTPUT" ;;
+            operator) echo 'apps=["tech.mercon.operator"]' >> "$GITHUB_OUTPUT" ;;
+            both)     echo 'apps=["tech.merconapp.driver","tech.mercon.operator"]' >> "$GITHUB_OUTPUT" ;;
+          esac
+
+  feedback:
+    name: ${{ matrix.bundle_id }}
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        bundle_id: ${{ fromJSON(needs.plan.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+
+      - name: Fetch TestFlight feedback
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: >
+          node .github/scripts/testflight-feedback.mjs
+          "${{ matrix.bundle_id }}" "${{ inputs.days }}" feedback-out
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: testflight-feedback-${{ matrix.bundle_id }}
+          path: feedback-out
+          if-no-files-found: ignore
+          retention-days: 30
