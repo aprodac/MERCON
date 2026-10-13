@@ -161,9 +161,9 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
                   <>
                     {/* Planned vs real, side by side */}
                     <View style={s.timeGrid}>
-                      <TimeCell label="PLANNED" value={st.planned_arrival ? f.smart(st.planned_arrival) : '—'} />
-                      <TimeCell label="ARRIVED" value={f.smart(st.actual_arrival)} tone={lateMin != null && lateMin > ON_TIME_GRACE_MIN ? 'red' : lateMin != null ? 'green' : undefined} />
-                      <TimeCell label="LEFT" value={st.actual_departure ? f.time(st.actual_departure) : phase === 'active' ? 'Still there' : '—'} />
+                      <TimeCell label="PLANNED" f={f} iso={st.planned_arrival} />
+                      <TimeCell label="ARRIVED" f={f} iso={st.actual_arrival} tone={lateMin != null && lateMin > ON_TIME_GRACE_MIN ? 'red' : lateMin != null ? 'green' : undefined} />
+                      <TimeCell label="LEFT" f={f} iso={st.actual_departure} empty={phase === 'active' ? 'Still there' : '—'} />
                     </View>
                     <Text style={s.timeNote}>
                       {lateMin == null ? 'No planned time' : lateMin > ON_TIME_GRACE_MIN ? `${minutesText(lateMin)} late` : lateMin < -ON_TIME_GRACE_MIN ? `${minutesText(lateMin)} early` : 'On time'}
@@ -217,11 +217,15 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
   );
 }
 
-function TimeCell({ label, value, tone }: { label: string; value: string; tone?: 'red' | 'green' }) {
+/** One time box: the time on its own line (it must never be cut off), the day under it when it isn't today. */
+function TimeCell({ label, f, iso, tone, empty = '—' }: { label: string; f: Formatters; iso?: string | null; tone?: 'red' | 'green'; empty?: string }) {
+  const time = f.time(iso);
+  const day = time && f.dayKey(iso) !== f.dayKey(new Date().toISOString()) ? f.dayMonth(iso) : '';
   return (
     <View style={s.timeCell}>
       <Text style={s.timeLabel}>{label}</Text>
-      <Text style={[s.timeValue, tone === 'red' && { color: '#B42318' }, tone === 'green' && { color: '#15803D' }]} numberOfLines={1}>{value}</Text>
+      <Text style={[s.timeValue, tone === 'red' && { color: '#B42318' }, tone === 'green' && { color: '#15803D' }]} numberOfLines={1}>{time || empty}</Text>
+      {day ? <Text style={s.timeDay} numberOfLines={1}>{day}</Text> : null}
     </View>
   );
 }
@@ -304,6 +308,7 @@ const s = StyleSheet.create({
   timeCell: { flex: 1, backgroundColor: '#F6F7F9', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 6 },
   timeLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5, color: '#8A8A96' },
   timeValue: { fontSize: 14, fontWeight: '700', color: INK, marginTop: 1, fontVariant: ['tabular-nums'] },
+  timeDay: { fontSize: 11, fontWeight: '600', color: '#8A8A96', marginTop: 1 },
   timeNote: { fontSize: 13, color: MUTED, marginTop: 6 },
   setMeta: { fontSize: 12, color: MUTED, marginTop: -2, marginBottom: 6 },
   movedTag: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', backgroundColor: '#F5F2FD', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 6 },

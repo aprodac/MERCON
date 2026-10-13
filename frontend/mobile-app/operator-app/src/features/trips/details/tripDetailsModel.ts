@@ -139,6 +139,8 @@ export function makeFormatters(tz: string) {
     dateTime: (iso?: string | null) => fmt(iso, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }),
     dayTime: (iso?: string | null) => fmt(iso, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }),
     date: (iso?: string | null) => fmt(iso, { day: 'numeric', month: 'short', year: 'numeric' }),
+    /** Day + month only ("12 Oct"), for a line under a time. */
+    dayMonth: (iso?: string | null) => fmt(iso, { day: 'numeric', month: 'short' }),
     /** The calendar day in the deployment's timezone, to compare two times. */
     dayKey: (iso?: string | null) => fmt(iso, { year: 'numeric', month: '2-digit', day: '2-digit' }),
     /** A stop time: just the time when it's today, else day + time. */
