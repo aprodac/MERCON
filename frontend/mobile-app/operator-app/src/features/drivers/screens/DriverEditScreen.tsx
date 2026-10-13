@@ -16,8 +16,9 @@ import { CircleUser, IdCard, KeyRound, Activity, Truck, CheckCircle2, CircleDash
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { FilterChip } from '@mercon/mobile-shared/components/Badge';
 import { DatePickerModal } from '@mercon/mobile-shared/components/common/DateTimePickerModal';
-import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
-import {
+import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
+import { DeleteRecord } from '@/components/DeleteRecord';
+import { invalidateOperatorVehicles,
   operatorService, invalidateOperatorDrivers, useOperatorDriverById,
   type OperatorDriver, type UpdateDriverInput,
 } from '../../../lib/operator';
@@ -271,6 +272,17 @@ function DriverForm({ driver, onDone }: { driver?: OperatorDriver; onDone: () =>
             placeholder={isNew || !hasPassword ? 'Optional' : 'Leave blank to keep'}
           />
         </Section>
+        {driver ? (
+          <DeleteRecord
+            label="Delete driver"
+            name={`${driver.first_name} ${driver.last_name}`.trim()}
+            consequence="The driver leaves the active list and can no longer sign in to the driver app. Their past trips, documents and pay stay. Admins can restore them from Trash."
+            needsPassword
+            run={(password) => api.delete(`/drivers/${driver.id}`, { data: { password } })}
+            backTo="/drivers"
+            onDeleted={() => { invalidateOperatorDrivers(); invalidateOperatorVehicles(); }}
+          />
+        ) : null}
       </ScrollView>
 
       <SaveBar label={isNew ? 'Add driver' : 'Save changes'} onPress={handleSave} saving={saving} />

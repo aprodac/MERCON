@@ -9,7 +9,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Building2, FileText, Phone } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
-import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
+import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
+import { DeleteRecord } from '@/components/DeleteRecord';
 import { operatorService, type OperatorThirdPartyProvider, type ThirdPartyProviderInput } from '@/lib/operator';
 import { Field, FormHeader, SaveBar, Section, SwitchRow, formStyles } from '@/features/users/components/FormKit';
 
@@ -166,6 +167,15 @@ function ProviderForm({ provider, onDone }: { provider?: OperatorThirdPartyProvi
           ) : null}
         </Section>
         <View />
+        {provider ? (
+          <DeleteRecord
+            label="Delete carrier"
+            name={provider.name}
+            consequence="The carrier and its rates leave the 3PL list. Trips already given to them keep their details."
+            run={() => api.delete(`/third-party-providers/${provider.id}`)}
+            backTo="/third-party"
+          />
+        ) : null}
       </ScrollView>
 
       <SaveBar label={isNew ? 'Add carrier' : 'Save changes'} onPress={handleSave} saving={saving} />

@@ -15,7 +15,8 @@ import { Activity, Check, Container, MapPin, Truck, UserRound } from 'lucide-rea
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { FilterChip } from '@mercon/mobile-shared/components/Badge';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
-import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
+import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
+import { DeleteRecord } from '@/components/DeleteRecord';
 import {
   operatorService, invalidateOperatorVehicles, invalidateOperatorDrivers, useOperatorVehicleById,
   type CreateVehicleInput, type OperatorVehicle, type UpdateVehicleInput,
@@ -200,6 +201,16 @@ function VehicleForm({ vehicle, onDone }: { vehicle?: OperatorVehicle; onDone: (
           ) : null}
         </Section>
         <View />
+        {vehicle ? (
+          <DeleteRecord
+            label="Delete truck"
+            name={vehicle.plate_number}
+            consequence="The truck leaves the fleet list and is freed from its driver. Its past trips, documents and costs stay. Admins can restore it from Trash."
+            run={() => api.delete(`/vehicles/${vehicle.id}`)}
+            backTo="/vehicles"
+            onDeleted={() => { invalidateOperatorVehicles(); invalidateOperatorDrivers(); }}
+          />
+        ) : null}
       </ScrollView>
 
       <SaveBar label={isNew ? 'Add vehicle' : 'Save changes'} onPress={handleSave} saving={saving} />

@@ -18,10 +18,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, CalendarClock, Check, LayoutList, Lock, Maximize2, MessageCircle, MoreHorizontal, Navigation, Phone, Route, Send, X, type LucideIcon } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
+import { useQueryClient } from '@tanstack/react-query';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import { chooseMedia } from '@mercon/mobile-shared/lib/camera';
 import {
-  operatorService, type DriverUpdate, type OperatorDriver, type OperatorTripDocument, type OperatorVehicle, type TripDocKind,
+  invalidateOperatorTrips, operatorService, type DriverUpdate, type OperatorDriver, type OperatorTripDocument, type OperatorVehicle, type TripDocKind,
 } from '../../../lib/operator';
 import { PickerSheet, niceName } from '../create/components/ui';
 import { useTripDetails } from './useTripDetails';
@@ -38,6 +39,7 @@ import { PinSheet } from './components/PinSheet';
 import { ActivitySheet, ChargesSheet, MoreSheet, UploadSheet } from './components/Sheets';
 import { StepBackSheet } from './components/StepBackSheet';
 import { ACTION, INK, MUTED, PAGE, WA, WA_INK, WA_LIGHT, tap } from './components/parts';
+import { askDeleteTrip, canDeleteTrip } from '../edit/movePlan';
 import { shareTextToWhatsApp } from '../../dashboard/components/ActiveTripsSection';
 
 /** Under the More sheet's tracking row: has the customer looked at it? */
@@ -57,6 +59,7 @@ export default function TripDetailsScreen() {
   const { id } = params;
   const { trip, overview, updates, whatsappApi, tz, phase, remaining, tracking, trackingUrl, refreshTracking, loading, refreshing, error, refresh, reload } = useTripDetails(id);
   const f = useMemo(() => makeFormatters(tz), [tz]);
+  const queryClient = useQueryClient();
 
   const [tab, setTab] = useState<Tab>(params.tab === 'stops' || params.stop || params.photo ? 'stops' : 'details');
   const [busy, setBusy] = useState(false);
@@ -182,6 +185,16 @@ export default function TripDetailsScreen() {
     if (next.confirm) Alert.alert(next.confirm.title, next.confirm.message, [{ text: 'Not yet', style: 'cancel' }, { text: 'Confirm', onPress: run }]);
     else run();
   };
+
+  // Delete: a trip made by mistake (a month plan's other not-started trips can go with it).
+  const deleteTrip = () => askDeleteTrip(trip, {
+    busy: setBusy,
+    deleted: () => {
+      invalidateOperatorTrips();
+      queryClient.invalidateQueries({ queryKey: ['trips'] });
+      router.back();
+    },
+  });
 
   const cancelTrip = () => {
     Alert.alert('Cancel this trip?', 'The driver and truck are freed. This cannot be undone.', [
@@ -524,6 +537,7 @@ export default function TripDetailsScreen() {
         assignment={phase === 'planned' || phase === 'active'}
         tracking={tracking?.enabled && tracking.url ? { sub: trackingSub(tracking.open_count, tracking.last_opened_at), onPress: trackingActions } : null}
         onStepBack={canStepBack ? () => setSheet('stepback') : undefined}
+        onDelete={canDeleteTrip(trip.status) ? deleteTrip : undefined}
       />
       <StepBackSheet visible={sheet === 'stepback'} tripId={trip.id} f={f} onClose={() => setSheet(null)} onDone={reload} />
       <UploadSheet visible={sheet === 'upload'} onClose={() => setSheet(null)} onPick={upload} />

@@ -652,7 +652,8 @@ export const deleteDriver = async (req: Request, res: Response) => {
 
     const isValid = await bcrypt.compare(password, user.password_hash);
     if (!isValid) {
-      return res.status(401).json({ success: false, error: { code: 'INVALID_CREDENTIALS', message: 'Incorrect password' } });
+      // 403, not 401: the session is fine, only the confirmation failed — a 401 makes the apps sign the user out.
+      return res.status(403).json({ success: false, error: { code: 'INCORRECT_PASSWORD', message: 'Incorrect password' } });
     }
 
     const driverId = req.params.id as string;

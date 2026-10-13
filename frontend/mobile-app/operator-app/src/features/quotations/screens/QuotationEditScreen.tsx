@@ -19,7 +19,8 @@ import { Building2, CalendarRange, ChevronDown, MapPin, Plus, Route, Truck, Wall
 import { LINE_TYPES, TRUCK_CLASSES, lineTypeLabel, normalizeBillingTypeToken, normalizeLineTypeToken } from '@mercon/shared-types';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { DatePickerModal } from '@mercon/mobile-shared/components/common/DateTimePickerModal';
-import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
+import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
+import { DeleteRecord } from '@/components/DeleteRecord';
 import {
   operatorService, useOperatorCustomers,
   type OperatorLocation, type OperatorQuotationDetail,
@@ -392,6 +393,15 @@ function QuotationForm({ quotation, template, onDone }: { quotation?: OperatorQu
             />
           ) : null}
         </Section>
+        {quotation ? (
+          <DeleteRecord
+            label="Delete quotation"
+            name={quotation.name || 'this quotation'}
+            consequence="New trips can no longer use this rate. A quotation that trips already use can't be deleted — switch it off (Active) instead."
+            run={() => api.delete(`/quotations/${quotation.id}`)}
+            backTo="/quotations"
+          />
+        ) : null}
       </ScrollView>
 
       <SaveBar label={isNew ? 'Create quotation' : 'Save changes'} onPress={handleSave} saving={saving} />
