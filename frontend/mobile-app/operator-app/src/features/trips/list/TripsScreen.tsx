@@ -418,9 +418,10 @@ function DateStrip({ days, selected, today, counts, onSelect }: {
         const past = k < today;
         return (
           <TouchableOpacity style={[s.day, on && s.dayOn, !on && k === today && s.dayToday]} onPress={() => onSelect(k)} activeOpacity={0.8} accessibilityLabel={`${wd} ${d}, ${c?.total ?? 0} trips`}>
-            {d === 1 || k === days[0] ? (
-              <Text style={[s.dayMonth, on && { color: Colors.white }]}>{new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', month: 'short' }).format(date)}</Text>
-            ) : null}
+            {/* Every cell keeps a month line so the 1st of a month lines up with the rest. */}
+            <Text style={[s.dayMonth, on && { color: Colors.white }]}>
+              {d === 1 || k === days[0] ? new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', month: 'short' }).format(date) : ' '}
+            </Text>
             <Text style={[s.dayWd, on && { color: '#C9C9D2' }, past && !on && { color: '#9898A4' }]}>{k === today ? 'Today' : wd}</Text>
             <Text style={[s.dayNum, on && { color: Colors.white }, past && !on && { color: '#6E6E80' }]}>{d}</Text>
             <View style={s.dayDots}>
@@ -486,10 +487,10 @@ const s = StyleSheet.create({
   sectionCount: { fontSize: 13, fontWeight: '500', color: '#A1A1AA' },
   dayHead: { flexDirection: 'row', alignItems: 'baseline', gap: 10, marginTop: 4 },
   todayLink: { fontSize: 13, fontWeight: '700', color: '#C4432F' },
-  dayMonth: { position: 'absolute', top: 3, fontSize: 9, fontWeight: '800', letterSpacing: 0.4, color: '#C4432F', textTransform: 'uppercase' },
+  dayMonth: { fontSize: 9, lineHeight: 11, fontWeight: '800', letterSpacing: 0.4, color: '#C4432F', textTransform: 'uppercase' },
   dayTitle: { fontSize: 18, fontWeight: '800', color: INK },
   dayCount: { fontSize: 13, fontWeight: '700', color: MUTED },
-  day: { width: 52, height: 74, borderRadius: 16, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', gap: 2, borderWidth: 1, borderColor: '#EEF0F4' },
+  day: { width: 52, height: 80, borderRadius: 16, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', gap: 1, borderWidth: 1, borderColor: '#EEF0F4' },
   dayOn: { backgroundColor: INK, borderColor: INK },
   dayToday: { borderColor: '#C4432F', borderWidth: 1.5 },
   dayWd: { fontSize: 11, fontWeight: '700', color: MUTED },

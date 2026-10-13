@@ -349,20 +349,20 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
                       <Text style={[s.stopName, !st.name && { color: Colors.gray400, fontWeight: '400' }]} numberOfLines={1}>
                         {st.name ? niceName(st.name) : 'Choose a place'}
                       </Text>
+                      {!edge ? (
+                        <TouchableOpacity
+                          style={[s.stopTime, !st.planned_arrival && s.stopTimeMissing]}
+                          onPress={() => routeOpen && setStopWhen(st.key)}
+                          activeOpacity={routeOpen ? 0.7 : 1}
+                          accessibilityLabel={`Time at ${stopLabel(i)}`}
+                        >
+                          <Clock size={13} color={st.planned_arrival ? Colors.gray500 : '#B54708'} />
+                          <Text style={[s.stopTimeText, !st.planned_arrival && { color: '#B54708' }]} numberOfLines={1}>
+                            {st.planned_arrival ? `${st.stop_type === 'Pickup' ? 'Pickup' : 'Arrive'} ${whenText(wallOf(st.planned_arrival, tz))}` : routeOpen ? 'Set the time' : 'No time set'}
+                          </Text>
+                        </TouchableOpacity>
+                      ) : null}
                     </View>
-                    {!edge ? (
-                      <TouchableOpacity
-                        style={[s.stopTime, !st.planned_arrival && s.stopTimeMissing]}
-                        onPress={() => routeOpen && setStopWhen(st.key)}
-                        activeOpacity={routeOpen ? 0.7 : 1}
-                        accessibilityLabel={`Time at ${stopLabel(i)}`}
-                      >
-                        <Clock size={13} color={st.planned_arrival ? Colors.gray500 : '#B54708'} />
-                        <Text style={[s.stopTimeText, !st.planned_arrival && { color: '#B54708' }]} numberOfLines={1}>
-                          {st.planned_arrival ? `${st.stop_type === 'Pickup' ? 'Pickup' : 'Arrive'} ${whenText(wallOf(st.planned_arrival, tz))}` : routeOpen ? 'Set the time' : 'No time set'}
-                        </Text>
-                      </TouchableOpacity>
-                    ) : null}
                     {!routeOpen ? null : edge || !oneWay ? <MapPin size={16} color={Colors.gray400} /> : (
                       <TouchableOpacity onPress={() => removeStop(st.key)} hitSlop={10} accessibilityLabel={`Remove ${stopLabel(i)}`}>
                         <X size={17} color={Colors.gray500} />
@@ -522,7 +522,7 @@ function LockNote({ text }: { text: string }) {
 const s = StyleSheet.create({
   off: { opacity: 0.6 },
   error: { fontSize: 12, color: Colors.error, marginTop: -4 },
-  stopTime: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8, backgroundColor: Colors.gray100, maxWidth: 170 },
+  stopTime: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', marginTop: 6, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8, backgroundColor: Colors.gray100 },
   stopTimeMissing: { backgroundColor: '#FEF0C7' },
   stopTimeText: { fontSize: 12, fontWeight: '600', color: Colors.gray600 },
   hint: { fontSize: 12, color: Colors.gray500 },
