@@ -177,6 +177,7 @@ export async function getRecommendedDriversForTrip(params: {
       select: {
         driverId: true,
         customerId: true,
+        status: true,
         planned_start: true,
         stops: {
           where: { deletedAt: null, leg_index: 0 },
@@ -211,14 +212,17 @@ export async function getRecommendedDriversForTrip(params: {
     const prevEnd = prev ? prev.actual_end || prev.planned_end || prev.planned_start : null;
     const prevStop = prev?.stops[0];
 
+    // Lane and customer experience count delivered trips only; booked ones on the lane are shown apart.
     let laneTrips = 0;
+    let laneTripsBooked = 0;
     let customerTrips = 0;
     let stopsTimed = 0;
     let stopsLate = 0;
     let tripsThisWeek = 0;
     for (const t of history) {
       if (t.driverId !== d.id) continue;
-      if (customerId && t.customerId === customerId) customerTrips++;
+      const delivered = t.status === 'Completed' || t.status === 'Invoiced';
+      if (customerId && t.customerId === customerId && delivered) customerTrips++;
       if (t.planned_start && t.planned_start >= weekAgo) tripsThisWeek++;
       const first = t.stops[0];
       const last = t.stops[t.stops.length - 1];
@@ -226,7 +230,10 @@ export async function getRecommendedDriversForTrip(params: {
         // Same lane by location, or by exact name when a location is missing — never by substring.
         const sameStart = originLocId && first.locationId ? first.locationId === originLocId : Boolean(origName) && norm(first.location_name) === origName;
         const sameEnd = destLocId && last.locationId ? last.locationId === destLocId : Boolean(destName) && norm(last.location_name) === destName;
-        if (sameStart && sameEnd) laneTrips++;
+        if (sameStart && sameEnd) {
+          if (delivered) laneTrips++;
+          else laneTripsBooked++;
+        }
       }
       for (const st of t.stops) {
         if (!st.actual_arrival || !st.planned_arrival) continue;
@@ -248,6 +255,7 @@ export async function getRecommendedDriversForTrip(params: {
         ? { end: prevEnd, endPlace: prevStop?.location_name || prevStop?.location?.name || null, endLocationId: prevStop?.locationId || null }
         : null,
       laneTrips,
+      laneTripsBooked,
       customerTrips,
       tripsThisWeek,
       onTimeRate: stopsTimed >= 3 ? (stopsTimed - stopsLate) / stopsTimed : null,

@@ -234,3 +234,36 @@ export function groupByDay(trips: OperatorTrip[], f: TimeFmt, todayKey: string, 
     }),
   }));
 }
+
+/**
+ * Open trips that double-book a driver or truck: planned windows that overlap
+ * (a trip with no end counts as 4 h). Returns trip id → "Overlaps TRP-0026 · same driver".
+ */
+export function clashesOf(trips: OperatorTrip[]): Map<string, string> {
+  const HOUR = 3_600_000;
+  const open = trips.filter((t) => {
+    const p = phaseOf(t.status);
+    return (p === 'draft' || p === 'planned' || p === 'running' || p === 'delayed') && t.planned_start && !t.is_third_party;
+  });
+  const span = (t: OperatorTrip) => {
+    const a = Date.parse(t.planned_start!);
+    return [a, t.planned_end ? Date.parse(t.planned_end) : a + 4 * HOUR] as const;
+  };
+  const out = new Map<string, string>();
+  for (let i = 0; i < open.length; i++) {
+    for (let j = i + 1; j < open.length; j++) {
+      const a = open[i];
+      const b = open[j];
+      const sameDriver = !!a.driver?.id && a.driver.id === b.driver?.id;
+      const sameTruck = !!a.vehicle?.id && a.vehicle.id === b.vehicle?.id;
+      if (!sameDriver && !sameTruck) continue;
+      const [as, ae] = span(a);
+      const [bs, be] = span(b);
+      if (as >= be || bs >= ae) continue;
+      const what = sameDriver && sameTruck ? 'same driver and truck' : sameDriver ? 'same driver' : 'same truck';
+      if (!out.has(a.id)) out.set(a.id, `Overlaps ${b.ref_id ?? 'another trip'} · ${what}`);
+      if (!out.has(b.id)) out.set(b.id, `Overlaps ${a.ref_id ?? 'another trip'} · ${what}`);
+    }
+  }
+  return out;
+}

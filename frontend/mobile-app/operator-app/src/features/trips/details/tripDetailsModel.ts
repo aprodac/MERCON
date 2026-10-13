@@ -594,7 +594,8 @@ export function activitySteps(t: OperatorTripDetail, f: Formatters, halts?: Trip
     names.set(s.id, name);
     steps.push({
       label: s.actual_arrival ? `Arrived at ${name}` : `Planned arrival at ${name}`,
-      time: f.dateTime(s.actual_arrival || s.planned_arrival) || null,
+      // A stop with no planned time says so, instead of a blank line under its name.
+      time: f.dateTime(s.actual_arrival || s.planned_arrival) || (t.status === 'Cancelled' ? null : 'No time set · Edit trip to add it'),
       done: !!s.actual_arrival,
       at: ms(s.actual_arrival),
     });
