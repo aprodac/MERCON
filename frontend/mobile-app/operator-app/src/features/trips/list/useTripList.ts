@@ -1,8 +1,9 @@
 /**
  * Data for the Trips page, one query per view:
  *   now      — every open trip (draft → delayed); refreshes every 30 s
- *   schedule — open trips (not yet finished) in a 3-week window around today,
- *              for the date strip; finished/cancelled ones live in History
+ *   schedule — every trip planned in a 3-week window around today, for the
+ *              date strip — finished and cancelled ones too, so a past day
+ *              shows what ran that day (History lists them by finish day)
  *   history  — finished / cancelled trips, page by page
  *   search   — the server's word search across all trips
  */
@@ -64,7 +65,7 @@ export function useTripList(view: View, search: string, now: number, scope?: Rec
 
   const schedule = useQuery({
     queryKey: ['trips', 'window', todayKey, scopeKey ?? 'all'],
-    queryFn: () => fetchTrips({ status: OPEN_STATUSES, start_date: windowStart.toISOString(), end_date: new Date(windowEnd.getTime() - 1).toISOString(), per_page: 500, ...filter }),
+    queryFn: () => fetchTrips({ start_date: windowStart.toISOString(), end_date: new Date(windowEnd.getTime() - 1).toISOString(), per_page: 500, ...filter }),
     enabled: view === 'schedule',
     refetchInterval: view === 'schedule' ? 60_000 : false,
   });
