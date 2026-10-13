@@ -8,13 +8,14 @@
  * Driver, truck, extra charges and the status are changed from the trip page
  * itself, so they are not repeated here. Only what was changed is sent.
  */
+import { useQueryClient } from '@tanstack/react-query';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { CalendarClock, Lock, MapPin, Plus, Route, Wallet, X } from 'lucide-react-native';
+import { CalendarClock, Clock, Lock, MapPin, Plus, Route, Wallet, X } from 'lucide-react-native';
 import { dateInZone, isRouteEditable, zonedWallTimeToUtcIso } from '@mercon/shared-types';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
@@ -25,6 +26,7 @@ import {
 import { Field, FormHeader, SaveBar, Section, formStyles } from '@/features/users/components/FormKit';
 import { PickerSheet, ValueTile, fmtDay, niceName, tap } from '../create/components/ui';
 import { WhenSheet, type WhenValue } from '../create/components/WhenSheet';
+import { deltaText, moveTrips, tripsMadeWith } from './movePlan';
 import { isMonthly, sortedStops, stopName } from '../details/tripDetailsModel';
 
 interface StopDraft {
@@ -40,6 +42,8 @@ interface StopDraft {
   lng: number | null;
   planned_arrival: string | null;
   changed: boolean;
+  /** The arrival time was set by hand on this page (so it doesn't move with the pickup). */
+  timeSet?: boolean;
 }
 
 type Errors = Partial<Record<'schedule' | 'route' | 'billing' | 'payout', string>>;
@@ -95,7 +99,20 @@ export default function EditTripScreen() {
   );
 }
 
+/** A two-button question; resolves true for `yes`. */
+const ask = (title: string, message: string, yes: string, no: string) =>
+  new Promise<boolean>((resolve) =>
+    Alert.alert(title, message, [
+      { text: no, style: 'cancel', onPress: () => resolve(false) },
+      { text: yes, onPress: () => resolve(true) },
+    ], { cancelable: false }),
+  );
+
+const isoMs = (w: WhenValue, tz: string) => (w.date && w.time ? Date.parse(zonedWallTimeToUtcIso(w.date, w.time, tz)) : null);
+const shiftIso = (iso: string | null, deltaMs: number) => (iso && deltaMs ? new Date(Date.parse(iso) + deltaMs).toISOString() : iso);
+
 function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; onDone: () => void }) {
+  const queryClient = useQueryClient();
   const status = trip.status as string;
   const routeOpen = isRouteEditable(status);
   const monthly = isMonthly(trip);
@@ -124,11 +141,25 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
   const [stops, setStops] = useState<StopDraft[]>(initialStops);
   const [start, setStart] = useState<WhenValue>(initialStart);
   const [end, setEnd] = useState<WhenValue>(initialEnd);
+  // Until the delivery is set by hand, it moves with the pickup so the trip keeps its length.
+  const [endTouched, setEndTouched] = useState(false);
+  const [endFollowed, setEndFollowed] = useState(false);
+  const moveStart = (v: WhenValue) => {
+    setStart(v);
+    const was = isoMs(start, tz);
+    const now = isoMs(v, tz);
+    const endAt = isoMs(end, tz);
+    if (!endTouched && was != null && now != null && endAt != null && now !== was) {
+      setEnd(wallOf(new Date(endAt + (now - was)).toISOString(), tz));
+      setEndFollowed(true);
+    }
+  };
   const [billing, setBilling] = useState(initialBilling);
   const [payout, setPayout] = useState(initialPayout);
 
   const [locations, setLocations] = useState<OperatorLocation[]>([]);
   const [when, setWhen] = useState<'start' | 'end' | null>(null);
+  const [stopWhen, setStopWhen] = useState<string | null>(null);
   const [stopPicker, setStopPicker] = useState<string | null>(null);
   const [errors, setErrors] = useState<Errors>({});
   const [saving, setSaving] = useState(false);
@@ -146,7 +177,7 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
   const oneWay = stops.every((st) => st.leg_index === 0);
 
   const scheduleChanged = start.date !== initialStart.date || start.time !== initialStart.time || end.date !== initialEnd.date || end.time !== initialEnd.time;
-  const routeChanged = stops.length !== initialStops.length || stops.some((st, i) => st.changed || st.key !== initialStops[i]?.key);
+  const routeChanged = stops.length !== initialStops.length || stops.some((st, i) => st.changed || st.timeSet || st.key !== initialStops[i]?.key);
   const billingChanged = billingOpen && billing !== initialBilling;
   const payoutChanged = payoutOpen && payout !== initialPayout;
   const dirty = (routeOpen && (scheduleChanged || routeChanged)) || billingChanged || payoutChanged;
@@ -187,6 +218,13 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
     return e;
   };
 
+  // The Trips page and every trip screen read through React Query — refresh them all, not just the old cache.
+  const refreshLists = () => {
+    invalidateOperatorTrips();
+    queryClient.invalidateQueries({ queryKey: ['trips'] });
+    queryClient.invalidateQueries({ queryKey: ['trip'] });
+  };
+
   const handleSave = async () => {
     if (saving || !dirty) return;
     const e = validate();
@@ -199,6 +237,9 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
       if (routeOpen && (scheduleChanged || routeChanged)) {
         const startIso = start.date && start.time ? zonedWallTimeToUtcIso(start.date, start.time, tz) : undefined;
         const endIso = end.date && end.time ? zonedWallTimeToUtcIso(end.date, end.time, tz) : undefined;
+        // Stops in between keep their place in the plan: the way out moves with the pickup, the way back with the delivery.
+        const startDelta = startIso && trip.planned_start ? Date.parse(startIso) - Date.parse(trip.planned_start) : 0;
+        const endDelta = endIso && trip.planned_end ? Date.parse(endIso) - Date.parse(trip.planned_end) : startDelta;
         const payload: UpdateTripRouteInput = {
           planned_start: startIso,
           planned_end: endIso,
@@ -210,12 +251,32 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
             location_name: st.changed ? st.name.trim() : st.rawName,
             lat: st.lat,
             lng: st.lng,
-            // First and last follow the trip's times; a middle stop keeps its own time unless the schedule moved.
-            planned_arrival: i === 0 ? startIso ?? st.planned_arrival : i === stops.length - 1 ? endIso ?? st.planned_arrival : scheduleChanged ? null : st.planned_arrival,
+            // First and last follow the trip's times; a middle stop moves with its leg's end of the trip.
+            planned_arrival: i === 0 ? startIso ?? st.planned_arrival : i === stops.length - 1 ? endIso ?? st.planned_arrival : st.timeSet ? st.planned_arrival : shiftIso(st.planned_arrival, st.leg_index > 0 ? endDelta : startDelta),
           })),
         };
-        await operatorService.updateTripRoute(trip.id, payload);
-        routeSaved = true;
+        // A month plan / bulk booking: offer to move the trips made with this one by the same amount.
+        const others = startDelta ? await tripsMadeWith(trip).catch(() => []) : [];
+        const all = others.length > 0 && await ask(
+          `Move the other ${others.length} ${others.length === 1 ? 'trip' : 'trips'} too?`,
+          `${others.length === 1 ? 'It was' : 'They were'} created together with this one (same customer and driver). Move ${others.length === 1 ? 'it' : 'them'} ${deltaText(startDelta)} as well?`,
+          `Move all ${others.length + 1}`,
+          'Only this trip',
+        );
+        if (all) {
+          const r = await moveTrips(others, startDelta, { trip, payload });
+          if (!r.editedSaved) {
+            if (r.moved) refreshLists();
+            throw r.editedError ?? new Error('Could not move this trip');
+          }
+          routeSaved = true;
+          if (r.failed.length) {
+            Alert.alert(`Moved ${r.moved + 1} of ${others.length + 1} trips`, r.failed.map((x) => `${x.ref}: ${x.reason}`).join('\n'));
+          }
+        } else {
+          await operatorService.updateTripRoute(trip.id, payload);
+          routeSaved = true;
+        }
       }
       if (billingChanged || payoutChanged) {
         await operatorService.updateTripPrice(trip.id, {
@@ -223,12 +284,13 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
           ...(payoutChanged ? { driver_payout: parseFloat(payout) } : {}),
         });
       }
-      invalidateOperatorTrips();
+      refreshLists();
       onDone();
     } catch (err) {
-      if (routeSaved) invalidateOperatorTrips();
+      if (routeSaved) refreshLists();
+      const code = (err as { response?: { data?: { error?: { code?: string } } } })?.response?.data?.error?.code;
       Alert.alert(
-        routeSaved ? 'Times and route saved, price not saved' : 'Could not save the trip',
+        code === 'SCHEDULE_CLASH' ? 'That would double-book the trip' : routeSaved ? 'Times and route saved, price not saved' : 'Could not save the trip',
         getApiErrorMessage(err),
       );
     } finally {
@@ -264,9 +326,10 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
             />
           </View>
           {errors.schedule ? <Text style={s.error}>{errors.schedule}</Text> : null}
+          {endFollowed && !endTouched ? <Text style={s.hint}>Delivery moved with the pickup, so the trip keeps its length. Tap Delivery to change it.</Text> : null}
         </Section>
 
-        <Section title="Route" Icon={Route} note={routeOpen ? 'Tap a stop to change its place.' : undefined}>
+        <Section title="Route" Icon={Route} note={routeOpen ? 'Tap a stop to change its place, or its time to change when it happens.' : undefined}>
           <View style={{ gap: 8 }}>
             {stops.map((st, i) => {
               const edge = i === 0 || i === stops.length - 1;
@@ -287,6 +350,19 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
                         {st.name ? niceName(st.name) : 'Choose a place'}
                       </Text>
                     </View>
+                    {!edge ? (
+                      <TouchableOpacity
+                        style={[s.stopTime, !st.planned_arrival && s.stopTimeMissing]}
+                        onPress={() => routeOpen && setStopWhen(st.key)}
+                        activeOpacity={routeOpen ? 0.7 : 1}
+                        accessibilityLabel={`Time at ${stopLabel(i)}`}
+                      >
+                        <Clock size={13} color={st.planned_arrival ? Colors.gray500 : '#B54708'} />
+                        <Text style={[s.stopTimeText, !st.planned_arrival && { color: '#B54708' }]} numberOfLines={1}>
+                          {st.planned_arrival ? `${st.stop_type === 'Pickup' ? 'Pickup' : 'Arrive'} ${whenText(wallOf(st.planned_arrival, tz))}` : routeOpen ? 'Set the time' : 'No time set'}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
                     {!routeOpen ? null : edge || !oneWay ? <MapPin size={16} color={Colors.gray400} /> : (
                       <TouchableOpacity onPress={() => removeStop(st.key)} hitSlop={10} accessibilityLabel={`Remove ${stopLabel(i)}`}>
                         <X size={17} color={Colors.gray500} />
@@ -348,13 +424,34 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
       <SaveBar label="Save changes" onPress={handleSave} saving={saving} disabled={!dirty} />
 
       <WhenSheet
+        visible={!!stopWhen}
+        title={stopWhen ? `Time at ${stopLabel(stops.findIndex((x) => x.key === stopWhen))}` : ''}
+        mode="datetime"
+        value={(() => {
+          const st = stops.find((x) => x.key === stopWhen);
+          const w = st?.planned_arrival ? wallOf(st.planned_arrival, tz) : null;
+          return { date: w?.date || start.date || today, time: w?.time || '' };
+        })()}
+        from={start.date && start.time ? start : undefined}
+        today={today}
+        tz={tz}
+        onDone={(v) => {
+          const key = stopWhen;
+          setStopWhen(null);
+          if (!key || !v.date || !v.time) return;
+          const iso = zonedWallTimeToUtcIso(v.date, v.time, tz);
+          setStops((list) => list.map((x) => (x.key === key ? { ...x, planned_arrival: iso, timeSet: true } : x)));
+        }}
+        onClose={() => setStopWhen(null)}
+      />
+      <WhenSheet
         visible={when === 'start'}
         title="Pickup"
         mode="datetime"
         value={{ date: start.date || today, time: start.time }}
         today={today}
         tz={tz}
-        onDone={(v) => { setStart(v); clear('schedule'); setWhen(null); }}
+        onDone={(v) => { moveStart(v); clear('schedule'); setWhen(null); }}
         onClose={() => setWhen(null)}
       />
       <WhenSheet
@@ -365,7 +462,7 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
         from={start.date && start.time ? start : undefined}
         today={today}
         tz={tz}
-        onDone={(v) => { setEnd(v); clear('schedule'); setWhen(null); }}
+        onDone={(v) => { setEnd(v); setEndTouched(true); clear('schedule'); setWhen(null); }}
         onClose={() => setWhen(null)}
       />
       <PickerSheet
@@ -425,6 +522,9 @@ function LockNote({ text }: { text: string }) {
 const s = StyleSheet.create({
   off: { opacity: 0.6 },
   error: { fontSize: 12, color: Colors.error, marginTop: -4 },
+  stopTime: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8, backgroundColor: Colors.gray100, maxWidth: 170 },
+  stopTimeMissing: { backgroundColor: '#FEF0C7' },
+  stopTimeText: { fontSize: 12, fontWeight: '600', color: Colors.gray600 },
   hint: { fontSize: 12, color: Colors.gray500 },
   lock: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#FFFBF2', borderWidth: 1, borderColor: '#FAC775', borderRadius: 14, padding: 12 },
   lockText: { flex: 1, fontSize: 13, color: '#854F0B', fontWeight: '500' },

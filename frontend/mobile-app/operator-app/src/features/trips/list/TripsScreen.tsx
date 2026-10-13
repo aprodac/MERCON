@@ -10,12 +10,13 @@
  * Search looks across every trip on the server. Long-press a trip for quick
  * actions (call, WhatsApp, send status, change driver).
  */
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, TextInput, SectionList, FlatList, RefreshControl, ActivityIndicator, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Building2, CalendarDays, CircleCheckBig, History, AlertTriangle, MessageCircle, Phone, Plus, Radio, Search, Send, Truck, UserRound, X, ArrowUpRight, type LucideIcon,
 } from 'lucide-react-native';
@@ -27,7 +28,7 @@ import { TripCard } from './TripCard';
 import { AppTopBar } from '@/components/AppTopBar';
 import { useNow, useTripList, SCHEDULE_AFTER, SCHEDULE_BEFORE, type View as ListView } from './useTripList';
 import {
-  dayLabel, dayRange, driverNameOf, driverPhoneOf, finishedDayIso, groupByDay, needsAttention, phaseOf, tripDayIso, type TimeFmt,
+  clashesOf, dayLabel, dayRange, driverNameOf, driverPhoneOf, finishedDayIso, groupByDay, needsAttention, phaseOf, tripDayIso, type TimeFmt,
 } from './tripListModel';
 
 const INK = '#3E3C3D';
@@ -62,6 +63,14 @@ export default function TripsScreen() {
 
   const now = useNow();
   const data = useTripList(view, debounced, now, scope?.filter);
+
+  // Coming back from a trip (edited, started, cancelled, created) shows it as it is now.
+  const queryClient = useQueryClient();
+  const firstFocus = useRef(true);
+  useFocusEffect(useCallback(() => {
+    if (firstFocus.current) { firstFocus.current = false; return; }
+    queryClient.invalidateQueries({ queryKey: ['trips'], refetchType: 'active' });
+  }, [queryClient]));
   const { f, todayKey } = data;
   const selectedDay = day ?? todayKey;
 
@@ -143,8 +152,15 @@ export default function TripsScreen() {
   const historySections = useMemo(() => groupByDay(data.history, f, todayKey, true, finishedDayIso), [data.history, f, todayKey]);
   const historyCancelled = useMemo(() => data.history.filter((t) => phaseOf(t.status) === 'cancelled').length, [data.history]);
 
+  // Trips that double-book a driver or truck, across everything loaded.
+  const clashes = useMemo(() => {
+    const seen = new Map<string, OperatorTrip>();
+    for (const t of [...data.window, ...data.open, ...data.results]) seen.set(t.id, t);
+    return clashesOf([...seen.values()]);
+  }, [data.window, data.open, data.results]);
+
   const renderCard = (t: OperatorTrip, showDay = false) => (
-    <TripCard trip={t} f={f} now={now} showDay={showDay} onPress={open} onLongPress={setActionsFor} />
+    <TripCard trip={t} f={f} now={now} showDay={showDay} clash={clashes.get(t.id)} onPress={open} onLongPress={setActionsFor} />
   );
 
   const views: { id: ListView; label: string; icon: LucideIcon; badge?: number }[] = [
@@ -263,6 +279,12 @@ export default function TripsScreen() {
                   <DateStrip days={days} selected={selectedDay} today={todayKey} counts={perDay} onSelect={(k) => { tap(); setDay(k); }} f={f} />
                   <View style={s.dayHead}>
                     <Text style={s.dayTitle}>{dayLabel(selectedDay, todayKey, f)}</Text>
+                    {selectedDay !== todayKey ? (
+                      <TouchableOpacity onPress={() => { tap(); setDay(null); }} hitSlop={8} accessibilityRole="button">
+                        <Text style={s.todayLink}>Back to today</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    <View style={{ flex: 1 }} />
                     <Text style={s.dayCount}>
                       {plural(selectedCount?.total ?? 0, 'trip')}
                       {selectedCount?.done ? <Text style={{ color: '#146C3C' }}> · {selectedCount.done} delivered</Text> : null}
@@ -372,6 +394,11 @@ function DateStrip({ days, selected, today, counts, onSelect }: {
 }) {
   const list = useRef<FlatList<string>>(null);
   const todayIdx = Math.max(0, days.indexOf(today));
+  // "Back to today" (or any change from outside) brings the chosen day into view.
+  React.useEffect(() => {
+    const i = days.indexOf(selected);
+    if (i >= 0) list.current?.scrollToIndex({ index: Math.max(0, i - 2), animated: true });
+  }, [selected, days]);
   return (
     <FlatList
       ref={list}
@@ -391,6 +418,9 @@ function DateStrip({ days, selected, today, counts, onSelect }: {
         const past = k < today;
         return (
           <TouchableOpacity style={[s.day, on && s.dayOn, !on && k === today && s.dayToday]} onPress={() => onSelect(k)} activeOpacity={0.8} accessibilityLabel={`${wd} ${d}, ${c?.total ?? 0} trips`}>
+            {d === 1 || k === days[0] ? (
+              <Text style={[s.dayMonth, on && { color: Colors.white }]}>{new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', month: 'short' }).format(date)}</Text>
+            ) : null}
             <Text style={[s.dayWd, on && { color: '#C9C9D2' }, past && !on && { color: '#9898A4' }]}>{k === today ? 'Today' : wd}</Text>
             <Text style={[s.dayNum, on && { color: Colors.white }, past && !on && { color: '#6E6E80' }]}>{d}</Text>
             <View style={s.dayDots}>
@@ -454,7 +484,9 @@ const s = StyleSheet.create({
   sectionDot: { width: 6, height: 6, borderRadius: 3 },
   sectionTitle: { fontSize: 13, fontWeight: '600', color: '#3F3F46' },
   sectionCount: { fontSize: 13, fontWeight: '500', color: '#A1A1AA' },
-  dayHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 4 },
+  dayHead: { flexDirection: 'row', alignItems: 'baseline', gap: 10, marginTop: 4 },
+  todayLink: { fontSize: 13, fontWeight: '700', color: '#C4432F' },
+  dayMonth: { position: 'absolute', top: 3, fontSize: 9, fontWeight: '800', letterSpacing: 0.4, color: '#C4432F', textTransform: 'uppercase' },
   dayTitle: { fontSize: 18, fontWeight: '800', color: INK },
   dayCount: { fontSize: 13, fontWeight: '700', color: MUTED },
   day: { width: 52, height: 74, borderRadius: 16, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', gap: 2, borderWidth: 1, borderColor: '#EEF0F4' },

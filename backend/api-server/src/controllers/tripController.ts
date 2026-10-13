@@ -1,7 +1,7 @@
 import { countStepBackRemoved } from '../services/tripStepBack';
 import { Request, Response } from 'express';
 import { linkInlineImage } from '../services/inlineImages';
-import { normalizeAssistantConfig } from '@mercon/shared-types';
+import { DISPATCH_RULES, normalizeAssistantConfig } from '@mercon/shared-types';
 import { prisma } from '../db';
 import { generateRefId } from '../utils/refId';
 import { createDriverNotification, notifyOperatorsOfDelay } from './notificationController';
@@ -2186,7 +2186,7 @@ export const updateTripStopsRoute = async (req: Request, res: Response) => {
 
     const existingTrip = await prisma.trip.findFirst({
       where: { id: tripId, deletedAt: null },
-      select: { id: true, status: true, customerId: true },
+      select: { id: true, status: true, customerId: true, planned_start: true, planned_end: true, driverId: true, co_driver_id: true, vehicleId: true },
     });
     if (!existingTrip) {
       return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Trip not found' } });
@@ -2252,6 +2252,24 @@ export const updateTripStopsRoute = async (req: Request, res: Response) => {
     let parsedPlannedEnd: Date | null = null;
     if (planned_end && !isNaN(Date.parse(planned_end))) {
       parsedPlannedEnd = new Date(planned_end);
+    }
+
+    // Moving the dates must not double-book the trip's driver or truck (the
+    // same rule as picking a driver: no overlap, with a gap between trips).
+    const timesMoved =
+      (parsedPlannedStart && parsedPlannedStart.getTime() !== existingTrip.planned_start?.getTime()) ||
+      (parsedPlannedEnd && parsedPlannedEnd.getTime() !== existingTrip.planned_end?.getTime());
+    if (timesMoved) {
+      const clash = await findScheduleClash({
+        tripId: existingTrip.id,
+        start: parsedPlannedStart ?? existingTrip.planned_start,
+        end: parsedPlannedEnd ?? existingTrip.planned_end,
+        driverIds: [existingTrip.driverId, existingTrip.co_driver_id].filter((x): x is string => !!x),
+        vehicleId: existingTrip.vehicleId,
+      });
+      if (clash) {
+        return res.status(409).json({ success: false, error: { code: 'SCHEDULE_CLASH', message: clash.message, details: clash } });
+      }
     }
 
     // One stop at a time, not Promise.all: a round trip names the same new
@@ -2387,6 +2405,65 @@ export const updateTripStopsRoute = async (req: Request, res: Response) => {
   }
 };
 
+
+const CLASH_IGNORED_STATUSES: TripStatus[] = [TripStatus.Cancelled, TripStatus.Completed, TripStatus.Invoiced];
+
+/**
+ * Another open trip with the same driver (or co-driver) or truck whose planned
+ * window overlaps [start, end] — with DISPATCH_RULES.bufferHours between trips,
+ * as the driver ranking requires when a trip is created. A trip with no end is
+ * taken as 4 h long (the ranking's rule).
+ */
+export async function findScheduleClash(opts: {
+  tripId: string;
+  start: Date | null;
+  end: Date | null;
+  driverIds: string[];
+  vehicleId: string | null;
+}): Promise<{ tripId: string; ref: string | null; start: string; end: string | null; by: 'driver' | 'truck'; message: string } | null> {
+  if (!opts.start || (!opts.driverIds.length && !opts.vehicleId)) return null;
+  const HOUR = 3_600_000;
+  const buffer = DISPATCH_RULES.bufferHours * HOUR;
+  const start = opts.start.getTime();
+  const end = (opts.end ?? new Date(start + 4 * HOUR)).getTime();
+  const people = opts.driverIds.length
+    ? [{ driverId: { in: opts.driverIds } }, { co_driver_id: { in: opts.driverIds } }]
+    : [];
+  const candidates = await prisma.trip.findMany({
+    where: {
+      deletedAt: null,
+      id: { not: opts.tripId },
+      status: { notIn: CLASH_IGNORED_STATUSES },
+      // Anything starting before this trip ends; a trip longer than 30 days is not a thing here.
+      planned_start: { lt: new Date(end + buffer), gt: new Date(start - 30 * 24 * HOUR) },
+      OR: [...people, ...(opts.vehicleId ? [{ vehicleId: opts.vehicleId }] : [])],
+    },
+    select: {
+      id: true, ref_id: true, planned_start: true, planned_end: true, driverId: true, co_driver_id: true, vehicleId: true,
+      driver: { select: { first_name: true, last_name: true } },
+      vehicle: { select: { plate_number: true } },
+    },
+    orderBy: { planned_start: 'asc' },
+  });
+  const hit = candidates.find((t) => {
+    const s = t.planned_start!.getTime();
+    const e = t.planned_end ? t.planned_end.getTime() : s + 4 * HOUR;
+    return s < end + buffer && e > start - buffer;
+  });
+  if (!hit) return null;
+  const byDriver = opts.driverIds.some((d) => d === hit.driverId || d === hit.co_driver_id);
+  const who = byDriver
+    ? `${[hit.driver?.first_name, hit.driver?.last_name].filter(Boolean).join(' ') || 'The driver'} is`
+    : `Truck ${hit.vehicle?.plate_number ?? ''} is`.replace('  ', ' ');
+  return {
+    tripId: hit.id,
+    ref: hit.ref_id,
+    start: hit.planned_start!.toISOString(),
+    end: hit.planned_end?.toISOString() ?? null,
+    by: byDriver ? 'driver' : 'truck',
+    message: `${who} already on ${hit.ref_id ?? 'another trip'} at that time (trips need a ${DISPATCH_RULES.bufferHours} h gap). Pick another date, or change the driver or truck first.`,
+  };
+}
 
 /** Trip statuses where the assigned driver/vehicle are actively held as `OnTrip`. */
 const IN_FLIGHT_STATUSES: TripStatus[] = [
