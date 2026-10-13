@@ -1,23 +1,35 @@
 /**
- * Home's top card: how today is going (a ring of done / on the road / to
- * start) and, below it in the same card, what needs you — one tile per kind
- * that has something in it (never a 0 tile), most important first, so the
- * order changes as things happen. Three show; "Show more" opens up to six.
- * A tile opens that kind's own page; the header opens Notifications → To do.
+ * Home's header: a charcoal band across the top of the screen (under the top
+ * bar, which sits on the same charcoal) with the greeting, how today is going
+ * and what needs you.
+ *   counts     done / on the road / to start; each opens that Trips view
+ *   day strip  midnight → midnight in the deployment timezone, a bar per trip
+ *              on the road (planned start → planned end), a dot per trip still
+ *              to start, and a "now" line
+ *   next up    one line on what happens next today
+ *   needs you  one tile per kind that has something in it (never a 0 tile),
+ *              most important first, so the order changes as things happen.
+ *              Three show; "Show more" opens up to six. A tile opens that
+ *              kind's own page; the header opens Notifications → To do.
+ * Drawn in code only (no images): the coral stripes echo the MERCON mark.
  */
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, LayoutAnimation } from 'react-native';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { ChevronDown, ChevronRight, CircleCheckBig } from 'lucide-react-native';
-import type { ActionKind, Urgency } from '../actions/actionModel';
+import type { ActionKind, ActionSources, Urgency } from '../actions/actionModel';
+import type { LiveUnit } from '../../../lib/operator';
 import { KIND } from '../actions/NeedsAction';
 import { tap } from '../../notifications/components/parts';
 import { TILE_LABEL, type NeedTile } from './needsTiles';
+import { dayStrip, nextUp } from './today';
 
 const INK = '#3E3C3D';
-const COLORS = { done: '#4ADE80', running: '#FA634E', toStart: 'rgba(255,255,255,0.28)' };
-const SIZE = 104;
-const STROKE = 12;
+const COLORS = { done: '#4ADE80', running: '#FA634E', late: '#F04438', toStart: 'rgba(255,255,255,0.45)' };
+const CORAL = '#FA634E';
+const TICKS = ['00', '06', '12', '18', '24'];
+/** The MERCON mark's stripes, as fractions of the widest. */
+const STRIPES = [1, 0.9, 0.8, 0.68, 0.54];
 const FIRST = 3;
 const MOST = 6;
 const URGENCIES: Urgency[] = ['now', 'today', 'watch'];
@@ -29,51 +41,51 @@ const TILE: Record<Urgency, { bg: string; fg: string }> = {
 };
 const BAR: Record<Urgency, string> = { now: '#F04438', today: '#F59E0B', watch: 'rgba(255,255,255,0.25)' };
 
-function Ring({ done, running, toStart }: { done: number; running: number; toStart: number }) {
-  const total = done + running + toStart;
-  const r = (SIZE - STROKE) / 2;
-  const c = 2 * Math.PI * r;
-  const GAP = total > 1 ? 4 : 0;
-  let offset = 0;
-  const parts = [
-    { key: 'done', n: done, color: COLORS.done },
-    { key: 'running', n: running, color: COLORS.running },
-    { key: 'toStart', n: toStart, color: COLORS.toStart },
-  ].filter((p) => p.n > 0).map((p) => {
-    const len = (p.n / total) * c;
-    const seg = { ...p, dash: `${Math.max(len - GAP, 1)} ${c}`, offset: -offset };
-    offset += len;
-    return seg;
-  });
+/** A soft coral glow in the top-right corner, and the mark's stripes over it. */
+function Backdrop() {
   return (
-    <View style={{ width: SIZE, height: SIZE, alignItems: 'center', justifyContent: 'center' }}>
-      {/* Rotated so the ring starts at 12 o'clock (on a wrapper — react-native-svg's web build mishandles a transform style). */}
-      <View style={[StyleSheet.absoluteFill, { transform: [{ rotate: '-90deg' }] }]}>
-      <Svg width={SIZE} height={SIZE}>
-        <Circle cx={SIZE / 2} cy={SIZE / 2} r={r} stroke="rgba(255,255,255,0.12)" strokeWidth={STROKE} fill="none" />
-        {parts.map((p) => (
-          <Circle
-            key={p.key}
-            cx={SIZE / 2}
-            cy={SIZE / 2}
-            r={r}
-            stroke={p.color}
-            strokeWidth={STROKE}
-            fill="none"
-            strokeDasharray={p.dash}
-            strokeDashoffset={p.offset}
-            strokeLinecap="butt"
-          />
-        ))}
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Svg width="100%" height="100%">
+        <Defs>
+          <RadialGradient id="homeGlow" cx="100%" cy="0%" rx="75%" ry="55%" fx="100%" fy="0%">
+            <Stop offset="0" stopColor={CORAL} stopOpacity="0.34" />
+            <Stop offset="1" stopColor={CORAL} stopOpacity="0" />
+          </RadialGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#homeGlow)" />
       </Svg>
+      <View style={s.stripes}>
+        {STRIPES.map((w, i) => <View key={i} style={[s.stripe, { width: 120 * w }]} />)}
       </View>
-      <Text style={s.ringNum}>{total}</Text>
-      <Text style={s.ringSub}>{total === 1 ? 'trip today' : 'trips today'}</Text>
     </View>
   );
 }
 
-export function TodayCard({ done, running, toStart, needs, loading, onTrips, onTodo, onKind }: {
+function DayStrip({ bars, dots, now }: ReturnType<typeof dayStrip>) {
+  const pct = (min: number) => `${(Math.min(Math.max(min, 0), 1440) / 1440) * 100}%` as const;
+  return (
+    <View style={s.strip} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <View style={s.track} />
+      {bars.map((b) => (
+        <View key={b.key} style={[s.tripBar, { left: pct(b.from), width: pct(b.to - b.from), backgroundColor: b.late ? COLORS.late : COLORS.running }]} />
+      ))}
+      {dots.map((d) => <View key={d.key} style={[s.startDot, { left: pct(d.at) }]} />)}
+      <View style={[s.now, { left: pct(now) }]} />
+      <View style={s.ticks}>{TICKS.map((t) => <Text key={t} style={s.tick}>{t}</Text>)}</View>
+    </View>
+  );
+}
+
+export function TodayCard({ hello, date, units, toStartTrips, tz, now, done, running, toStart, needs, loading, onTrips, onTodo, onKind }: {
+  /** "Good morning, Ilan" */
+  hello: string;
+  /** "Sat, 10 Oct" */
+  date: string;
+  units: LiveUnit[];
+  /** Today's trips still to start, soonest first (toStartToday()). */
+  toStartTrips: ActionSources['unassigned'];
+  tz: string;
+  now: number;
   done: number | null;
   running: number;
   toStart: number;
@@ -90,6 +102,8 @@ export function TodayCard({ done, running, toStart, needs, loading, onTrips, onT
     { key: 'running', label: 'On the road', n: running, color: COLORS.running, onPress: () => onTrips('now') },
     { key: 'toStart', label: 'To start', n: toStart, color: COLORS.toStart, onPress: () => onTrips('schedule') },
   ];
+  const strip = dayStrip(units, toStartTrips, tz, now);
+  const next = nextUp(units, toStartTrips, done ?? 0, tz, now);
   const total = needs.reduce((n, t) => n + t.count, 0);
   const split = URGENCIES.map((u) => ({ u, n: needs.reduce((n, t) => n + t.byUrgency[u], 0) })).filter((x) => x.n > 0);
   const urgent = split.find((x) => x.u === 'now')?.n ?? 0;
@@ -102,18 +116,35 @@ export function TodayCard({ done, running, toStart, needs, loading, onTrips, onT
   };
 
   return (
-    <View style={s.card}>
-      <View style={s.top}>
-        {loading ? <View style={[s.skel, { width: SIZE, height: SIZE, borderRadius: SIZE / 2 }]} /> : <Ring done={done ?? 0} running={running} toStart={toStart} />}
-        <View style={{ flex: 1, gap: 4 }}>
-          {rows.map((r) => (
-            <TouchableOpacity key={r.key} style={s.legendRow} onPress={() => { tap(); r.onPress(); }} activeOpacity={0.6} accessibilityRole="button" accessibilityLabel={`${r.n ?? 0} ${r.label}`}>
-              <View style={[s.dot, { backgroundColor: r.color }]} />
-              <Text style={s.legendLabel}>{r.label}</Text>
-              <Text style={s.legendNum}>{loading || r.n == null ? '–' : r.n}</Text>
+    <View style={s.header}>
+      <Backdrop />
+      <View style={s.greet}>
+        <Text style={s.date}>{date}</Text>
+        <Text style={s.hello} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit>{hello}</Text>
+      </View>
+
+      <View style={s.stats}>
+        {rows.map((r) => {
+          const live = r.key === 'running' && running > 0;
+          return (
+            <TouchableOpacity key={r.key} style={[s.stat, live && s.statLive]} onPress={() => { tap(); r.onPress(); }} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={`${r.n ?? 0} ${r.label}`}>
+              {loading ? <View style={s.skel} /> : <Text style={s.statNum}>{r.n == null ? '–' : r.n}</Text>}
+              <View style={s.statFoot}>
+                <View style={[s.dot, { backgroundColor: r.color }]} />
+                <Text style={s.statLabel} numberOfLines={1}>{r.label}</Text>
+              </View>
             </TouchableOpacity>
-          ))}
-        </View>
+          );
+        })}
+      </View>
+
+      <View style={{ gap: 10 }}>
+        <DayStrip {...strip} />
+        {loading ? null : (
+          <Text style={s.next} numberOfLines={2}>
+            <Text style={s.nextLead}>{next.lead}</Text>{next.rest ? ` ${next.rest}` : ''}
+          </Text>
+        )}
       </View>
 
       <View style={s.needs}>
@@ -178,15 +209,32 @@ export function TodayCard({ done, running, toStart, needs, loading, onTrips, onT
 }
 
 const s = StyleSheet.create({
-  card: { backgroundColor: INK, borderRadius: 26, padding: 18, gap: 16 },
-  top: { flexDirection: 'row', alignItems: 'center', gap: 18 },
-  ringNum: { fontSize: 26, fontWeight: '800', color: '#FFFFFF', letterSpacing: -1, fontVariant: ['tabular-nums'] },
-  ringSub: { fontSize: 11, color: 'rgba(255,255,255,0.7)' },
-  skel: { backgroundColor: 'rgba(255,255,255,0.1)' },
-  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
-  dot: { width: 10, height: 10, borderRadius: 5 },
-  legendLabel: { flex: 1, fontSize: 14, color: 'rgba(255,255,255,0.82)' },
-  legendNum: { fontSize: 16, fontWeight: '700', color: '#FFFFFF', fontVariant: ['tabular-nums'] },
+  // Bleeds past the page padding to the screen edges; the screen paints the same charcoal behind the top bar.
+  header: { backgroundColor: INK, marginHorizontal: -16, marginTop: -8, paddingHorizontal: 16, paddingTop: 6, paddingBottom: 18, gap: 18, borderBottomLeftRadius: 30, borderBottomRightRadius: 30, overflow: 'hidden' },
+  stripes: { position: 'absolute', top: 14, right: -8, gap: 5, alignItems: 'flex-end', opacity: 0.16 },
+  stripe: { height: 7, borderRadius: 4, backgroundColor: CORAL },
+  greet: { gap: 2 },
+  date: { fontSize: 13, fontWeight: '500', color: 'rgba(255,255,255,0.62)' },
+  hello: { fontSize: 27, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.6 },
+
+  stats: { flexDirection: 'row', gap: 8 },
+  stat: { flex: 1, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 10, gap: 4, backgroundColor: 'rgba(255,255,255,0.07)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)' },
+  statLive: { backgroundColor: 'rgba(250,99,78,0.20)', borderColor: 'rgba(250,99,78,0.45)' },
+  statNum: { fontSize: 26, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.8, fontVariant: ['tabular-nums'] },
+  statFoot: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  statLabel: { flexShrink: 1, fontSize: 12, color: 'rgba(255,255,255,0.75)' },
+  skel: { width: 28, height: 31, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.1)' },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+
+  strip: { height: 30 },
+  track: { position: 'absolute', left: 0, right: 0, top: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.12)' },
+  tripBar: { position: 'absolute', top: 4, height: 10, borderRadius: 5 },
+  startDot: { position: 'absolute', top: 3, width: 12, height: 12, marginLeft: -6, borderRadius: 6, borderWidth: 2, borderColor: '#FFFFFF', backgroundColor: INK },
+  now: { position: 'absolute', top: 0, width: 2, height: 18, marginLeft: -1, borderRadius: 1, backgroundColor: '#FFFFFF' },
+  ticks: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', justifyContent: 'space-between' },
+  tick: { fontSize: 10, color: 'rgba(255,255,255,0.45)', fontVariant: ['tabular-nums'] },
+  next: { fontSize: 13, lineHeight: 18, color: 'rgba(255,255,255,0.72)' },
+  nextLead: { fontWeight: '700', color: '#FFFFFF' },
 
   needs: { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.12)', paddingTop: 14, gap: 10 },
   needsHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },

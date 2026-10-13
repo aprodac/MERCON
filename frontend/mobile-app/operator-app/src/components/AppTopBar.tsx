@@ -8,6 +8,7 @@
  * the bell opens notifications and shows a dot for unread ones (and, on Home,
  * for urgent To do items). Pages pass
  * their own icon buttons (search, filter, add…) through `actions`.
+ * `tone="dark"` is for Home, where the bar sits on the charcoal header.
  */
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
@@ -38,9 +39,12 @@ interface AppTopBarProps {
   urgent?: number;
   /** Show a back arrow instead of the menu (pages opened from another page). */
   onBack?: () => void;
+  /** 'dark' when the bar sits on a charcoal background (Home's header). */
+  tone?: 'light' | 'dark';
 }
 
-export function AppTopBar({ title, actions = [], hideBell, urgent = 0, onBack }: AppTopBarProps) {
+export function AppTopBar({ title, actions = [], hideBell, urgent = 0, onBack, tone = 'light' }: AppTopBarProps) {
+  const dark = tone === 'dark';
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const notifications = useNotifications();
@@ -49,21 +53,24 @@ export function AppTopBar({ title, actions = [], hideBell, urgent = 0, onBack }:
   return (
     <>
       <View style={s.bar}>
-        {onBack ? <IconBtn icon={ArrowLeft} label="Back" onPress={onBack} /> : <IconBtn icon={Menu} label="Open menu" onPress={() => setMenuOpen(true)} />}
+        {onBack ? <IconBtn icon={ArrowLeft} label="Back" onPress={onBack} dark={dark} /> : <IconBtn icon={Menu} label="Open menu" onPress={() => setMenuOpen(true)} dark={dark} />}
 
         {title ? (
           <View style={s.titleRow}>
             <PageIconTile title={title} />
-            <Text style={s.title} numberOfLines={1}>{title}</Text>
+            <Text style={[s.title, dark && { color: '#FFFFFF' }]} numberOfLines={1}>{title}</Text>
           </View>
         ) : (
           <View style={s.brand}>
-            <Image source={require('@mercon/mobile-shared/assets/images/merconclosed.png')} style={s.mark} resizeMode="contain" accessibilityLabel="MERCON" />
-            <Text style={s.word}>MERCON</Text>
+            {/* The mark's charcoal half disappears on the dark header, so there it sits on a white tile. */}
+            <View style={dark ? s.markTile : null}>
+              <Image source={require('@mercon/mobile-shared/assets/images/merconclosed.png')} style={dark ? s.markSmall : s.mark} resizeMode="contain" accessibilityLabel="MERCON" />
+            </View>
+            <Text style={[s.word, dark && { color: '#FFFFFF' }]}>MERCON</Text>
           </View>
         )}
 
-        {actions.map((a) => <IconBtn key={a.label} icon={a.icon} label={a.label} onPress={a.onPress} dot={a.active} />)}
+        {actions.map((a) => <IconBtn key={a.label} icon={a.icon} label={a.label} onPress={a.onPress} dot={a.active} dark={dark} />)}
         {hideBell ? null : (
           <IconBtn
             icon={Bell}
@@ -71,6 +78,7 @@ export function AppTopBar({ title, actions = [], hideBell, urgent = 0, onBack }:
             onPress={() => router.push('/notifications')}
             dot={unread > 0 || urgent > 0}
             dotColor="#F04438"
+            dark={dark}
           />
         )}
       </View>
@@ -79,11 +87,11 @@ export function AppTopBar({ title, actions = [], hideBell, urgent = 0, onBack }:
   );
 }
 
-function IconBtn({ icon: Icon, label, onPress, dot, dotColor = FG }: { icon: LucideIcon; label: string; onPress: () => void; dot?: boolean; dotColor?: string }) {
+function IconBtn({ icon: Icon, label, onPress, dot, dotColor = FG, dark }: { icon: LucideIcon; label: string; onPress: () => void; dot?: boolean; dotColor?: string; dark?: boolean }) {
   return (
-    <TouchableOpacity style={s.btn} onPress={onPress} accessibilityRole="button" accessibilityLabel={label} activeOpacity={0.7} hitSlop={4}>
-      <Icon size={19} color={FG} strokeWidth={2} />
-      {dot ? <View style={[s.dot, { backgroundColor: dotColor }]} /> : null}
+    <TouchableOpacity style={[s.btn, dark && s.btnDark]} onPress={onPress} accessibilityRole="button" accessibilityLabel={label} activeOpacity={0.7} hitSlop={4}>
+      <Icon size={19} color={dark ? '#FFFFFF' : FG} strokeWidth={2} />
+      {dot ? <View style={[s.dot, { backgroundColor: dotColor }, dark && { borderColor: FG }]} /> : null}
     </TouchableOpacity>
   );
 }
@@ -91,10 +99,13 @@ function IconBtn({ icon: Icon, label, onPress, dot, dotColor = FG }: { icon: Luc
 const s = StyleSheet.create({
   bar: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 56, paddingHorizontal: 16 },
   btn: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: BORDER },
+  btnDark: { backgroundColor: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.14)' },
   titleRow: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 9, marginLeft: 4 },
   title: { flexShrink: 1, fontSize: 20, fontWeight: '700', color: FG, letterSpacing: -0.3 },
   brand: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 4 },
   mark: { width: 36, height: 24 },
+  markTile: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
+  markSmall: { width: 27, height: 18 },
   word: { fontSize: 15, fontWeight: '700', color: FG, letterSpacing: 1.5 },
   dot: { position: 'absolute', top: 8, right: 9, width: 9, height: 9, borderRadius: 5, borderWidth: 2, borderColor: '#FFFFFF' },
 });
