@@ -599,7 +599,7 @@ const s = StyleSheet.create({
   more: { left: undefined, right: 14 },
   primary: { flex: 1, height: 52, borderRadius: 16, backgroundColor: ACTION, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 10 },
   primaryText: { color: Colors.white, fontSize: 16, fontWeight: '700' },
-  primaryQuiet: { flex: 0, alignSelf: 'stretch', backgroundColor: '#F1F1F3' },
+  primaryQuiet: { flexGrow: 0, flexShrink: 0, flexBasis: 'auto', alignSelf: 'stretch', backgroundColor: '#F1F1F3' },
   waitRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 4 },
   waitText: { flex: 1, fontSize: 13, fontWeight: '600', color: MUTED },
 });
