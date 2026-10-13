@@ -11,11 +11,10 @@
  *              most important first, so the order changes as things happen.
  *              Three show; "Show more" opens up to six. A tile opens that
  *              kind's own page; the header opens Notifications → To do.
- * Drawn in code only (no images): the coral stripes echo the MERCON mark.
+ * Drawn in code only (no images): faint coral stripes echo the MERCON mark.
  */
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, LayoutAnimation } from 'react-native';
-import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { ChevronDown, ChevronRight, CircleCheckBig } from 'lucide-react-native';
 import type { ActionKind, ActionSources, Urgency } from '../actions/actionModel';
 import type { LiveUnit } from '../../../lib/operator';
@@ -41,22 +40,11 @@ const TILE: Record<Urgency, { bg: string; fg: string }> = {
 };
 const BAR: Record<Urgency, string> = { now: '#F04438', today: '#F59E0B', watch: 'rgba(255,255,255,0.25)' };
 
-/** A soft coral glow in the top-right corner, and the mark's stripes over it. */
+/** The MERCON mark's stripes, faint, in the top-right corner. */
 function Backdrop() {
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <Svg width="100%" height="100%">
-        <Defs>
-          <RadialGradient id="homeGlow" cx="100%" cy="0%" rx="75%" ry="55%" fx="100%" fy="0%">
-            <Stop offset="0" stopColor={CORAL} stopOpacity="0.34" />
-            <Stop offset="1" stopColor={CORAL} stopOpacity="0" />
-          </RadialGradient>
-        </Defs>
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#homeGlow)" />
-      </Svg>
-      <View style={s.stripes}>
-        {STRIPES.map((w, i) => <View key={i} style={[s.stripe, { width: 120 * w }]} />)}
-      </View>
+    <View style={s.stripes} pointerEvents="none">
+      {STRIPES.map((w, i) => <View key={i} style={[s.stripe, { width: 120 * w }]} />)}
     </View>
   );
 }
