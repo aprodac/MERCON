@@ -19,7 +19,8 @@ import PastDateTripConfirmModal from '@/components/trips/PastDateTripConfirmModa
 import TripWizardHeader from '@/components/trips/wizard/TripWizardHeader';
 import TripStep1UnifiedWorkspace from '@/components/trips/wizard/TripStep1UnifiedWorkspace';
 import { MonthlyDaysSelector } from '@/components/trips/wizard/MonthlyDaysSelector';
-import { formatQuotationRef, resolveSlotDriverPayout } from '@mercon/shared-types';
+import { formatQuotationRef, resolveSlotDriverPayout, sameDayWarning } from '@mercon/shared-types';
+import { useDeploymentTimezone } from '@/lib/datetime';
 import { TripReviewConfirmModal } from '@/components/trips/wizard/TripReviewConfirmModal';
 import DriverPayoutMissingDialog from '@/components/trips/wizard/DriverPayoutMissingDialog';
 import TripBatchGeneratorTab from '@/components/trips/wizard/TripBatchGeneratorTab';
@@ -77,6 +78,7 @@ const dropoffMarkerIcon = L.divIcon({
 
 export default function CreateTripPage() {
   const form = useCreateTripForm();
+  const tz = useDeploymentTimezone();
   const [isReviewModalOpen, setIsReviewModalOpen] = React.useState(false);
 
   // ── Driver payout missing ─────────────────────────────────────────────────
@@ -405,6 +407,28 @@ export default function CreateTripPage() {
           form.queryClient.invalidateQueries({ queryKey: ['customers'] });
         }}
       />
+      {/* The driver already has a trip that day: create anyway (red) or cancel. */}
+      {(() => {
+        const warning = form.sameDayConflicts?.length ? sameDayWarning(form.sameDayConflicts, tz) : null;
+        return (
+          <ConfirmModal
+            isOpen={!!warning}
+            onClose={form.cancelSameDay}
+            onConfirm={form.confirmSameDay}
+            title={warning?.title ?? ''}
+            message={warning?.note}
+            confirmLabel="Create anyway"
+            cancelLabel="Cancel"
+            isDestructive
+            isLoading={form.isSubmitting}
+          >
+            <ul className="space-y-1 rounded-xl border border-red-200 bg-red-50 p-3 text-left text-xs font-medium text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
+              {warning?.lines.map((line) => <li key={line}>{line}</li>)}
+              {warning && warning.more > 0 ? <li>+{warning.more} more</li> : null}
+            </ul>
+          </ConfirmModal>
+        );
+      })()}
       <PastDateTripConfirmModal
         open={form.pastDateModalOpen}
         onClose={() => form.setPastDateModalOpen(false)}

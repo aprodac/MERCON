@@ -298,6 +298,8 @@ function DriverForm({ driver, onDone }: { driver?: OperatorDriver; onDone: () =>
       <DatePickerModal
         visible={pickerOpen}
         onClose={() => setPickerOpen(false)}
+        title="Licence expiry"
+        showPresets={false}
         selectedDate={licenseExpiry || toDDMMYYYY(new Date().toISOString())}
         onSelectDate={(d) => { setLicenseExpiry(d); clear('expiry'); setPickerOpen(false); }}
       />

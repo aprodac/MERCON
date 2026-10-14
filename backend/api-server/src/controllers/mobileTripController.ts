@@ -17,6 +17,7 @@ import { calculateBackendTripFinancials } from '../utils/tripFinancials';
 import { splitDelayReason } from '../utils/delayReason';
 import { isUuid } from '../utils/uuid';
 import { deliveryPunctuality, historyFinishedAt } from '../services/driverPerformance';
+import { DAY_QUEUE_STATUSES, deploymentTimezone, findTripAhead, orderDriverQueue, tripAheadIn } from '../services/sameDayTrips';
 
 /**
  * Everything the driver's app needs about a trip, in one shape.
@@ -144,9 +145,11 @@ export const getCurrentTrip = async (req: Request, res: Response) => {
       orderBy: { updatedAt: 'desc' },
     });
 
-    // 2. Otherwise show the earliest next upcoming trip that is assigned (Scheduled or Draft)
+    // 2. Otherwise the next upcoming trip that is assigned (Scheduled or Draft):
+    // the earliest day, and on a day with two trips the one created first —
+    // the later one waits until it is done (services/sameDayTrips).
     if (!trip) {
-      trip = await prisma.trip.findFirst({
+      const upcoming = await prisma.trip.findMany({
         where: {
           driverId,
           deletedAt: null,
@@ -156,9 +159,12 @@ export const getCurrentTrip = async (req: Request, res: Response) => {
             { driver_workflow_state: { not: 'COMPLETED' } }
           ]
         },
-        include,
+        select: { id: true, planned_start: true, createdAt: true },
         orderBy: [{ planned_start: 'asc' }, { createdAt: 'asc' }],
+        take: 10,
       });
+      const first = orderDriverQueue(upcoming, await deploymentTimezone())[0];
+      trip = first ? await prisma.trip.findUnique({ where: { id: first.id }, include }) : null;
     }
 
     res.json({ success: true, data: trip ? await attachTripDocuments(trip) : null });
@@ -241,7 +247,20 @@ export const getScheduledTrips = async (req: Request, res: Response) => {
       take: 20,
     });
 
-    res.json({ success: true, data: trips.map(formatMobileTrip) });
+    // Two trips on one day: the one created first comes first, and the later
+    // one says which trip it waits for.
+    const tz = await deploymentTimezone();
+    const open = await prisma.trip.findMany({
+      where: { driverId, deletedAt: null, status: { in: DAY_QUEUE_STATUSES } },
+      select: { id: true, ref_id: true, status: true, planned_start: true, createdAt: true },
+    });
+    res.json({
+      success: true,
+      data: orderDriverQueue(trips, tz).map((t) => {
+        const ahead = tripAheadIn(t, open, tz);
+        return { ...formatMobileTrip(t), waiting_for: ahead ? { id: ahead.id, ref_id: ahead.ref_id } : null };
+      }),
+    });
   } catch (error) {
     logger.error({ err: error }, 'getScheduledTrips error:');
     res.status(500).json({ success: false, error: { message: 'Internal server error' } });
@@ -305,6 +324,18 @@ export const updateTripStatus = async (req: Request, res: Response) => {
     const finishedForDriver: TripStatus[] = [TripStatus.Completed, TripStatus.Invoiced, TripStatus.Cancelled];
     if (finishedForDriver.includes(trip.status) && status !== trip.status) {
       return res.status(409).json({ success: false, error: { message: `This trip is already ${trip.status === TripStatus.Cancelled ? 'cancelled' : 'finished'}` } });
+    }
+    // A second trip on the same day starts only once the driver's earlier one
+    // (created first) is finished.
+    const notStarted = (trip.status === TripStatus.Scheduled || trip.status === TripStatus.Draft) && !trip.driver_workflow_state;
+    if (notStarted && status !== TripStatus.Cancelled) {
+      const ahead = await findTripAhead(trip, driverId);
+      if (ahead) {
+        return res.status(409).json({
+          success: false,
+          error: { code: 'TRIP_WAITING', message: `Finish ${ahead.ref_id ?? 'your earlier trip today'} first — this trip starts after it.` },
+        });
+      }
     }
 
     // Completing a trip always goes through the shared helper — this is the

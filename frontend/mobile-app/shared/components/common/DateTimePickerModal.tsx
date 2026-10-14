@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
-import { Calendar as CalendarIcon, Clock, ChevronLeft, ChevronRight, Check } from 'lucide-react-native';
+import { Calendar as CalendarIcon, Clock, ChevronDown, ChevronLeft, ChevronRight, Check } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography } from '../../theme/tokens';
 import { AppModal } from './AppModal';
 import { Button } from '../Button';
@@ -11,6 +11,10 @@ interface DatePickerModalProps {
   onClose: () => void;
   selectedDate: string; // DD/MM/YYYY
   onSelectDate: (formattedDate: string) => void;
+  /** What is being picked, e.g. "Licence expiry". */
+  title?: string;
+  /** Today / Tomorrow shortcuts — off for dates far away, like an expiry. */
+  showPresets?: boolean;
 }
 
 interface TimePickerModalProps {
@@ -27,6 +31,8 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
   onClose,
   selectedDate,
   onSelectDate,
+  title = 'Select date',
+  showPresets = true,
 }) => {
   // Parse initial date from DD/MM/YYYY or default to today
   const initialDateObj = useMemo(() => {
@@ -45,6 +51,15 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
   }, [selectedDate]);
 
   const [currentMonth, setCurrentMonth] = useState<Date>(initialDateObj);
+  // Tapping the month title switches to a year grid, so an expiry years away is two taps.
+  const [pickYear, setPickYear] = useState(false);
+  const [yearPage, setYearPage] = useState(() => initialDateObj.getFullYear() - 5);
+  useEffect(() => {
+    if (!visible) return;
+    setCurrentMonth(initialDateObj);
+    setPickYear(false);
+    setYearPage(initialDateObj.getFullYear() - 5);
+  }, [visible, initialDateObj]);
 
   const year = currentMonth.getFullYear();
   const month = currentMonth.getMonth();
@@ -97,9 +112,9 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
   }, []);
 
   return (
-    <AppModal visible={visible} onClose={onClose} type="dialog" title="Select Departure Date">
+    <AppModal visible={visible} onClose={onClose} type="dialog" title={title}>
       {/* Quick Presets */}
-      <View style={styles.presetsRow}>
+      {showPresets ? <View style={styles.presetsRow}>
         <TouchableOpacity
           style={[styles.presetChip, selectedDate === todayStr && styles.presetChipActive]}
           onPress={() => {
@@ -122,21 +137,39 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
             Tomorrow
           </Text>
         </TouchableOpacity>
-      </View>
+      </View> : null}
 
       {/* Month Header Navigation */}
       <View style={styles.monthNavRow}>
-        <TouchableOpacity style={styles.navBtn} onPress={handlePrevMonth}>
+        <TouchableOpacity style={styles.navBtn} onPress={pickYear ? () => setYearPage((y) => y - 12) : handlePrevMonth} accessibilityLabel={pickYear ? 'Earlier years' : 'Previous month'}>
           <ChevronLeft size={20} color={Colors.gray700} style={flipInRTL} />
         </TouchableOpacity>
-        <View style={styles.monthTitleContainer}>
+        <TouchableOpacity style={styles.monthTitleContainer} onPress={() => setPickYear((v) => !v)} accessibilityLabel="Change year" hitSlop={8}>
           <CalendarIcon size={16} color={Colors.primary} />
-          <Text style={styles.monthTitleText}>{monthLabel}</Text>
-        </View>
-        <TouchableOpacity style={styles.navBtn} onPress={handleNextMonth}>
+          <Text style={styles.monthTitleText}>{pickYear ? `${yearPage} – ${yearPage + 11}` : monthLabel}</Text>
+          <ChevronDown size={16} color={Colors.gray600} style={pickYear ? { transform: [{ rotate: '180deg' }] } : undefined} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.navBtn} onPress={pickYear ? () => setYearPage((y) => y + 12) : handleNextMonth} accessibilityLabel={pickYear ? 'Later years' : 'Next month'}>
           <ChevronRight size={20} color={Colors.gray700} style={flipInRTL} />
         </TouchableOpacity>
       </View>
+
+      {pickYear ? (
+        <View style={styles.yearGrid}>
+          {Array.from({ length: 12 }, (_, i) => yearPage + i).map((y) => (
+            <TouchableOpacity
+              key={y}
+              style={[styles.yearCell, y === year && styles.selectedGridCell]}
+              onPress={() => {
+                setCurrentMonth(new Date(y, month, 1));
+                setPickYear(false);
+              }}
+            >
+              <Text style={[styles.dayText, y === year && styles.selectedDayText]}>{y}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : <>
 
       {/* Weekday Column Headers */}
       <View style={styles.weekdaysRow}>
@@ -177,6 +210,7 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
           );
         })}
       </View>
+      </>}
     </AppModal>
   );
 };
@@ -359,6 +393,18 @@ const styles = StyleSheet.create({
   },
   weekendText: {
     color: Colors.gray400,
+  },
+  yearGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: Spacing.sm,
+  },
+  yearCell: {
+    width: '25%',
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: Radius.md,
   },
   gridContainer: {
     flexDirection: 'row',
