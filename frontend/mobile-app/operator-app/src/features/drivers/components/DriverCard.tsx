@@ -2,18 +2,20 @@
  * One driver in the list — a compact row:
  *   (photo)  Full name                                   (call)
  *            ● Available · DRV-129 · DRA-6484
+ *            ▢ Phone ready · seen 3 min ago — the driver app on their phone
  *            ⚠ Licence 5 days left        — only when something is wrong
  * Tap the row to open the driver; the round button calls (or, on a trip,
  * opens the trip). Status is said once, in words, with its dot.
  */
 import React from 'react';
 import { Text, TouchableOpacity, View, StyleSheet } from 'react-native';
-import { FileWarning, Navigation, Phone } from 'lucide-react-native';
+import { FileWarning, Navigation, Phone, Smartphone } from 'lucide-react-native';
 import { DriverAvatar } from './DriverAvatar';
 import { EXPIRY_SOON_DAYS } from '../services/driverDetailsService';
 import { driverFullName, driverInitials } from '../services/driversService';
 import { niceName } from '../../trips/create/components/ui';
 import type { DriverListItem, DriverStatus } from '../types';
+import { LEVEL_LABEL, timeAgo, type FleetPhoneRow, type PhoneLevel } from '../phone/driverPhone';
 
 const INK = '#3E3C3D';
 const MUTED = '#6B6B76';
@@ -42,9 +44,21 @@ interface DriverCardProps {
   onTrack?: (driver: DriverListItem) => void;
   onView?: (driver: DriverListItem) => void;
   className?: string;
+  /** The driver app's phone, from GET /drivers/phone-status (undefined while loading). */
+  phone?: FleetPhoneRow | null;
 }
 
-export function DriverCard({ driver, onCall, onTrack, onView }: DriverCardProps) {
+const PHONE_FG: Record<PhoneLevel, string> = { green: '#146C3C', amber: AMBER, red: RED };
+
+/** "Phone ready · seen 3 min ago", "Check phone · Notifications not allowed yet", "Not ready · no app login". */
+function phoneLine(p: FleetPhoneRow): string {
+  if (!p.lastSeenAt) return `${LEVEL_LABEL[p.level]} · not logged in to the app`;
+  if (p.level === 'green') return `Phone ready · seen ${timeAgo(p.lastSeenAt)}`;
+  const why = (p.reasons[0] ?? '').replace(/^App not seen for /, 'not seen for ');
+  return `${LEVEL_LABEL[p.level]} · ${why.charAt(0).toLowerCase()}${why.slice(1)}`;
+}
+
+export function DriverCard({ driver, onCall, onTrack, onView, phone }: DriverCardProps) {
   // Names arrive in ALL CAPS; normal case is shorter and easier to read, and it wraps instead of truncating.
   const name = niceName(driverFullName(driver));
   const onTrip = driver.status === 'OnTrip' && !!driver.activeTrip;
@@ -74,6 +88,12 @@ export function DriverCard({ driver, onCall, onTrack, onView }: DriverCardProps)
             {meta ? `  ·  ${meta}` : ''}
           </Text>
         </View>
+        {phone ? (
+          <View style={s.metaRow}>
+            <Smartphone size={13} color={PHONE_FG[phone.level]} strokeWidth={2.2} />
+            <Text style={[s.meta, { color: PHONE_FG[phone.level], fontWeight: phone.level === 'green' ? '500' : '600' }]} numberOfLines={1}>{phoneLine(phone)}</Text>
+          </View>
+        ) : null}
         {docs ? (
           <View style={s.metaRow}>
             <FileWarning size={13} color={docs.color} strokeWidth={2.2} />
