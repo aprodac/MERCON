@@ -12,6 +12,8 @@ import {
   buildTripRows,
   countPastTrips,
   resolveSlotDriverPayout,
+  sameDayCheckRows,
+  type SameDayConflict,
   type TripImportRow,
   validateTripDraft,
   isRoundTripCategory,
@@ -59,6 +61,8 @@ export function useTripSubmission(
   // quotation / location saves that run before the trips are sent.
   const [isPreparing, setIsPreparing] = useState(false);
   const busyRef = useRef(false);
+  // The driver already has a trip on one of the days: warn, then create only on "Create anyway".
+  const [sameDayConflicts, setSameDayConflicts] = useState<SameDayConflict[] | null>(null);
 
   const toUtcIso = (date: string, time: string) => localDateTimeToUtcIso(date, time, tz);
   const is3PLAssignment = assignmentType === 'third_party' || assignmentType === '3pl';
@@ -456,10 +460,8 @@ export function useTripSubmission(
     setPastDateModalOpen(true);
   };
 
-  const handleContractSubmit = () => {
-    if (busyRef.current || bulkMutation.isPending) return;
-    if (!validateAndFocusErrors()) return;
-
+  /** Past-date question (if any), then create. */
+  const continueContractSubmit = () => {
     const preview = buildContractRows();
     const pastCount = countPastTrips(preview);
     if (pastCount > 0) {
@@ -468,6 +470,37 @@ export function useTripSubmission(
     }
     void runContractSubmit('Incomplete');
   };
+
+  const handleContractSubmit = async () => {
+    if (busyRef.current || bulkMutation.isPending) return;
+    if (!validateAndFocusErrors()) return;
+
+    if (!is3PLAssignment) {
+      busyRef.current = true;
+      setIsPreparing(true);
+      let conflicts: SameDayConflict[] = [];
+      try {
+        const ask = sameDayCheckRows(buildContractRows());
+        if (ask.some((r) => r.driver_id || r.co_driver_id)) conflicts = await tripService.sameDayCheck(ask);
+      } catch {
+        // A failed check never blocks creating.
+      } finally {
+        busyRef.current = false;
+        setIsPreparing(false);
+      }
+      if (conflicts.length > 0) {
+        setSameDayConflicts(conflicts);
+        return;
+      }
+    }
+    continueContractSubmit();
+  };
+
+  const confirmSameDay = () => {
+    setSameDayConflicts(null);
+    continueContractSubmit();
+  };
+  const cancelSameDay = () => setSameDayConflicts(null);
 
   const executeBulkSubmit = (rows: BulkImportTripRow[]) => {
     if (busyRef.current || bulkMutation.isPending) return;
@@ -543,6 +576,9 @@ export function useTripSubmission(
     isSubmitting: isPreparing || bulkMutation.isPending,
     buildContractRows,
     handleContractSubmit,
+    sameDayConflicts,
+    confirmSameDay,
+    cancelSameDay,
     handleGridSubmit,
     handleFileSubmit,
     resetAll,

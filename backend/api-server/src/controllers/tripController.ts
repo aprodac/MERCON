@@ -26,6 +26,7 @@ import { writeTripStops } from '../services/tripStopWriter';
 import { pinTripStop, PinError } from '../services/locationPin';
 import { whatsappService } from '../services/whatsappService';
 import { getTripMediaPurge } from '../services/media/tripMediaRetention';
+import { findSameDayTrips } from '../services/sameDayTrips';
 
 /** Fields the trip ledger search bar looks at. */
 const TRIP_SEARCH_FIELDS = [
@@ -698,6 +699,26 @@ export const getTripById = async (req: Request, res: Response) => {
         requestId: (req as any).id,
       }
     });
+  }
+};
+
+/**
+ * POST /trips/same-day-check — before Create Trip saves: which of the new
+ * trips' drivers already have a trip that day. Body: { trips: [{ driver_id,
+ * co_driver_id?, planned_start }] }. The form warns and may still book; the
+ * later trip then waits for the earlier one (services/sameDayTrips).
+ */
+export const sameDayCheck = async (req: Request, res: Response) => {
+  try {
+    const trips = Array.isArray(req.body?.trips) ? req.body.trips.slice(0, 400) : [];
+    const items = trips.map((t: any) => ({
+      driverIds: [t?.driver_id, t?.co_driver_id].filter((id: unknown): id is string => typeof id === 'string' && isUuid(id)),
+      plannedStart: typeof t?.planned_start === 'string' ? t.planned_start : '',
+    }));
+    res.json({ success: true, data: await findSameDayTrips(items) });
+  } catch (error: any) {
+    logger.error({ err: error }, 'sameDayCheck error');
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Could not check the driver’s day' } });
   }
 };
 

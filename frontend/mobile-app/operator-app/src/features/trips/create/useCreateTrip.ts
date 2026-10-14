@@ -24,12 +24,14 @@ import {
   quotationsForRoute,
   returnLegDayOffsets,
   rosterClashes,
+  sameDayCheckRows,
   routeLegsFromSlot,
   slotScheduleFor,
   truckClassOfVehicle,
   validateTripDraft,
   zonedWallTimeToUtcIso,
   type DayAssignmentInput,
+  type SameDayConflict,
   type TripChargeInput,
   type SlotStopPin,
   type TripSlotDraft,
@@ -1158,6 +1160,22 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     }
   }, [allIssues.length, buildRows]);
 
+  /**
+   * The driver already has a trip on one of these days? Asked just before
+   * creating, so the operator can stop or book anyway (the later trip then waits
+   * for the earlier one). A failed check never blocks creating.
+   */
+  const checkSameDay = useCallback(async (): Promise<SameDayConflict[]> => {
+    if (assignmentType === 'third_party' || allIssues.length > 0) return [];
+    try {
+      const ask = sameDayCheckRows(buildRows());
+      if (!ask.some((r) => r.driver_id || r.co_driver_id)) return [];
+      return await operatorService.sameDayCheck(ask);
+    } catch {
+      return [];
+    }
+  }, [assignmentType, allIssues.length, buildRows]);
+
   /** Saves a newly defined quotation (if any), then creates the trip(s). Returns an error message or null. */
   const submit = useCallback(
     async (pastChoice: 'Completed' | 'Incomplete' = 'Incomplete'): Promise<{ ok: boolean; partial?: boolean; message: string; step?: CreateTripStep; tripIds?: string[] }> => {
@@ -1361,6 +1379,7 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     stepIssues,
     pastTripCount,
     submitting,
+    checkSameDay,
     submit,
   };
 }

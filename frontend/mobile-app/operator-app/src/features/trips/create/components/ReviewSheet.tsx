@@ -1,10 +1,10 @@
 /** The last look before creating: who for, where, when, who drives, and the money. */
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
-import { CalendarDays, CircleAlert, Clock3, FileText, Handshake, Receipt, Truck, Users } from 'lucide-react-native';
+import { CalendarDays, CircleAlert, Clock3, TriangleAlert, FileText, Handshake, Receipt, Truck, Users } from 'lucide-react-native';
 import { Colors, Spacing, Radius } from '@mercon/mobile-shared/theme/tokens';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
-import { addDaysToDateStr, dropoffDayOffset, lineTypeLabel, returnLegDayOffsets, truckClassOfVehicle } from '@mercon/shared-types';
+import { addDaysToDateStr, dropoffDayOffset, lineTypeLabel, returnLegDayOffsets, sameDayWarning, truckClassOfVehicle, type SameDayConflict } from '@mercon/shared-types';
 import { DriverAvatar } from '../../../drivers/components/DriverAvatar';
 import { UNASSIGNED, type CreateTripForm } from '../useCreateTrip';
 import type { OperatorDriverOption } from '../../../../lib/operator';
@@ -35,13 +35,20 @@ export function ReviewSheet({
   visible,
   onClose,
   onConfirm,
+  sameDay,
+  checking,
 }: {
   form: CreateTripForm;
   visible: boolean;
   onClose: () => void;
-  onConfirm: (pastChoice: 'Completed' | 'Incomplete') => void;
+  /** `anyway`: create although the driver already has a trip that day. */
+  onConfirm: (pastChoice: 'Completed' | 'Incomplete', anyway?: boolean) => void;
+  /** The driver's trips already on those days — shown as a warning in place of "Create". */
+  sameDay?: SameDayConflict[] | null;
+  checking?: boolean;
 }) {
   const [pastChoice, setPastChoice] = useState<'Completed' | 'Incomplete'>('Completed');
+  const warning = sameDay?.length ? sameDayWarning(sameDay, form.tz) : null;
   const { slot, money } = form;
   const trips = money.trips;
   const multi = form.isMonthly && trips > 1;
@@ -223,12 +230,36 @@ export function ReviewSheet({
         ) : null}
       </ScrollView>
 
-      <TouchableOpacity style={[styles.primary, form.submitting && { opacity: 0.7 }]} disabled={form.submitting} onPress={() => onConfirm(pastChoice)} activeOpacity={0.85}>
-        {form.submitting ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.primaryText}>{trips > 1 ? `Create ${trips} trips` : 'Create trip'}</Text>}
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.secondary} onPress={onClose} disabled={form.submitting}>
-        <Text style={styles.secondaryText}>Back to edit</Text>
-      </TouchableOpacity>
+      {warning ? (
+        <>
+          <View style={styles.clash}>
+            <View style={styles.clashHead}>
+              <TriangleAlert size={17} color={Colors.danger} strokeWidth={2.4} />
+              <Text style={styles.clashTitle}>{warning.title}</Text>
+            </View>
+            {warning.lines.map((line) => (
+              <Text key={line} style={styles.clashLine}>{line}</Text>
+            ))}
+            {warning.more > 0 ? <Text style={styles.clashLine}>+{warning.more} more</Text> : null}
+            <Text style={styles.clashNote}>{warning.note}</Text>
+          </View>
+          <TouchableOpacity style={[styles.primary, styles.anyway, form.submitting && { opacity: 0.7 }]} disabled={form.submitting} onPress={() => onConfirm(pastChoice, true)} activeOpacity={0.85}>
+            {form.submitting ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.primaryText}>{trips > 1 ? `Create ${trips} trips anyway` : 'Create anyway'}</Text>}
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.secondary} onPress={onClose} disabled={form.submitting}>
+            <Text style={styles.secondaryText}>Cancel</Text>
+          </TouchableOpacity>
+        </>
+      ) : (
+        <>
+          <TouchableOpacity style={[styles.primary, (form.submitting || checking) && { opacity: 0.7 }]} disabled={form.submitting || checking} onPress={() => onConfirm(pastChoice)} activeOpacity={0.85}>
+            {form.submitting || checking ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.primaryText}>{trips > 1 ? `Create ${trips} trips` : 'Create trip'}</Text>}
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.secondary} onPress={onClose} disabled={form.submitting}>
+            <Text style={styles.secondaryText}>Back to edit</Text>
+          </TouchableOpacity>
+        </>
+      )}
     </AppModal>
   );
 }
@@ -425,6 +456,12 @@ const styles = StyleSheet.create({
   noteText: { flex: 1, fontSize: 13, color: '#854F0B', fontWeight: '600' },
   primary: { marginTop: Spacing.md, backgroundColor: Colors.primary, borderRadius: 14, paddingVertical: 15, alignItems: 'center' },
   primaryText: { color: Colors.white, fontSize: 16, fontWeight: '700' },
+  anyway: { backgroundColor: Colors.danger },
+  clash: { marginTop: Spacing.md, padding: 12, borderRadius: 14, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FCA5A5', gap: 4 },
+  clashHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
+  clashTitle: { flex: 1, fontSize: 14, fontWeight: '800', color: '#991B1B' },
+  clashLine: { fontSize: 13, color: '#7F1D1D', fontWeight: '600' },
+  clashNote: { fontSize: 12, color: '#991B1B', marginTop: 4 },
   secondary: { paddingVertical: 12, alignItems: 'center' },
   secondaryText: { color: Colors.gray600, fontSize: 14, fontWeight: '600' },
 });

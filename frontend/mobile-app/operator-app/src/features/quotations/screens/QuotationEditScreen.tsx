@@ -447,6 +447,7 @@ function QuotationForm({ quotation, template, onDone }: { quotation?: OperatorQu
       <DatePickerModal
         visible={datePicker !== null}
         onClose={() => setDatePicker(null)}
+        title={datePicker === 'from' ? 'Valid from' : 'Valid until'}
         selectedDate={(datePicker === 'from' ? validFrom : validTo) || toDDMMYYYY(new Date().toISOString())}
         onSelectDate={(d) => {
           if (datePicker === 'from') setValidFrom(d); else setValidTo(d);

@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import type { TripStatus } from '@mercon/mobile-shared/lib/trips';
-import type { AssignmentPreview, DriverGroup, DriverReason } from '@mercon/shared-types';
+import type { AssignmentPreview, DriverGroup, DriverReason, SameDayConflict } from '@mercon/shared-types';
 
 export interface Kpi { value: number; delta: number | null }
 
@@ -1152,6 +1152,12 @@ export const operatorService = {
   async updateQuotation(id: string, payload: Record<string, unknown>): Promise<OperatorQuotationDetail> {
     const { data } = await api.put(`/quotations/${id}`, payload);
     return data.data as OperatorQuotationDetail;
+  },
+
+  /** Which of these new trips' drivers already have a trip that day (Create Trip warns). */
+  async sameDayCheck(trips: Array<{ driver_id?: string; co_driver_id?: string; planned_start: string }>): Promise<SameDayConflict[]> {
+    const { data } = await api.post('/trips/same-day-check', { trips });
+    return (data.data ?? []) as SameDayConflict[];
   },
 
   async bulkImportTrips(rows: unknown[]): Promise<{ imported: number; failed: number; results: Array<{ row: number; success: boolean; error?: string; created_id?: string }> }> {

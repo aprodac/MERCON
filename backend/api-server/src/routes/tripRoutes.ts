@@ -3,7 +3,7 @@ import {
   getTrips, getTripById, createTrip, updateTripStatus,
   dispatchTrip, replaceDriver, pickupArrive, pickupVerify, deliveryVerify,
   bulkDeleteTrips, bulkUpdateTripStatus, bulkAssignTrips, getUnsettledCompletedTrips, updateTripFinancials, reviewTripCharges,
-  logStopDelay, confirmEvidenceTime, confirmTripTimes, bulkImportTrips, updateTripStop, pinStop, updateTripStopsRoute, getMonthlyTripBoard, shareTripMediaToWhatsApp
+  logStopDelay, confirmEvidenceTime, confirmTripTimes, bulkImportTrips, updateTripStop, pinStop, updateTripStopsRoute, getMonthlyTripBoard, shareTripMediaToWhatsApp, sameDayCheck
 } from '../controllers/tripController';
 import { exportTrips } from '../controllers/tripExportController';
 import { getTripTrackingLink, getTripTrackingLinks, trackingLinkBody, trackingLinksBody } from '../controllers/trackingController';
@@ -32,6 +32,8 @@ router.post('/bulk-update-status', bulkUpdateTripStatus);
 router.post('/bulk-assign', bulkAssignTrips);
 // Customer tracking links for several trips at once (trip list share).
 router.post('/tracking-links', validate({ body: trackingLinksBody }), getTripTrackingLinks);
+// Create Trip: does the driver already have a trip that day?
+router.post('/same-day-check', sameDayCheck);
 router.post('/bulk-import', validate({ body: bulkImportTripsBody }), bulkImportTrips);
 
 
