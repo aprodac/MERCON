@@ -41,6 +41,22 @@ interface TransitTimeBadgeProps {
   compact?: boolean;
 }
 
+/** Shown when a stop can't be located: no number is guessed, the arrival is left for the user. */
+function UnknownTransit({ className, compact = false }: { className?: string; compact?: boolean }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800 font-bold',
+        compact ? 'px-2.5 py-0.5 text-[10px]' : 'px-3 py-1.5 text-xs',
+        className
+      )}
+    >
+      <Clock className="w-3.5 h-3.5 shrink-0" />
+      <span>Transit: unknown — set arrival by hand</span>
+    </span>
+  );
+}
+
 export default function TransitTimeBadge({
   origin,
   destination,
@@ -157,7 +173,7 @@ export default function TransitTimeBadge({
         </span>
       );
     }
-    if (!estimate) return null;
+    if (!estimate) return <UnknownTransit className={className} compact />;
     return (
       <span className={cn("inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-orange-50 dark:bg-orange-950/40 text-brand text-[10px] font-black border border-orange-200/80 dark:border-orange-900/60 shadow-2xs shrink-0", className)}>
         <Clock className="w-3 h-3 text-brand shrink-0" />
@@ -179,7 +195,7 @@ export default function TransitTimeBadge({
   }
 
   if (!estimate) {
-    return null;
+    return <UnknownTransit className={className} />;
   }
 
   return (
