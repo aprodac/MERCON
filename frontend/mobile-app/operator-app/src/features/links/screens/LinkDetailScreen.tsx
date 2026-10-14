@@ -361,6 +361,7 @@ export default function LinkDetailScreen() {
       <DatePickerModal
         visible={dateOpen}
         onClose={() => setDateOpen(false)}
+        title="Link expires on"
         selectedDate={toDDMMYYYY(d.expires_at ?? new Date(now + 7 * 86_400_000).toISOString())}
         onSelectDate={(day) => {
           setDateOpen(false);

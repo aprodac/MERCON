@@ -11,6 +11,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, FileText, IdCard, MessageCircle, Phone, Send, SquarePen, Truck, UserX,
+  Upload,
 } from 'lucide-react-native';
 import { EmptyHint, PageTitle, SectionLabel, TabIcon, Tile } from '@/components/pageCues';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
@@ -259,10 +260,16 @@ export default function DriverDetailsScreen() {
 
           {tab === 'documents' ? (
             <>
-            <TouchableOpacity style={s.sendDocs} onPress={() => { tap(); setPackOpen(true); }} activeOpacity={0.85}>
-              <Send size={16} color={Colors.white} strokeWidth={2.3} />
-              <Text style={s.sendDocsText}>Send documents as one PDF</Text>
-            </TouchableOpacity>
+            <View style={s.docActions}>
+              <TouchableOpacity style={[s.sendDocs, s.addDocs]} onPress={() => { tap(); router.push({ pathname: '/documents', params: { kind: 'Driver', owner: driver.id } } as any); }} activeOpacity={0.85} accessibilityLabel="Add or update documents">
+                <Upload size={16} color={Colors.charcoal} strokeWidth={2.3} />
+                <Text style={[s.sendDocsText, { color: Colors.charcoal }]}>Add documents</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.sendDocs, { flex: 1 }]} onPress={() => { tap(); setPackOpen(true); }} activeOpacity={0.85}>
+                <Send size={16} color={Colors.white} strokeWidth={2.3} />
+                <Text style={s.sendDocsText} numberOfLines={1}>Send as one PDF</Text>
+              </TouchableOpacity>
+            </View>
             <Card style={s.listCard}>
               {documentsLoading ? <EmptyHint>Loading…</EmptyHint>
                 : documentsError ? <ErrorState message={documentsError} onRetry={refresh} />
@@ -406,6 +413,8 @@ const s = StyleSheet.create({
 
   listCard: { paddingVertical: 4 },
   sendDocs: { height: 46, borderRadius: 14, backgroundColor: Colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  docActions: { flexDirection: 'row', gap: 10 },
+  addDocs: { flex: 1, backgroundColor: Colors.white, borderWidth: 1, borderColor: '#E4E4E8' },
   sendDocsText: { color: Colors.white, fontSize: 15, fontWeight: '700' },
   listEmpty: { paddingVertical: 12 },
   line: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11 },
