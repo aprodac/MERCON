@@ -29,6 +29,14 @@ conversations. Don't unset or override it to look at another project's chats.
 | Find something | `search trip date` (all words must match; `--days 60`, `--chat`) |
 | Full context of one message | `show 1432 --around 15` |
 | A photo / voice note / document | `media 1432 <file>`, then look at the file |
+| Is translation working? | `status` (shows the Gemini state and how many messages are waiting) |
+
+Voice notes and Malayalam messages come with a transcript and an English translation
+(`🗣 "…"  ⇒ EN: …`), made on the server, and `search` matches the English too. Read the
+original as well when the translation looks odd; names, times and amounts matter.
+
+Older messages: "Mercon history" holds messages forwarded from the customer group, so the
+sender and time there are the forwarder's, not the customer's. Treat its dates as approximate.
 
 Messages are numbered (`#1432`). Quote the number back to the user so you both mean the same
 message.
