@@ -18,6 +18,8 @@ import { computeTripChargesTotal, calculateBackendTripFinancials, resolveDriverP
 import { resolveMonth, toDayKey } from '../utils/tripBoard';
 import { validateTripDrivers, TripDriverInput, validateTripSchedule, validateTripStops } from '../services/tripValidationService';
 import { recordAssignmentEvent } from '../services/fleetDispatchService';
+// Sends now, or on the trip's day for trips further out (a month plan isn't 30 alerts at once).
+import { driverWasTold, notifyDriverAssigned } from '../services/driverPhone/assignmentNotice';
 import { buildTripRouteTimeline, isRouteLocked, buildTripStops } from '../services/tripRouteTimeline';
 import { parseFullTripStops } from '../services/legacyStopStringParser';
 import { writeTripStops } from '../services/tripStopWriter';
@@ -220,29 +222,6 @@ export async function resolveTripId(idOrRef: string, tx: Prisma.TransactionClien
     select: { id: true },
   });
   return trip?.id || null;
-}
-
-/**
- * Notify a driver they've been assigned a trip. Notifications target the driver
- * directly (Notification.driverId). Call after the assignment transaction commits.
- */
-async function notifyDriverAssigned(
-  driverId: string,
-  trip: { id: string; ref_id: string | null },
-) {
-  try {
-    await createDriverNotification(
-      driverId,
-      'Trip Assigned',
-      `You've been assigned trip ${trip.ref_id ?? ''}. Open the app to start.`.replace('  ', ' '),
-      'TripAssigned',
-      'Trip',
-      trip.id,
-      { tripId: trip.id, ref_id: trip.ref_id, event: 'TripAssigned' }
-    );
-  } catch (err) {
-    logger.error({ err }, 'Failed to send driver assignment notification');
-  }
 }
 
 /**
@@ -1058,9 +1037,10 @@ export const createTrip = async (req: Request, res: Response) => {
     }
 
     // A trip created with its driver already chosen is how most trips are
-    // assigned, so the driver hears about it now — the same "Trip Assigned"
-    // alert (and "Got it" prompt) as a later dispatch. Drafts aren't planned
-    // yet and a trip entered after the fact needs no action from the driver.
+    // assigned, so the driver hears about it — the same "Trip Assigned" alert
+    // (and "Got it" prompt) as a later dispatch: now when the trip is today or
+    // tomorrow morning, else on its own day (assignmentNotice). Drafts aren't
+    // planned yet and a trip entered after the fact needs no action from the driver.
     const NO_ALERT_STATUSES: TripStatus[] = [TripStatus.Draft, TripStatus.Cancelled, TripStatus.Completed, TripStatus.Invoiced];
     if (driver_id && !NO_ALERT_STATUSES.includes(trip.status as TripStatus)) {
       await notifyDriverAssigned(driver_id, trip);
@@ -1498,7 +1478,7 @@ export const updateTripStatus = async (req: Request, res: Response) => {
     }
 
     // Notify driver if trip was cancelled
-    if (status === TripStatus.Cancelled && trip.driverId) {
+    if (status === TripStatus.Cancelled && trip.driverId && await driverWasTold(trip.driverId, trip.id)) {
       try {
         await createDriverNotification(
           trip.driverId,
@@ -1640,7 +1620,7 @@ export const dispatchTrip = async (req: Request, res: Response) => {
     if (driver_id) await notifyDriverAssigned(driver_id, result);
 
     // Notify the unassigned/replaced driver
-    if (oldDriverIdToNotify && oldDriverIdToNotify !== driver_id) {
+    if (oldDriverIdToNotify && oldDriverIdToNotify !== driver_id && await driverWasTold(oldDriverIdToNotify, result.id)) {
       try {
         await createDriverNotification(
           oldDriverIdToNotify,
@@ -1752,7 +1732,7 @@ export const replaceDriver = async (req: Request, res: Response) => {
     await notifyDriverAssigned(new_driver_id, result);
 
     // Notify the unassigned/replaced driver
-    if (oldDriverIdToNotify && oldDriverIdToNotify !== new_driver_id) {
+    if (oldDriverIdToNotify && oldDriverIdToNotify !== new_driver_id && await driverWasTold(oldDriverIdToNotify, result.id)) {
       try {
         await createDriverNotification(
           oldDriverIdToNotify,
@@ -2662,7 +2642,7 @@ export const bulkUpdateTripStatus = async (req: Request, res: Response) => {
 
     if (status === TripStatus.Cancelled && affectedTrips?.length) {
       for (const t of affectedTrips) {
-        if (t.driverId) {
+        if (t.driverId && await driverWasTold(t.driverId, t.id)) {
           try {
             await createDriverNotification(
               t.driverId,

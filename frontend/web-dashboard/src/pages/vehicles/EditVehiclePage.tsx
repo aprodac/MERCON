@@ -34,6 +34,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Combobox } from '@/components/ui/combobox';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -423,29 +424,35 @@ export default function EditVehiclePage() {
                           </button>
                         )}
                       </div>
-                      <Select
+                      {/* Searchable — fleets have dozens of drivers (name, phone, driver ID or the truck they drive). */}
+                      <Combobox
+                        id="assigned_driver"
                         value={assignedDriverId}
-                        onValueChange={(val) => setAssignedDriverId(val)}
-                      >
-                        <SelectTrigger id="assigned_driver" className="h-8 text-xs">
-                          <SelectValue placeholder="Select assigned driver..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="unassigned" className="text-xs italic text-slate-400">
-                            Unassigned (No Driver)
-                          </SelectItem>
-                          {drivers.map((d) => {
+                        onChange={(val) => setAssignedDriverId(val || 'unassigned')}
+                        placeholder="Select assigned driver..."
+                        searchPlaceholder="Search name, phone, ID or truck…"
+                        emptyText="No driver matches."
+                        triggerClassName="h-8 text-xs"
+                        options={[
+                          { value: 'unassigned', label: <span className="italic text-slate-400">Unassigned (No Driver)</span>, selectedLabel: 'Unassigned (No Driver)', keywords: 'unassigned none no driver' },
+                          ...drivers.map((d) => {
                             // Who already drives another truck — picking them moves them off it.
                             const other = d.assignedVehicle && d.assignedVehicle.id !== id ? d.assignedVehicle.plate_number : null;
-                            return (
-                              <SelectItem key={d.id} value={d.id} className="text-xs">
-                                {d.first_name} {d.last_name} ({d.phone_primary || d.ref_id || 'No Phone'})
-                                {other ? <span className="text-amber-700 dark:text-amber-400"> · drives {other}</span> : d.assignedVehicle ? null : <span className="text-emerald-700 dark:text-emerald-400"> · no truck</span>}
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
+                            const name = `${d.first_name} ${d.last_name}`;
+                            return {
+                              value: d.id,
+                              selectedLabel: name,
+                              keywords: [name, d.phone_primary, d.ref_id, d.assignedVehicle?.plate_number].filter(Boolean).join(' '),
+                              label: (
+                                <span className="text-xs">
+                                  {name} ({d.phone_primary || d.ref_id || 'No Phone'})
+                                  {other ? <span className="text-amber-700 dark:text-amber-400"> · drives {other}</span> : d.assignedVehicle ? null : <span className="text-emerald-700 dark:text-emerald-400"> · no truck</span>}
+                                </span>
+                              ),
+                            };
+                          }),
+                        ]}
+                      />
                       <TruckAssignmentImpact
                         className="mt-2"
                         vehicleId={id ?? null}
