@@ -5,7 +5,8 @@
  * The bottom tab bar isn't rendered by this screen: it's mounted once, above
  * the route stack, in src/app/_layout.tsx (`<OperatorBottomNav />`).
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { FlatList, Linking, RefreshControl, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -24,6 +25,7 @@ import {
 } from '../components';
 import { useDriverFilters, useDriverSearch, useDrivers } from '../hooks';
 import type { DriverListItem } from '../types';
+import { fleetPhoneKey, fleetPhoneStatus } from '../phone/driverPhone';
 
 export default function DriversScreen() {
   const router = useRouter();
@@ -53,6 +55,15 @@ export default function DriversScreen() {
 
   const isFiltered = Boolean(debouncedQuery || status);
 
+  // Every driver's phone (the driver app): ready / check / not ready, refreshed every minute.
+  const phones = useQuery({ queryKey: fleetPhoneKey, queryFn: fleetPhoneStatus, refetchInterval: 60_000, staleTime: 30_000 });
+  const phoneOf = useMemo(() => new Map((phones.data ?? []).map((p) => [p.driverId, p])), [phones.data]);
+  const phoneCounts = useMemo(() => {
+    const c = { green: 0, amber: 0, red: 0 };
+    for (const p of phones.data ?? []) c[p.level]++;
+    return c;
+  }, [phones.data]);
+
   const openDriver = (driver: DriverListItem) => {
     router.push({ pathname: '/driver-details', params: { id: driver.id } });
   };
@@ -80,12 +91,25 @@ export default function DriversScreen() {
                 placeholder="Search name or phone"
                 loading={isFetching && !isRefreshing}
               />
-              {!loading ? <Text style={listPage.count}>{total} {total === 1 ? 'driver' : 'drivers'}</Text> : null}
+              {!loading ? (
+                <Text style={listPage.count}>
+                  {total} {total === 1 ? 'driver' : 'drivers'}
+                  {phones.data ? (
+                    <Text style={{ fontWeight: '600' }}>
+                      {'  ·  '}
+                      <Text style={{ color: '#146C3C' }}>{`${phoneCounts.green} ${phoneCounts.green === 1 ? 'phone' : 'phones'} ready`}</Text>
+                      {phoneCounts.amber ? <Text style={{ color: '#B54708' }}>{`  ·  ${phoneCounts.amber} check`}</Text> : null}
+                      {phoneCounts.red ? <Text style={{ color: '#B42318' }}>{`  ·  ${phoneCounts.red} not ready`}</Text> : null}
+                    </Text>
+                  ) : null}
+                </Text>
+              ) : null}
             </View>
           }
           renderItem={({ item }) => (
             <DriverCard
               driver={item}
+              phone={phones.data ? phoneOf.get(item.id) ?? null : undefined}
               onView={openDriver}
               onCall={(d) => d.phone && Linking.openURL(`tel:${d.phone}`).catch(() => {})}
               onTrack={(d) => d.activeTrip && router.push({ pathname: '/trip-details', params: { id: d.activeTrip.id } })}

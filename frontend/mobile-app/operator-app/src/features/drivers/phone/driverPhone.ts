@@ -91,6 +91,21 @@ export const driverPhoneApi = {
   },
 };
 
+/** Every driver's phone in one call (GET /drivers/phone-status) — the dot on the Drivers list. */
+export interface FleetPhoneRow {
+  driverId: string;
+  level: PhoneLevel;
+  reasons: string[];
+  lastSeenAt: string | null;
+  platform: string | null;
+  app_version: string | null;
+}
+export async function fleetPhoneStatus(): Promise<FleetPhoneRow[]> {
+  const { data } = await api.get('/drivers/phone-status');
+  return (data.data ?? []) as FleetPhoneRow[];
+}
+export const fleetPhoneKey = ['drivers', 'phone-status'] as const;
+
 export const driverPhoneKey = (driverId: string) => ['drivers', 'phone', driverId] as const;
 export const tripTrailKey = (tripId: string) => ['trips', 'driver-trail', tripId] as const;
 
