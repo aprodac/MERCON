@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { isDateTimeInPast, isDateInPast } from './pastDateTripUtils';
-import { dutyShiftMinutes, estimateRouteTravelTime, resolveCityCoords, STOP_DWELL_MINUTES } from '@/services/travelTimeService';
+import { dutyShiftMinutes, estimateRouteTravelTime, estimateTravelTimeByName, resolveCityCoords, STOP_DWELL_MINUTES } from '@/services/travelTimeService';
 
 describe('past time in the deployment timezone', () => {
   afterEach(() => vi.useRealTimers());
@@ -42,5 +42,26 @@ describe('travel time helpers', () => {
     expect(via!.stopOffsetsMinutes[1]).toBeGreaterThan(via!.stopOffsetsMinutes[0] + STOP_DWELL_MINUTES);
     expect(via!.durationMinutes).toBeGreaterThan(direct!.durationMinutes + 2 * STOP_DWELL_MINUTES - 60);
     expect(via!.durationMinutes).toBeGreaterThan(via!.stopOffsetsMinutes[1]);
+  });
+});
+
+describe('transit estimate spelling tolerance', () => {
+  it('resolves Buraydah / Unayzah / Madina spellings', () => {
+    expect(resolveCityCoords('Buraydah')).toEqual(resolveCityCoords('Buraidah'));
+    expect(resolveCityCoords('Unayzah')).toEqual(resolveCityCoords('Onaizah'));
+    expect(resolveCityCoords('Madinah')).toEqual(resolveCityCoords('Medina'));
+    expect(resolveCityCoords('Ha’il')).toEqual(resolveCityCoords('Hail'));
+  });
+
+  it('Riyadh → Buraydah → Medina is a real route, not 6h', async () => {
+    const r = await estimateRouteTravelTime([{ name: 'Riyadh' }, { name: 'Buraydah' }, { name: 'Medina' }]);
+    expect(r).not.toBeNull();
+    expect(r!.distanceKm).toBeGreaterThan(800);
+    expect(r!.durationMinutes).toBeGreaterThan(11 * 60 + STOP_DWELL_MINUTES);
+  });
+
+  it('an unknown city gives unknown, not a made-up 2h30', async () => {
+    expect(await estimateRouteTravelTime([{ name: 'Riyadh' }, { name: 'Zzyzx Nowhere' }])).toBeNull();
+    expect(await estimateTravelTimeByName('Riyadh', 'Zzyzx Nowhere')).toBeNull();
   });
 });
