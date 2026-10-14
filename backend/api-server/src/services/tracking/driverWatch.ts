@@ -7,6 +7,8 @@
  *  - push retry   (5 min):   re-send pushes that failed because Expo was unreachable
  *  - alerts       (5 min):   driver not ready / trip not acknowledged / silent driver
  *                            → one notification to every Admin and Operator
+ *  - trip notices (5 min):   tell drivers about the trips starting today (a month
+ *                            plan is announced trip by trip — driverPhone/assignmentNotice)
  *  - cleanup      (daily):   delete activity + push history past retention
  *
  * Every step is idempotent and alerts are de-duplicated against existing
@@ -19,6 +21,7 @@ import { createNotification } from '../../controllers/notificationController';
 import { checkPushReceipts, retryPushDelivery } from '../pushNotificationService';
 import { computeAttention, type AttentionItem } from '../driverPhone/attention';
 import { isRetryablePushError, WATCH_TIMINGS } from '../driverPhone/rules';
+import { sendDueAssignmentNotices } from '../driverPhone/assignmentNotice';
 
 const TICK_MS = 60_000;
 const FIVE_MIN = 5 * 60_000;
@@ -119,6 +122,7 @@ export async function runDriverWatch(now: Date = new Date()): Promise<void> {
     const steps: Array<[string, number, () => Promise<unknown>]> = [
       ['receipts', FIVE_MIN, () => checkPushReceipts(now)],
       ['retry', FIVE_MIN, () => retryFailedPushes(now)],
+      ['notices', FIVE_MIN, () => sendDueAssignmentNotices(now)],
       ['alerts', FIVE_MIN, () => sendAlerts(now)],
       ['cleanup', DAY, () => cleanup(now)],
     ];
