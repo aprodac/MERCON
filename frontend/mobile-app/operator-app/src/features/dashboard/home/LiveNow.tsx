@@ -2,7 +2,8 @@
  * "Live now": the fleet map and the trips on the road in one card. Late
  * trips first, then trucks with no GPS, then the rest; each row shows the
  * truck, customer, how far along its stops it is, the driver and the next
- * stop with its planned time. The map opens the full Fleet map; a row opens
+ * stop with its planned time ("All stops done" + "Confirm delivery" when every
+ * stop is reached but the trip isn't closed). The map opens the full Fleet map; a row opens
  * the trip.
  */
 import React, { useMemo } from 'react';
@@ -25,8 +26,12 @@ const short = (min: number) => durationText(min).replace(' days', 'd').replace('
 
 type Row = { unit: LiveUnit; trip: NonNullable<LiveUnit['trip']>; rank: number };
 
+/** Every stop reached but the trip not closed — the office still has to confirm the delivery. */
+const allStopsDone = (t: Row['trip']) => t.next_stop_index == null && t.stops.length > 0;
+
 function statusOf(u: LiveUnit, t: Row['trip'], now: number): { text: string; color: string } {
   const next = t.next_stop_index != null ? t.stops[t.next_stop_index] : null;
+  if (allStopsDone(t)) return { text: 'Confirm delivery', color: AMBER };
   if (isDelayed(u)) {
     const due = next?.planned_arrival ? new Date(next.planned_arrival).getTime() : null;
     return { text: due && due < now ? `${short((now - due) / 60000)} late` : 'Delayed', color: RED };
@@ -92,7 +97,11 @@ export function LiveNow({ units, tz, now, onOpenMap, onOpenTrip, onAll }: {
             const passed = t.stops.filter((x) => x.actual_departure || x.actual_arrival).length;
             const pct = total ? Math.max(6, Math.round((passed / total) * 100)) : 6;
             const next = t.next_stop_index != null ? t.stops[t.next_stop_index] : null;
-            const nextText = next?.name ? `Next: ${niceName(next.name)}${time(next.planned_arrival) ? ` · ${time(next.planned_arrival)}` : ''}` : '';
+            // A next stop without a saved name still says which stop it is; none left → say the trip is waiting to be closed.
+            const nextName = next ? niceName(next.name) || `Stop ${t.next_stop_index! + 1}` : null;
+            const nextText = nextName
+              ? `Next: ${nextName}${time(next!.planned_arrival) ? ` · ${time(next!.planned_arrival)}` : ''}`
+              : allStopsDone(t) ? 'All stops done' : '';
             return (
               <TouchableOpacity key={t.id} style={s.row} onPress={() => { tap(); onOpenTrip(t.id); }} activeOpacity={0.7}
                 accessibilityRole="button" accessibilityLabel={`${u.vehicle?.plate_number ?? t.ref_id}, ${niceName(t.customer_name)}, ${st.text}`}>
@@ -104,7 +113,7 @@ export function LiveNow({ units, tz, now, onOpenMap, onOpenTrip, onAll }: {
                 <View style={s.track}><View style={[s.fill, { width: `${pct}%`, backgroundColor: st.color === RED ? RED : INK }]} /></View>
                 <View style={s.rowBottom}>
                   <Text style={s.meta} numberOfLines={1}>{u.driver ? niceName(u.driver.name) : 'No driver'}</Text>
-                  <Text style={s.meta} numberOfLines={1}>{nextText}</Text>
+                  <Text style={[s.meta, !nextName && allStopsDone(t) && { color: AMBER, fontWeight: '600' }]} numberOfLines={1}>{nextText}</Text>
                 </View>
               </TouchableOpacity>
             );
