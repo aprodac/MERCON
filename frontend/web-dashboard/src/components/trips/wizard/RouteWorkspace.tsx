@@ -840,7 +840,10 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                   destinationLng={slot.destinationLng}
                   pickupDate={slot.date || slot.pickupDate}
                   pickupTime={slot.pickupTime || ''}
-                  intermediateStops={(slot.intermediateLocations || []).map((name: string) => ({ name }))}
+                  intermediateStops={(slot.intermediateLocations || []).map((name: string, i: number) => {
+                    const loc = slot.intermediateLocationIds?.[i] ? locationById.get(slot.intermediateLocationIds[i]) : undefined;
+                    return { name, lat: loc?.lat ?? null, lng: loc?.lng ?? null };
+                  })}
                   fixedDurationMinutes={dutyShiftMinutes(contractRateCategory)}
                   onAutoSetDropoffDateTime={(dDate, dTime, isOvernight, _estimate, stopOffsetsMinutes) => {
                     // Never overwrite an arrival the user set by hand, nor a saved trip's.

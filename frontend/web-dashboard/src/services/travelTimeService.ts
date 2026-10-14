@@ -80,7 +80,50 @@ export const SAUDI_CITY_COORDS: Record<string, [number, number]> = {
   hafr: [28.4342, 45.9636],
   wadi_dawasir: [20.4468, 44.7504],
   dawasir: [20.4468, 44.7504],
+  buraydah: [26.3260, 43.9750],
+  buraida: [26.3260, 43.9750],
+  buraydha: [26.3260, 43.9750],
+  onaizah: [26.0843, 43.9937],
+  unaizah: [26.0843, 43.9937],
+  unaiza: [26.0843, 43.9937],
+  haail: [27.5219, 41.6961],
+  hayil: [27.5219, 41.6961],
+  madina: [24.5247, 39.5692],
+  al_madinah: [24.5247, 39.5692],
+  al_madinah_al_munawwarah: [24.5247, 39.5692],
+  medinah: [24.5247, 39.5692],
+  makka: [21.3891, 39.8579],
+  mekka: [21.3891, 39.8579],
+  makkah_al_mukarramah: [21.3891, 39.8579],
+  dammaam: [26.4207, 50.0888],
+  al_khobar: [26.2172, 50.1971],
+  alkhubar: [26.2172, 50.1971],
+  khubar: [26.2172, 50.1971],
+  al_jubail: [27.0046, 49.6601],
+  jubayl: [27.0046, 49.6601],
+  yanbo: [24.0891, 38.0618],
+  yenbu: [24.0891, 38.0618],
+  yanbu_al_bahr: [24.0891, 38.0618],
+  jiddah: [21.5433, 39.1728],
+  jedda: [21.5433, 39.1728],
+  riyad: [24.7136, 46.6753],
 };
+
+/** Spelling-tolerant form of a place name: y≡i, doubled letters collapsed, no punctuation. */
+export function normalizePlaceName(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/['’`]/g, '')
+    .replace(/[-_]/g, ' ')
+    .replace(/y/g, 'i')
+    .replace(/(.)\1+/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const NORMALIZED_CITY_KEYS: Array<[string, [number, number]]> = Object.entries(SAUDI_CITY_COORDS).map(
+  ([key, coords]) => [normalizePlaceName(key), coords]
+);
 
 let googleApiUnavailable = false;
 
@@ -123,13 +166,11 @@ export function calculateRoadDistanceKm(
  */
 export function resolveCityCoords(locName: string = ''): { lat: number; lng: number } | null {
   if (!locName || !locName.trim()) return null;
-  // Apostrophes dropped so "At Ta'if" / "Ta’if" resolve to taif.
-  const clean = locName.toLowerCase().replace(/['’`]/g, '').replace(/[-_]/g, ' ').trim();
+  const clean = normalizePlaceName(locName);
 
   // 1. Direct key search
-  for (const [key, coords] of Object.entries(SAUDI_CITY_COORDS)) {
-    const keyClean = key.replace(/_/g, ' ');
-    if (clean.includes(keyClean)) {
+  for (const [key, coords] of NORMALIZED_CITY_KEYS) {
+    if (clean.includes(key)) {
       return { lat: coords[0], lng: coords[1] };
     }
   }
@@ -137,7 +178,7 @@ export function resolveCityCoords(locName: string = ''): { lat: number; lng: num
   // 2. Tokenized search (ignore common stopwords like port, industrial, city, etc.)
   const words = clean.split(/\s+/).filter((w) => !['al', 'el', 'port', 'industrial', 'city', 'zone', 'area', 'gate', 'terminal'].includes(w));
   for (const word of words) {
-    for (const [key, coords] of Object.entries(SAUDI_CITY_COORDS)) {
+    for (const [key, coords] of NORMALIZED_CITY_KEYS) {
       if (word.length >= 3 && (key.includes(word) || word.includes(key))) {
         return { lat: coords[0], lng: coords[1] };
       }
@@ -258,13 +299,8 @@ export async function estimateTravelTimeByName(
     return estimateTravelTime(oCoords, dCoords);
   }
 
-  // 3. Fallback estimate so transit badge and dropoff calculation never break
-  return {
-    durationMinutes: 150,
-    durationText: '2h 30m',
-    distanceKm: 180,
-    source: 'saudi_routes',
-  };
+  // 3. A point we cannot locate: report unknown rather than invent a number.
+  return null;
 }
 
 /** Time allowed at each intermediate stop (unloading / paperwork). */
