@@ -17,7 +17,7 @@ import { roundTimes } from '../services/roundTimes';
 import { useCurrentTrip } from '../hooks/use-current-trip';
 import { tripService, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, getLegEndpoints, getEvidencePolicy } from '@mercon/mobile-shared/lib/trips';
 
-import { pickFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
+import { keepExistingPhotos, pickFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
 import { PhotoCaptureModal } from '../components/PhotoCaptureModal';
 import { UploadProgressBar } from '../components/UploadProgressBar';
 import { usePhotoUploads } from '../hooks/use-photo-uploads';
@@ -170,9 +170,13 @@ const DeliveryVerificationScreen = () => {
 
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            markUploaded(parsed.filter((ph: CapturedPhoto) => ph?.uploaded).map((ph: CapturedPhoto) => ph.uri));
-            setPhotos(parsed);
+          // Drop entries whose file Android has since cleared from the cache:
+          // they showed as a "filled" box that opened a blank preview instead
+          // of the camera.
+          const usable = Array.isArray(parsed) ? await keepExistingPhotos(parsed) : [];
+          if (usable.length > 0) {
+            markUploaded(usable.filter((ph: CapturedPhoto) => ph?.uploaded).map((ph: CapturedPhoto) => ph.uri));
+            setPhotos(usable);
             return;
           }
         }
@@ -286,7 +290,7 @@ const DeliveryVerificationScreen = () => {
 
   /** Put a new photo in the next empty box, save the draft, start its upload. */
   const acceptPhoto = (photo: CapturedPhoto) => {
-    const valid = [...photosRef.current, photo].filter(Boolean).slice(0, need);
+    const valid = [...photosRef.current, photo].filter((p) => !!p?.uri).slice(0, need);
     photosRef.current = valid;
     setPhotos(valid);
     savePhotoDrafts(valid);
@@ -299,7 +303,8 @@ const DeliveryVerificationScreen = () => {
    * are taken (it has its own Gallery tab). Long-press: straight to gallery.
    */
   const addPhoto = async (source: 'camera' | 'gallery' = primarySource) => {
-    if (photosRef.current.length >= need) return;
+    // Count real photos only — an empty or broken draft entry must not block the camera.
+    if (photosRef.current.filter((p) => !!p?.uri).length >= need) return;
     if (source === 'camera') {
       setCameraOpen(true);
       return;

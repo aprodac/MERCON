@@ -17,7 +17,7 @@ import { FadedBottomIllustration } from '../components/FadedBottomIllustration';
 import { useCurrentTrip } from '../hooks/use-current-trip';
 import { tripService, stopAddress, isRoundTrip, getLegIntermediateDbStops, getEvidencePolicy } from '@mercon/mobile-shared/lib/trips';
 import { parseTripRouteNodes, parseStopWorkflowState, TimelineStop } from '../utils/routeParser';
-import { takePhoto, pickFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
+import { takePhoto, pickFromGallery, keepExistingPhotos, recoverPendingPhoto, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { safeSecureStore as SecureStore } from '@mercon/mobile-shared/lib/secure-store';
 import { openInGoogleMaps } from '../services/maps';
@@ -148,13 +148,22 @@ export default function StopVerificationScreen() {
   useEffect(() => {
     if (!trip?.id || !activeStop?.id) return;
     const storeKey = `stop_photos_${trip.id}_${activeStop.id}`;
-    SecureStore.getItemAsync(storeKey).then((saved) => {
+    (async () => {
+      let restored: CapturedPhoto[] = [];
+      const saved = await SecureStore.getItemAsync(storeKey).catch(() => null);
       if (saved) {
         try {
-          setPhotos(JSON.parse(saved));
+          restored = await keepExistingPhotos(JSON.parse(saved));
         } catch {}
       }
-    });
+      // A photo taken just before Android closed the app while the camera was open.
+      const pending = await recoverPendingPhoto();
+      if (pending) {
+        restored = [...restored, pending];
+        SecureStore.setItemAsync(storeKey, JSON.stringify(restored)).catch(() => {});
+      }
+      setPhotos(restored);
+    })();
   }, [trip?.id, activeStop?.id]);
 
   const savePhotosState = (newPhotos: CapturedPhoto[]) => {
