@@ -6,6 +6,7 @@ import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import type { DriverUpdate, LiveMediaItem, OperatorTripDetail, OperatorTripDocument, TripPhase } from '../../../../lib/operator';
 import { ON_TIME_GRACE_MIN, TONE, delayText, mapsLink, minutesLate, minutesText, photoPinsForStop, sendStatus, sortedStops, stopName, stopTiming, tripLegsOf, updateTitle, type Formatters, type Stop } from '../tripDetailsModel';
+import { extraStopNote } from '@mercon/shared-types';
 import { liveLegOf } from '../../tripLegs';
 import { Card, Chip, INK, MUTED, WA, WA_INK, WA_LIGHT, tap } from './parts';
 import { isAppScreenshot, pendingTimeCheck } from './TripTimesSheet';
@@ -63,6 +64,9 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
 
   return (
     <Card style={{ paddingVertical: 8 }}>
+      {extraStopNote(trip) ? (
+        <Text style={{ fontSize: 12, fontWeight: '600', color: '#B54708', paddingHorizontal: 12, paddingVertical: 6 }}>{extraStopNote(trip)}</Text>
+      ) : null}
       {(trip.step_backs ?? []).slice(0, 3).map((b, k) => (
         <View key={`${b.at}-${k}`} style={s.backNote}>
           <Undo2 size={14} color="#5B34B0" />

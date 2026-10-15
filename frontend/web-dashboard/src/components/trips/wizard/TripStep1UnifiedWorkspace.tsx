@@ -74,6 +74,8 @@ interface TripStep1UnifiedWorkspaceProps {
   fieldErrors?: Record<string, boolean>;
   isEditMode?: boolean;
   isRouteLocked?: boolean;
+  canEditStops?: boolean;
+  reachedStops?: { outbound: boolean[]; returnLeg: boolean[]; outboundClosed: boolean };
   isScheduleLocked?: boolean;
   isAssignmentLocked?: boolean;
   isBaseBillingLocked?: boolean;
@@ -157,6 +159,8 @@ export const TripStep1UnifiedWorkspace: React.FC<TripStep1UnifiedWorkspaceProps>
   fieldErrors = {},
   isEditMode = false,
   isRouteLocked = false,
+  canEditStops = false,
+  reachedStops,
   isScheduleLocked = false,
   isAssignmentLocked = false,
   isBaseBillingLocked = false,
@@ -244,6 +248,8 @@ export const TripStep1UnifiedWorkspace: React.FC<TripStep1UnifiedWorkspaceProps>
                 handleUpdateSlotReturnIntermediate={handleUpdateSlotReturnIntermediate}
                 fieldErrors={fieldErrors}
                 isRouteLocked={isRouteLocked}
+                canEditStops={canEditStops}
+                reachedStops={reachedStops}
                 autoFillArrival={!isEditMode}
               />
             ))}
@@ -276,6 +282,8 @@ export const TripStep1UnifiedWorkspace: React.FC<TripStep1UnifiedWorkspaceProps>
                 handleUpdateSlotReturnIntermediate={handleUpdateSlotReturnIntermediate}
                 fieldErrors={fieldErrors}
                 isRouteLocked={isRouteLocked}
+                canEditStops={canEditStops}
+                reachedStops={reachedStops}
                 autoFillArrival={!isEditMode}
               />
             ))}

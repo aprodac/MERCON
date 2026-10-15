@@ -1,7 +1,7 @@
 import { countStepBackRemoved } from '../services/tripStepBack';
 import { Request, Response } from 'express';
 import { linkInlineImage } from '../services/inlineImages';
-import { DISPATCH_RULES, normalizeAssistantConfig } from '@mercon/shared-types';
+import { DISPATCH_RULES, normalizeAssistantConfig, planStopsEdit } from '@mercon/shared-types';
 import { prisma } from '../db';
 import { generateRefId } from '../utils/refId';
 import { createDriverNotification, notifyOperatorsOfDelay } from './notificationController';
@@ -20,7 +20,7 @@ import { validateTripDrivers, TripDriverInput, validateTripSchedule, validateTri
 import { recordAssignmentEvent } from '../services/fleetDispatchService';
 // Sends now, or on the trip's day for trips further out (a month plan isn't 30 alerts at once).
 import { driverWasTold, notifyDriverAssigned } from '../services/driverPhone/assignmentNotice';
-import { buildTripRouteTimeline, isRouteLocked, buildTripStops } from '../services/tripRouteTimeline';
+import { buildTripRouteTimeline, buildTripStops } from '../services/tripRouteTimeline';
 import { parseFullTripStops } from '../services/legacyStopStringParser';
 import { writeTripStops } from '../services/tripStopWriter';
 import { pinTripStop, PinError } from '../services/locationPin';
@@ -2172,10 +2172,11 @@ export const pinStop = async (req: Request, res: Response) => {
 };
 
 /**
- * Re-constructs trip stops and schedule for a Draft or Scheduled trip.
+ * Re-constructs trip stops and schedule (see rules below).
  * Replaces active stops in a single transaction, updates origin/destination,
  * and returns updated trip details with route_timeline.
- * Returns HTTP 409 if the trip status is locked (Dispatched, AtPickup, InTransit, Completed, Invoiced, Cancelled).
+ * Draft/Scheduled: fully editable. Loading/InTransit/Delayed: only stops not reached yet
+ * (else 409 STOP_ALREADY_REACHED). Completed/Invoiced/Cancelled: 409 ROUTE_LOCKED.
  */
 export const updateTripStopsRoute = async (req: Request, res: Response) => {
   try {
@@ -2187,20 +2188,22 @@ export const updateTripStopsRoute = async (req: Request, res: Response) => {
 
     const existingTrip = await prisma.trip.findFirst({
       where: { id: tripId, deletedAt: null },
-      select: { id: true, status: true, customerId: true, planned_start: true, planned_end: true, driverId: true, co_driver_id: true, vehicleId: true },
+      select: { id: true, ref_id: true, status: true, customerId: true, planned_start: true, planned_end: true, driverId: true, co_driver_id: true, vehicleId: true },
     });
     if (!existingTrip) {
       return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Trip not found' } });
     }
 
-    if (isRouteLocked(existingTrip.status)) {
-      return res.status(409).json({
-        success: false,
-        error: {
-          code: 'ROUTE_LOCKED',
-          message: `Trip is in status ${existingTrip.status} — route stops cannot be edited.`,
-        },
-      });
+    // Draft/Scheduled: fully editable. Running: only stops not reached yet.
+    // Completed/Invoiced/Cancelled: locked. Checked against the stops below.
+    const existingStops = await prisma.tripStop.findMany({
+      where: { tripId: existingTrip.id, deletedAt: null },
+      orderBy: { stop_sequence: 'asc' },
+      select: { id: true, stop_sequence: true, leg_index: true, location_name: true, locationId: true, actual_arrival: true, actual_departure: true },
+    });
+    const lockPlan = planStopsEdit(existingTrip.status, existingStops.map((s) => ({ ...s, location_id: s.locationId })), []);
+    if (!lockPlan.ok && lockPlan.code === 'ROUTE_LOCKED') {
+      return res.status(409).json({ success: false, error: { code: lockPlan.code, message: lockPlan.message } });
     }
 
     const {
@@ -2323,14 +2326,22 @@ export const updateTripStopsRoute = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: stopValidation.error } });
     }
 
+    const plan = planStopsEdit(existingTrip.status, existingStops.map((s) => ({ ...s, location_id: s.locationId })), resolvedStops);
+    if (!plan.ok) {
+      return res.status(409).json({ success: false, error: { code: plan.code, message: plan.message } });
+    }
+    const frozenCount = plan.frozenCount;
+    const routeBefore = existingStops.map((s) => `${s.leg_index}|${s.locationId ?? s.location_name}`).join('>');
+
     await prisma.$transaction(async (tx) => {
-      // 1. Soft-delete old stops
+      // 1. Soft-delete old stops — except stops already reached, which keep
+      // their arrival times and evidence.
       await tx.tripStop.updateMany({
-        where: { tripId: existingTrip.id, deletedAt: null },
+        where: { tripId: existingTrip.id, deletedAt: null, id: { notIn: plan.frozenIds } },
         data: { deletedAt: new Date() },
       });
 
-      // 2. Insert new stops
+      // 2. Insert new stops, numbered after the kept ones
       await tx.tripStop.createMany({
         data: resolvedStops.map((stop: any, index: number) => {
           const rawLat = parseOptionalFloat(stop.lat ?? stop.location_lat);
@@ -2363,7 +2374,7 @@ export const updateTripStopsRoute = async (req: Request, res: Response) => {
             locationId: stop.location_id || null,
             planned_arrival: stopPlannedArrival,
           };
-        }),
+        }).slice(frozenCount),
       });
 
       // 3. Update trip planned times
@@ -2376,6 +2387,24 @@ export const updateTripStopsRoute = async (req: Request, res: Response) => {
         },
       });
     });
+
+    // Tell the driver the route changed (running trip, stops actually different).
+    const routeAfter = resolvedStops.map((s: any) => `${s.leg_index ?? 0}|${s.location_id ?? s.location_name}`).join('>');
+    if (existingTrip.driverId && existingTrip.status !== 'Draft' && routeBefore !== routeAfter && await driverWasTold(existingTrip.driverId, existingTrip.id)) {
+      try {
+        await createDriverNotification(
+          existingTrip.driverId,
+          'Route changed',
+          `The route of trip ${existingTrip.ref_id ?? ''} was changed. Check your stops.`.replace('  ', ' '),
+          'TripRouteChanged',
+          'Trip',
+          existingTrip.id,
+          { tripId: existingTrip.id, ref_id: existingTrip.ref_id, event: 'TripRouteChanged' }
+        );
+      } catch (err) {
+        logger.error({ err }, 'Failed to send driver route-changed notification');
+      }
+    }
 
     // Re-fetch updated trip with timeline
     const updatedTrip = await prisma.trip.findFirst({
@@ -3040,6 +3069,63 @@ export const updateTripFinancials = async (req: Request, res: Response) => {
   }
 };
 
+
+/**
+ * Adds one charge line (never replaces the list) and/or raises the driver
+ * payout after a stop was added to an existing trip. Does not touch the
+ * quotation or the trip's billing amount, nor the "settled" flag.
+ */
+export const addExtraStopCharge = async (req: Request, res: Response) => {
+  try {
+    const rawId = req.params.id as string;
+    const tripId = isUuid(rawId) ? rawId : await resolveTripId(rawId);
+    if (!tripId) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Trip not found' } });
+    }
+    const userId = (req as any).user?.id;
+    const { charge, driver_payout_increase } = req.body as {
+      charge?: { surchargeRuleId?: string | null; charge_type: string; unit?: string | null; rate: number; quantity: number };
+      driver_payout_increase?: number;
+    };
+
+    const result = await prisma.$transaction(async (tx) => {
+      const trip = await tx.trip.findFirst({ where: { id: tripId, deletedAt: null }, select: { id: true, status: true, driver_payout: true } });
+      if (!trip) throw new Error('NOT_FOUND');
+      if (trip.status === TripStatus.Invoiced || trip.status === TripStatus.Cancelled) throw new Error('LOCKED');
+      if (charge) {
+        await tx.tripCharge.create({
+          data: {
+            tripId,
+            surchargeRuleId: getValidUuid(charge.surchargeRuleId) || null,
+            charge_type: charge.charge_type.trim(),
+            unit: charge.unit ? charge.unit.trim() || null : null,
+            rate: charge.rate,
+            quantity: charge.quantity,
+            amount: Math.round(charge.rate * charge.quantity * 100) / 100,
+            created_by: userId,
+          },
+        });
+      }
+      if (driver_payout_increase) {
+        await tx.trip.update({
+          where: { id: tripId },
+          data: { driver_payout: Math.round((Number(trip.driver_payout ?? 0) + driver_payout_increase) * 100) / 100, updated_by: userId },
+        });
+      }
+      return tx.trip.findUnique({ where: { id: tripId }, select: { id: true, ref_id: true, driver_payout: true, charges: true } });
+    });
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    if (error.message === 'NOT_FOUND') {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Trip not found' } });
+    }
+    if (error.message === 'LOCKED') {
+      return res.status(409).json({ success: false, error: { code: 'ROUTE_LOCKED', message: 'This trip is invoiced or cancelled' } });
+    }
+    logger.error({ err: error }, 'Failed to add extra stop charge');
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to save the extra stop charge' } });
+  }
+};
 
 /* ─── Monthly board ───────────────────────────────────────────────────────
  *

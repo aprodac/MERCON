@@ -110,6 +110,87 @@ export function isRouteLocked(status?: string | null): boolean {
   return !isRouteEditable(status);
 }
 
+/** Statuses where the trip is under way: stops not reached yet can still change. */
+export const STOPS_EDITABLE_WHILE_RUNNING: string[] = ['Loading', 'InTransit', 'Delayed'];
+
+export type StopsEditMode = 'full' | 'unreached' | 'locked';
+
+/**
+ * How far a trip's stops may be edited: Draft/Scheduled fully, a running trip
+ * only the stops it has not reached yet, finished trips not at all.
+ */
+export function stopsEditMode(status?: string | null): StopsEditMode {
+  if (!status || ROUTE_EDITABLE_STATUSES.includes(status)) return 'full';
+  if (STOPS_EDITABLE_WHILE_RUNNING.includes(status)) return 'unreached';
+  return 'locked';
+}
+
+/** A stop is reached once the driver has arrived at (or left) it. */
+export function isStopReached(stop?: { actual_arrival?: unknown; actual_departure?: unknown } | null): boolean {
+  return !!stop && (!!stop.actual_arrival || !!stop.actual_departure);
+}
+
+type StopIdentity = {
+  location_id?: string | null;
+  locationId?: string | null;
+  location_name?: string | null;
+  name?: string | null;
+  leg_index?: number | null;
+};
+
+function stopName(stop: StopIdentity): string {
+  return String(stop.location_name ?? stop.name ?? '').trim().toLowerCase();
+}
+
+/**
+ * Same place on the same leg: by location id when both sides have one, else by
+ * name (a stop saved by name only gets a location id when the server resolves it).
+ */
+function sameStop(a: StopIdentity, b: StopIdentity): boolean {
+  if ((a.leg_index ?? 0) !== (b.leg_index ?? 0)) return false;
+  const ia = a.location_id || a.locationId;
+  const ib = b.location_id || b.locationId;
+  if (ia && ib) return ia === ib;
+  const na = stopName(a);
+  return !!na && na === stopName(b);
+}
+
+export type StopsEditPlan =
+  | { ok: true; frozenCount: number; frozenIds: string[] }
+  | { ok: false; code: 'ROUTE_LOCKED' | 'STOP_ALREADY_REACHED'; message: string };
+
+/**
+ * Checks a proposed full stop list against the stops a trip already has.
+ * `frozenIds` are the stops that must be kept untouched (everything up to the
+ * last reached stop); the rest of the list may be added, removed or reordered.
+ */
+export function planStopsEdit(
+  status: string | null | undefined,
+  existing: Array<StopIdentity & { id: string; stop_sequence: number; actual_arrival?: unknown; actual_departure?: unknown }>,
+  incoming: StopIdentity[],
+): StopsEditPlan {
+  const mode = stopsEditMode(status);
+  if (mode === 'locked') {
+    return { ok: false, code: 'ROUTE_LOCKED', message: `Trip is in status ${status} — route stops cannot be edited.` };
+  }
+  if (mode === 'full') return { ok: true, frozenCount: 0, frozenIds: [] };
+
+  const sorted = [...existing].sort((a, b) => a.stop_sequence - b.stop_sequence);
+  let lastReached = -1;
+  sorted.forEach((s, i) => { if (isStopReached(s)) lastReached = i; });
+  const frozen = sorted.slice(0, lastReached + 1);
+  for (let i = 0; i < frozen.length; i++) {
+    if (!incoming[i] || !sameStop(incoming[i], frozen[i])) {
+      return {
+        ok: false,
+        code: 'STOP_ALREADY_REACHED',
+        message: `"${frozen[i].location_name ?? 'A stop'}" has already been reached — it cannot be moved or removed. Only stops not reached yet can change.`,
+      };
+    }
+  }
+  return { ok: true, frozenCount: frozen.length, frozenIds: frozen.map((s) => s.id) };
+}
+
 export function isRoundTripCategory(category: string): boolean {
   if (!category) return false;
   const c = String(category).toLowerCase().replace(/_/g, ' ').trim();
@@ -610,6 +691,21 @@ export function getLegIntermediateDbStops<T extends TripStopLike = TripStopLike>
   const sorted = [...(trip?.stops ?? [])].sort((a, b) => a.stop_sequence - b.stop_sequence);
   const legStops = sorted.filter((s) => (s.leg_index ?? 0) === leg);
   return legStops.length >= 3 ? legStops.slice(1, -1) : [];
+}
+
+/**
+ * The intermediate stop a stop-workflow state points at, only while that stop
+ * still exists. The state stores an index; if an operator removed the stop the
+ * driver was heading to (route edited mid-trip), the index is stale and must
+ * not send the driver back to a stop already done.
+ */
+export function pendingStopFromWorkflow(
+  ws: string | null | undefined,
+  trip: { stops?: TripStopLike[] | null } | null | undefined,
+): { leg: 0 | 1; stopIndex: number } | null {
+  const parsed = parseStopWorkflowState(ws);
+  if (!parsed) return null;
+  return getLegIntermediateDbStops(trip, parsed.leg)[parsed.stopIndex] ? parsed : null;
 }
 
 export type TimelineTarget =
