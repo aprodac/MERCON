@@ -1214,8 +1214,8 @@ export default function GeneralLedgerPage() {
                 <div className="font-medium text-foreground">Negative Format</div>
                 <Select
                   value={customize.negativeFormat}
-                  onValueChange={(val: 'minus' | 'parentheses') =>
-                    setCustomize((prev) => ({ ...prev, negativeFormat: val }))
+                  onValueChange={(val) =>
+                    setCustomize((prev) => ({ ...prev, negativeFormat: val as 'minus' | 'parentheses' }))
                   }
                 >
                   <SelectTrigger className="h-8 text-xs bg-background border-border text-foreground">
@@ -1232,8 +1232,8 @@ export default function GeneralLedgerPage() {
                 <div className="font-medium text-foreground">Balance Style</div>
                 <Select
                   value={customize.balanceStyle}
-                  onValueChange={(val: 'dr_cr' | 'signed') =>
-                    setCustomize((prev) => ({ ...prev, balanceStyle: val }))
+                  onValueChange={(val) =>
+                    setCustomize((prev) => ({ ...prev, balanceStyle: val as 'dr_cr' | 'signed' }))
                   }
                 >
                   <SelectTrigger className="h-8 text-xs bg-background border-border text-foreground">

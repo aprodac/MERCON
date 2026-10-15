@@ -8,7 +8,7 @@ import { driverService, Driver } from '@/services/driverService';
 import { vehicleService, Vehicle } from '@/services/vehicleService';
 import { thirdPartyService, ThirdPartyProvider } from '@/services/thirdPartyService';
 import { tripService, TripStatus, Trip, TripStop } from '@/services/tripService';
-import { quotationService, RateCard } from '@/services/quotationService';
+import { quotationService, RateCard, surchargeRuleService } from '@/services/quotationService';
 import { useTripSlotsState, TripSlot } from '@/hooks/useTripSlotsState';
 import { useTripRateLookup } from '@/hooks/useTripRateLookup';
 import { useFormKeyboardShortcuts } from '@/hooks/useFormKeyboardShortcuts';
@@ -19,7 +19,7 @@ import {
   normalizeVehicleClass,
 } from '@/utils/taxonomyRegistry';
 import { formatDriverDetails } from '@/utils/driverStatusUtils';
-import { isRoundTripCategory, getLegEndpoints, isRouteLocked as isSharedRouteLocked, STOPS_FROZEN_IN } from '@mercon/shared-types';
+import { isRoundTripCategory, getLegEndpoints, isRouteLocked as isSharedRouteLocked, STOPS_FROZEN_IN, stopsEditMode, isStopReached, findExtraStopRule } from '@mercon/shared-types';
 import { formatInDeploymentTz, localDateTimeToUtcIso, useDeploymentTimezone } from '@/lib/datetime';
 import { buildStopsFromSlot } from '@/utils/tripStopsHelper';
 
@@ -300,6 +300,21 @@ export function useEditTripForm() {
 
   // Edit Rules based on Trip Status
   const isRouteLocked = isSharedRouteLocked(status);
+  // Running trips (Loading/InTransit/Delayed) keep the route locked except for
+  // stops the driver has not reached yet; Completed/Invoiced/Cancelled stay locked.
+  const canEditStops = stopsEditMode(status) !== 'locked';
+  const reachedStops = useMemo(() => {
+    const out = getLegEndpoints(trip, 0);
+    const ret = getLegEndpoints(trip, 1);
+    const anyReturnReached = (trip?.stops ?? []).some((s) => (s.leg_index ?? 0) === 1 && isStopReached(s as any));
+    return {
+      outbound: out.intermediates.map((s) => isStopReached(s as any)),
+      returnLeg: ret.intermediates.map((s) => isStopReached(s as any)),
+      // Once the outbound delivery (or any return stop) is done, no stop can be inserted before it.
+      outboundClosed: isStopReached(out.delivery as any) || anyReturnReached,
+    };
+  }, [trip]);
+  const [extraStopPrompt, setExtraStopPrompt] = useState<null | { tripId: string; added: number; rate: number | null; unit: string | null; ruleId: string | null; chargeType: string; hasDriver: boolean }>(null);
   const isScheduleLocked = STOPS_FROZEN_IN.includes(status);
   const isAssignmentLocked = STOPS_FROZEN_IN.includes(status);
   const isBaseBillingLocked = ['InTransit', 'Completed', 'Invoiced', 'Cancelled'].includes(status);
@@ -337,19 +352,20 @@ export function useEditTripForm() {
 
     try {
       // 1. Route & Schedule Update (if trip.status is editable)
-      const isCurrentRouteLocked = isSharedRouteLocked(trip.status);
-      if (!isCurrentRouteLocked) {
+      const editMode = stopsEditMode(trip.status);
+      let stopsAdded = 0;
+      if (editMode !== 'locked') {
         const primarySlot = contractSlots[0] || {};
         const isRound = isRoundTripCategory(contractRateCategory);
         const proposedStops = buildStopsFromSlot(primarySlot, isRound);
 
         let proposedStartIso: string | null = null;
-        if (primarySlot.date && primarySlot.pickupTime) {
+        if (editMode === 'full' && primarySlot.date && primarySlot.pickupTime) {
           proposedStartIso = localDateTimeToUtcIso(primarySlot.date, primarySlot.pickupTime, tz);
         }
 
         let proposedEndIso: string | null = null;
-        if ((primarySlot.dropoffDate || primarySlot.date) && primarySlot.dropoffTime) {
+        if (editMode === 'full' && (primarySlot.dropoffDate || primarySlot.date) && primarySlot.dropoffTime) {
           proposedEndIso = localDateTimeToUtcIso(primarySlot.dropoffDate || primarySlot.date, primarySlot.dropoffTime, tz);
         }
 
@@ -405,6 +421,7 @@ export function useEditTripForm() {
             isRound,
           };
           await updateStopsMutation.mutateAsync(routePayload);
+          stopsAdded = Math.max(0, proposedStops.length - dbStops.length);
         }
       }
 
@@ -454,6 +471,20 @@ export function useEditTripForm() {
       queryClient.invalidateQueries({ queryKey: ['trip', id] });
       queryClient.invalidateQueries({ queryKey: ['trips'] });
       toast.success('Trip updated successfully');
+      if (stopsAdded > 0 && trip.status !== 'Draft') {
+        // Optional: bill the customer for the extra stop. Pre-filled from their
+        // "additional stop" surcharge rule when they have one; skipped by default.
+        let rule: Awaited<ReturnType<typeof surchargeRuleService.list>>[number] | null = null;
+        try {
+          const custId = trip.customer?.id || (trip as any).customer_id;
+          if (custId) rule = findExtraStopRule(await surchargeRuleService.list({ customerId: custId, active_only: true }));
+        } catch { /* no rule to pre-fill — the operator can still type a rate */ }
+        setExtraStopPrompt({
+          tripId: id, added: stopsAdded, rate: rule?.rate != null ? Number(rule.rate) : null, unit: rule?.unit ?? 'per stop',
+          ruleId: rule?.id ?? null, chargeType: rule?.charge_type || 'Additional Stop', hasDriver: !!trip.driver?.id,
+        });
+        return;
+      }
       navigate(`/trips/${id}`);
     } catch (err: any) {
       const msg = err.response?.data?.error?.message || err.message || 'Failed to update trip';
@@ -564,6 +595,10 @@ export function useEditTripForm() {
     isSubmitting,
     isStopsFrozen,
     isRouteLocked,
+    canEditStops,
+    reachedStops,
+    extraStopPrompt,
+    closeExtraStopPrompt: () => { setExtraStopPrompt(null); navigate(`/trips/${id}`); },
     isScheduleLocked,
     isAssignmentLocked,
     isBaseBillingLocked,

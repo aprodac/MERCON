@@ -7,6 +7,9 @@
  * the disabled ones), holding the newest document filed under it — or
  * "Missing". Old files and files with no document type are left out.
  *
+ * Opened with ?kind=Driver&owner=<id> (a driver's Docs tab) it starts in that
+ * driver's folder, and Back returns to the driver.
+ *
  * Top switch: Drivers | Vehicles | Company. Under it the status pills, search, then a
  * grid of folders — one per driver or truck, coloured by its worst document:
  * red when something is expired or missing, amber when something is about to
@@ -25,7 +28,7 @@
 import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, Linking, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BookUser, Camera, ClipboardCheck, Eye, FileBadge, FileSignature, FileText, FolderOpen, IdCard, ImageIcon,
@@ -188,12 +191,15 @@ const todayText = () => {
 export default function DocumentsScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [kind, setKind] = useState<Kind>('Driver');
+  const params = useLocalSearchParams<{ kind?: string; owner?: string }>();
+  const startKind: Kind = params.kind === 'Vehicle' ? 'Vehicle' : 'Driver';
+  const fromOwner = params.owner || null;
+  const [kind, setKind] = useState<Kind>(startKind);
   const [filter, setFilter] = useState<Filter>('all');
   const [query, setQuery] = useState('');
   const [picked, setPicked] = useState<{ owner: Owner; slot: Slot } | null>(null);
   /** The folder that is open; null = the grid of folders. */
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(fromOwner);
   // Fixed while the page is open, so a line doesn't change group mid-scroll; refresh moves it on.
   const [now, setNow] = useState(() => Date.now());
 
@@ -314,7 +320,7 @@ export default function DocumentsScreen() {
             <OpenFolder
               key={openGroup.owner.id}
               group={openGroup}
-              onBack={kind === 'Company' ? undefined : () => setOpenId(null)}
+              onBack={kind === 'Company' ? undefined : fromOwner && openId === fromOwner ? () => router.back() : () => setOpenId(null)}
               onOwner={kind === 'Company' ? undefined : () => router.push({ pathname: openGroup.owner.kind === 'Driver' ? '/driver-details' : '/vehicle-details', params: { id: openGroup.owner.id } })}
               onSlot={(slot) => setPicked({ owner: openGroup.owner, slot })}
             />
@@ -371,7 +377,12 @@ export default function DocumentsScreen() {
       <SlotSheet
         picked={picked}
         onClose={() => setPicked(null)}
-        onChanged={() => queryClient.invalidateQueries({ queryKey: ['documents', 'filed'] })}
+        onChanged={() => {
+          queryClient.invalidateQueries({ queryKey: ['documents', 'filed'] });
+          // The driver / truck page lists the same documents.
+          queryClient.invalidateQueries({ queryKey: ['drivers', 'detail'] });
+          queryClient.invalidateQueries({ queryKey: ['vehicles'] });
+        }}
       />
     </SafeAreaView>
   );
@@ -662,6 +673,8 @@ function SlotActions({ owner, slot, onClose, onChanged }: { owner: Owner; slot: 
       <DatePickerModal
         visible={dateFor !== null}
         onClose={() => setDateFor(null)}
+        title={dateFor === 'issue' ? 'Issue date' : 'Expiry date'}
+        showPresets={dateFor === 'issue'}
         selectedDate={(dateFor === 'issue' ? issue : expiry) || todayText()}
         onSelectDate={(d) => { if (dateFor === 'issue') setIssue(d); else setExpiry(d); setDateFor(null); }}
       />

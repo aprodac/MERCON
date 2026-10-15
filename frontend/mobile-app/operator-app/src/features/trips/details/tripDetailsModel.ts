@@ -139,6 +139,8 @@ export function makeFormatters(tz: string) {
     dateTime: (iso?: string | null) => fmt(iso, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }),
     dayTime: (iso?: string | null) => fmt(iso, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }),
     date: (iso?: string | null) => fmt(iso, { day: 'numeric', month: 'short', year: 'numeric' }),
+    /** Day + month only ("12 Oct"), for a line under a time. */
+    dayMonth: (iso?: string | null) => fmt(iso, { day: 'numeric', month: 'short' }),
     /** The calendar day in the deployment's timezone, to compare two times. */
     dayKey: (iso?: string | null) => fmt(iso, { year: 'numeric', month: '2-digit', day: '2-digit' }),
     /** A stop time: just the time when it's today, else day + time. */
@@ -592,7 +594,8 @@ export function activitySteps(t: OperatorTripDetail, f: Formatters, halts?: Trip
     names.set(s.id, name);
     steps.push({
       label: s.actual_arrival ? `Arrived at ${name}` : `Planned arrival at ${name}`,
-      time: f.dateTime(s.actual_arrival || s.planned_arrival) || null,
+      // A stop with no planned time says so, instead of a blank line under its name.
+      time: f.dateTime(s.actual_arrival || s.planned_arrival) || (t.status === 'Cancelled' ? null : 'No time set · Edit trip to add it'),
       done: !!s.actual_arrival,
       at: ms(s.actual_arrival),
     });

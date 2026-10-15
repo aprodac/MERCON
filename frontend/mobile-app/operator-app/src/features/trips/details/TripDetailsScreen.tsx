@@ -15,13 +15,14 @@ import {
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Check, LayoutList, Maximize2, MessageCircle, MoreHorizontal, Navigation, Phone, Route, Send, X, type LucideIcon } from 'lucide-react-native';
+import { ArrowLeft, CalendarClock, Check, LayoutList, Lock, Maximize2, MessageCircle, MoreHorizontal, Navigation, Phone, Route, Send, X, type LucideIcon } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
+import { useQueryClient } from '@tanstack/react-query';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import { chooseMedia } from '@mercon/mobile-shared/lib/camera';
 import {
-  operatorService, type DriverUpdate, type OperatorDriver, type OperatorTripDocument, type OperatorVehicle, type TripDocKind,
+  invalidateOperatorTrips, operatorService, type DriverUpdate, type OperatorDriver, type OperatorTripDocument, type OperatorVehicle, type TripDocKind,
 } from '../../../lib/operator';
 import { PickerSheet, niceName } from '../create/components/ui';
 import { useTripDetails } from './useTripDetails';
@@ -38,6 +39,7 @@ import { PinSheet } from './components/PinSheet';
 import { ActivitySheet, ChargesSheet, MoreSheet, UploadSheet } from './components/Sheets';
 import { StepBackSheet } from './components/StepBackSheet';
 import { ACTION, INK, MUTED, PAGE, WA, WA_INK, WA_LIGHT, tap } from './components/parts';
+import { askDeleteTrip, canDeleteTrip } from '../edit/movePlan';
 import { shareTextToWhatsApp } from '../../dashboard/components/ActiveTripsSection';
 
 /** Under the More sheet's tracking row: has the customer looked at it? */
@@ -57,6 +59,7 @@ export default function TripDetailsScreen() {
   const { id } = params;
   const { trip, overview, updates, whatsappApi, tz, phase, remaining, tracking, trackingUrl, refreshTracking, loading, refreshing, error, refresh, reload } = useTripDetails(id);
   const f = useMemo(() => makeFormatters(tz), [tz]);
+  const queryClient = useQueryClient();
 
   const [tab, setTab] = useState<Tab>(params.tab === 'stops' || params.stop || params.photo ? 'stops' : 'details');
   const [busy, setBusy] = useState(false);
@@ -152,6 +155,10 @@ export default function TripDetailsScreen() {
 
   const stops = sortedStops(trip);
   const next = nextActionFor(trip.status);
+  // Not started yet and planned for a later day: the status buttons wait for that day
+  // (a trip booked for the 28th must not be marked loaded today by mistake).
+  const startDay = trip.planned_start ? f.dayKey(trip.planned_start) : null;
+  const notYet = !!next && (trip.status === 'Scheduled' || trip.status === 'Loading') && !!startDay && startDay > f.dayKey(new Date().toISOString());
   const position = overview?.unit?.position ? { lat: overview.unit.position.lat, lng: overview.unit.position.lng } : null;
   const gps = overview?.unit?.position;
   const liveView = phase === 'active' && !!gps;
@@ -178,6 +185,16 @@ export default function TripDetailsScreen() {
     if (next.confirm) Alert.alert(next.confirm.title, next.confirm.message, [{ text: 'Not yet', style: 'cancel' }, { text: 'Confirm', onPress: run }]);
     else run();
   };
+
+  // Delete: a trip made by mistake (a month plan's other not-started trips can go with it).
+  const deleteTrip = () => askDeleteTrip(trip, {
+    busy: setBusy,
+    deleted: () => {
+      invalidateOperatorTrips();
+      queryClient.invalidateQueries({ queryKey: ['trips'] });
+      router.back();
+    },
+  });
 
   const cancelTrip = () => {
     Alert.alert('Cancel this trip?', 'The driver and truck are freed. This cannot be undone.', [
@@ -355,7 +372,7 @@ export default function TripDetailsScreen() {
         ref={scrollRef}
         onScroll={(e) => { const v = e.nativeEvent.contentOffset.y > MAP_H - insets.top - 70; if (v !== pastMap) setPastMap(v); }}
         scrollEventThrottle={16}
-        contentContainerStyle={{ paddingBottom: (next ? 110 : 32) + insets.bottom }}
+        contentContainerStyle={{ paddingBottom: (next ? (notYet ? 150 : 110) : 32) + insets.bottom }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={Colors.primary} progressViewOffset={insets.top} />}
       >
         {/* 0 · map + header */}
@@ -471,7 +488,20 @@ export default function TripDetailsScreen() {
       </TouchableOpacity>
 
       {/* Bottom bar — only when the trip has a next step */}
-      {next ? (
+      {next && notYet ? (
+        <View style={[s.bar, { paddingBottom: Math.max(insets.bottom, 12) + 4, flexDirection: 'column', gap: 8 }]}>
+          <View style={s.waitRow}>
+            <Lock size={15} color={MUTED} strokeWidth={2.4} />
+            <Text style={s.waitText} numberOfLines={2}>
+              {`Planned for ${f.dayTime(trip.planned_start)}. “${next.label}” opens on that day.`}
+            </Text>
+          </View>
+          <TouchableOpacity style={[s.primary, s.primaryQuiet]} onPress={() => router.push({ pathname: '/trip-edit', params: { id: trip.id } })} activeOpacity={0.85} accessibilityRole="button">
+            <CalendarClock size={18} color={INK} strokeWidth={2.4} />
+            <Text style={[s.primaryText, { color: INK }]} numberOfLines={1}>Running today? Change the date</Text>
+          </TouchableOpacity>
+        </View>
+      ) : next ? (
         <View style={[s.bar, { paddingBottom: Math.max(insets.bottom, 12) + 4 }]}>
           <TouchableOpacity style={[s.primary, busy && { opacity: 0.7 }]} onPress={advance} disabled={busy} activeOpacity={0.85}>
             {busy ? <ActivityIndicator color={Colors.white} /> : (
@@ -507,6 +537,7 @@ export default function TripDetailsScreen() {
         assignment={phase === 'planned' || phase === 'active'}
         tracking={tracking?.enabled && tracking.url ? { sub: trackingSub(tracking.open_count, tracking.last_opened_at), onPress: trackingActions } : null}
         onStepBack={canStepBack ? () => setSheet('stepback') : undefined}
+        onDelete={canDeleteTrip(trip.status) ? deleteTrip : undefined}
       />
       <StepBackSheet visible={sheet === 'stepback'} tripId={trip.id} f={f} onClose={() => setSheet(null)} onDone={reload} />
       <UploadSheet visible={sheet === 'upload'} onClose={() => setSheet(null)} onPick={upload} />
@@ -582,4 +613,7 @@ const s = StyleSheet.create({
   more: { left: undefined, right: 14 },
   primary: { flex: 1, height: 52, borderRadius: 16, backgroundColor: ACTION, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 10 },
   primaryText: { color: Colors.white, fontSize: 16, fontWeight: '700' },
+  primaryQuiet: { flexGrow: 0, flexShrink: 0, flexBasis: 'auto', alignSelf: 'stretch', backgroundColor: '#F1F1F3' },
+  waitRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 4 },
+  waitText: { flex: 1, fontSize: 13, fontWeight: '600', color: MUTED },
 });

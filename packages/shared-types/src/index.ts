@@ -1269,6 +1269,7 @@ export * from './truckAssignment';
 
 
 export * from './tripCreation';
+export * from './sameDayTrips';
 export * from './driverRecommendation';
 export * from './mapsLink';
 export * from './evidenceTimes';

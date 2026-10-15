@@ -519,6 +519,18 @@ export const reviewTripChargesBody = z.object({
   })).max(20),
 });
 
+/** Optional charge / payout raise offered after adding a stop to an existing trip. */
+export const extraStopChargeBody = z.object({
+  charge: z.object({
+    surchargeRuleId: z.string().uuid().nullish(),
+    charge_type: z.string().trim().min(1, 'Charge type is required').max(120),
+    unit: z.string().trim().max(40).nullish(),
+    rate: z.number().positive().max(1_000_000),
+    quantity: z.number().positive().max(10_000),
+  }).optional(),
+  driver_payout_increase: z.number().positive().max(1_000_000).optional(),
+}).refine((b) => b.charge || b.driver_payout_increase, { message: 'Send a charge or a driver payout increase' });
+
 /* ─── Drivers ────────────────────────────────────────────────────────────── */
 export const createDriverBody = z.object({
   first_name: nonEmpty('First name'),

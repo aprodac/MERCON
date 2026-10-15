@@ -362,7 +362,8 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
                       {/* Entity Type Selector (Vehicle / Driver) */}
                       <Select
                         value={currentEntityType}
-                        onValueChange={(val: 'Vehicle' | 'Driver') => {
+                        onValueChange={(v) => {
+                          const val = v as 'Vehicle' | 'Driver';
                           const defaultId = val === 'Vehicle' ? vehicles[0]?.id || '' : drivers[0]?.id || '';
                           handleEntityChange(item.docId, val, defaultId);
                         }}

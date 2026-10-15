@@ -40,6 +40,10 @@ interface RouteWorkspaceProps {
   handleUpdateSlotReturnIntermediate?: (slotId: string, idx: number, val: string) => void;
   fieldErrors?: Record<string, boolean>;
   isRouteLocked?: boolean;
+  /** Running trip: origin/destination stay locked but stops not reached yet can be added or removed. */
+  canEditStops?: boolean;
+  /** Which existing intermediate stops the driver has reached (shown locked). */
+  reachedStops?: { outbound: boolean[]; returnLeg: boolean[]; outboundClosed: boolean };
   /** Fill the arrival from the travel-time estimate (create only — never over a saved trip). */
   autoFillArrival?: boolean;
   handleUpdateSlotIntermediateFee?: (slotId: string, idx: number, val: string) => void;
@@ -105,6 +109,8 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
   handleUpdateSlotReturnIntermediate,
   fieldErrors = {},
   isRouteLocked = false,
+  canEditStops = false,
+  reachedStops,
   autoFillArrival = true,
   handleUpdateSlotIntermediateFee,
   handleUpdateSlotReturnIntermediateFee,
@@ -114,6 +120,10 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
   firstOperatingDay,
 }) => {
   const showRoute = part !== 'schedule';
+  // A locked route (running trip) still takes stops the driver has not reached yet.
+  const stopsOpen = !isRouteLocked || canEditStops;
+  const outLocked = (idx: number) => !stopsOpen || !!reachedStops?.outbound[idx];
+  const retLocked = (idx: number) => !stopsOpen || !!reachedStops?.returnLeg[idx];
   const showSchedule = part !== 'route';
   const tz = useDeploymentTimezone();
   // A route filled by a quotation folds into one line; "Edit route" opens it.
@@ -524,7 +534,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                     <LocationCombobox
                       customerId={contractCustomer}
                       value={stopVal}
-                      disabled={isRouteLocked}
+                      disabled={outLocked(idx)}
                       onChange={(locId, locObj) => {
                         const val = locObj?.name || locObj?.address || (isUuid(locId) ? '' : locId);
                         handleUpdateSlotIntermediate(slot.id, idx, val);
@@ -532,7 +542,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                       placeholder={`Search intermediate stop #${idx + 1}...`}
                       triggerClassName={cn(
                         "h-8 text-xs font-semibold",
-                        isRouteLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                        outLocked(idx) && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
                       )}
                     />
                   </div>
@@ -543,14 +553,17 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                       min="0"
                       inputMode="decimal"
                       aria-label="Stop fee"
-                      disabled={isRouteLocked || !handleUpdateSlotIntermediateFee}
+                      disabled={outLocked(idx) || !handleUpdateSlotIntermediateFee}
                       value={slot.intermediateStopFees?.[idx] ?? ''}
                       onChange={(e) => handleUpdateSlotIntermediateFee?.(slot.id, idx, e.target.value)}
                       placeholder="Fee"
                       className="min-w-0 flex-1 bg-transparent text-right text-xs font-semibold tabular-nums outline-none"
                     />
                   </label>
-                  {!isRouteLocked && (
+                  {outLocked(idx) && reachedStops?.outbound[idx] && (
+                    <span className="text-[10px] font-bold text-slate-400 shrink-0">Reached</span>
+                  )}
+                  {!outLocked(idx) && (
                     <button
                       type="button"
                       aria-label="Remove stop"
@@ -565,7 +578,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
             </div>
           )}
 
-          {!isRouteLocked && (
+          {stopsOpen && !reachedStops?.outboundClosed && (
             <div className="flex items-center gap-2">
               <Button
                 type="button"
@@ -671,7 +684,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
             </div>
 
             <div className="flex items-center gap-2 pt-1">
-              {handleAddSlotReturnIntermediate && !isRouteLocked && (
+              {handleAddSlotReturnIntermediate && stopsOpen && (
                 <Button
                   type="button"
                   variant="outline"
@@ -696,7 +709,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                       <LocationCombobox
                         customerId={contractCustomer}
                         value={rStop}
-                        disabled={isRouteLocked}
+                        disabled={retLocked(rIdx)}
                         onChange={(locId, locObj) => {
                           const val = locObj?.name || locObj?.address || (isUuid(locId) ? '' : locId);
                           handleUpdateSlotReturnIntermediate && handleUpdateSlotReturnIntermediate(slot.id, rIdx, val);
@@ -704,7 +717,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                         placeholder={`Search return stop #${rIdx + 1}...`}
                         triggerClassName={cn(
                           "h-8 text-xs font-semibold",
-                          isRouteLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                          retLocked(rIdx) && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
                         )}
                       />
                     </div>
@@ -715,14 +728,14 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                       min="0"
                       inputMode="decimal"
                       aria-label="Stop fee"
-                      disabled={isRouteLocked || !handleUpdateSlotReturnIntermediateFee}
+                      disabled={retLocked(rIdx) || !handleUpdateSlotReturnIntermediateFee}
                       value={slot.returnIntermediateStopFees?.[rIdx] ?? ''}
                       onChange={(e) => handleUpdateSlotReturnIntermediateFee?.(slot.id, rIdx, e.target.value)}
                       placeholder="Fee"
                       className="min-w-0 flex-1 bg-transparent text-right text-xs font-semibold tabular-nums outline-none"
                     />
                   </label>
-                    {handleRemoveSlotReturnIntermediate && !isRouteLocked && (
+                    {handleRemoveSlotReturnIntermediate && !retLocked(rIdx) && (
                       <button
                         type="button"
                         aria-label="Remove return stop"
@@ -840,7 +853,10 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                   destinationLng={slot.destinationLng}
                   pickupDate={slot.date || slot.pickupDate}
                   pickupTime={slot.pickupTime || ''}
-                  intermediateStops={(slot.intermediateLocations || []).map((name: string) => ({ name }))}
+                  intermediateStops={(slot.intermediateLocations || []).map((name: string, i: number) => {
+                    const loc = slot.intermediateLocationIds?.[i] ? locationById.get(slot.intermediateLocationIds[i]) : undefined;
+                    return { name, lat: loc?.lat ?? null, lng: loc?.lng ?? null };
+                  })}
                   fixedDurationMinutes={dutyShiftMinutes(contractRateCategory)}
                   onAutoSetDropoffDateTime={(dDate, dTime, isOvernight, _estimate, stopOffsetsMinutes) => {
                     // Never overwrite an arrival the user set by hand, nor a saved trip's.

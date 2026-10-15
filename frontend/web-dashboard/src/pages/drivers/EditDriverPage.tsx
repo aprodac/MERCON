@@ -407,7 +407,7 @@ export default function EditDriverPage() {
                       </Label>
                       <Select
                         value={formData.status}
-                        onValueChange={(val: DriverStatus) => handleChange('status', val)}
+                        onValueChange={(val) => handleChange('status', val as DriverStatus)}
                       >
                         <SelectTrigger id="status" className="h-8 text-xs">
                           <SelectValue placeholder="Select status..." />

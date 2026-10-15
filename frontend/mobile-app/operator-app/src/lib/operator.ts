@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import type { TripStatus } from '@mercon/mobile-shared/lib/trips';
-import type { AssignmentPreview, DriverGroup, DriverReason } from '@mercon/shared-types';
+import type { AssignmentPreview, DriverGroup, DriverReason, SameDayConflict } from '@mercon/shared-types';
 
 export interface Kpi { value: number; delta: number | null }
 
@@ -155,7 +155,7 @@ export interface OperatorTripDetail {
   // Line type / quotation — drives the Round Trip vs Single Trip label.
   quotation_line_type?: string | null;
   quotationId?: string | null;
-  quotation?: { id?: string; name?: string | null; rate?: number | null; driver_payout?: number | null; pricing_basis?: string | null } | null;
+  quotation?: { id?: string; name?: string | null; rate?: number | null; driver_payout?: number | null; pricing_basis?: string | null; quotation_number?: number | null; stops?: { sequence?: number | null; leg_index?: number | null }[] | null } | null;
   rateCard?: { name?: string | null; rate_category?: string | null; vehicle_type?: string | null } | null;
   /** Truck class and trip type as booked ("5 TON", "SINGLE_TRIP"). */
   vehicle_type?: string | null;
@@ -1154,6 +1154,12 @@ export const operatorService = {
     return data.data as OperatorQuotationDetail;
   },
 
+  /** Which of these new trips' drivers already have a trip that day (Create Trip warns). */
+  async sameDayCheck(trips: Array<{ driver_id?: string; co_driver_id?: string; planned_start: string }>): Promise<SameDayConflict[]> {
+    const { data } = await api.post('/trips/same-day-check', { trips });
+    return (data.data ?? []) as SameDayConflict[];
+  },
+
   async bulkImportTrips(rows: unknown[]): Promise<{ imported: number; failed: number; results: Array<{ row: number; success: boolean; error?: string; created_id?: string }> }> {
     const { data } = await api.post('/trips/bulk-import', { rows });
     return data.data;
@@ -1501,6 +1507,11 @@ export const operatorService = {
   async updateTripRoute(id: string, payload: UpdateTripRouteInput): Promise<OperatorTripDetail> {
     const { data } = await api.put(`/trips/${id}/stops`, payload);
     return data.data as OperatorTripDetail;
+  },
+
+  /** After adding a stop: optional extra-stop charge line and/or driver payout raise (POST /trips/:id/extra-stop). */
+  async addExtraStop(id: string, payload: { charge?: { surchargeRuleId?: string | null; charge_type: string; unit?: string | null; rate: number; quantity: number }; driver_payout_increase?: number }): Promise<void> {
+    await api.post(`/trips/${id}/extra-stop`, payload);
   },
 
   /** Billing amount and driver payout (PATCH /trips/:id/financials, as the web's Edit Trip). */

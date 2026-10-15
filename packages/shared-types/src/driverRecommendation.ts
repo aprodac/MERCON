@@ -42,9 +42,11 @@ export interface DriverFacts {
   bookings: Array<{ tripId?: string; start: string | Date; end?: string | Date | null }>;
   /** Their previous trip before this pickup: when it ends and where. */
   lastTrip?: { end: string | Date; endPlace?: string | null; endLocationId?: string | null } | null;
-  /** Trips in the lookback window on this lane / for this customer. */
+  /** Finished (delivered) trips in the lookback window on this lane / for this customer. */
   laneTrips: number;
   customerTrips: number;
+  /** Trips on this lane that are booked but not run yet — shown, never scored. */
+  laneTripsBooked?: number;
   /** Trips this week, and the fleet average for comparison. */
   tripsThisWeek: number;
   /** Share of recent stops without a delay, 0–1; null when there's no history. */
@@ -172,9 +174,12 @@ export function rankDrivers(
       reasons.push({ text: 'No truck', tone: 'neutral' });
     }
 
+    const booked = d.laneTripsBooked ?? 0;
     if (d.laneTrips > 0) {
       score += Math.round(w.lane * Math.min(1, d.laneTrips / rules.laneTripsForFull));
-      reasons.push({ text: `${d.laneTrips}× this lane`, tone: 'good' });
+      reasons.push({ text: `${d.laneTrips}× done on this lane${booked ? ` · ${booked} booked` : ''}`, tone: 'good' });
+    } else if (booked > 0) {
+      reasons.push({ text: `${booked} booked on this lane`, tone: 'neutral' });
     }
 
     const endsHere =
@@ -187,7 +192,7 @@ export function rankDrivers(
 
     if (d.customerTrips > 0) {
       score += Math.round(w.customer * Math.min(1, d.customerTrips / rules.customerTripsForFull));
-      reasons.push({ text: `${d.customerTrips} trips for this customer`, tone: 'neutral' });
+      reasons.push({ text: `${d.customerTrips} done for this customer`, tone: 'neutral' });
     }
 
     if (avgWeek > 0 || d.tripsThisWeek === 0) {

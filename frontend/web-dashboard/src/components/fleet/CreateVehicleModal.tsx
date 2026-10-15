@@ -5,6 +5,7 @@ import { Truck, Gauge, Layers, Radio, FileText, Loader2, UserRound } from 'lucid
 import { vehicleService, Vehicle, AssetType } from '@/services/vehicleService';
 import { driverService } from '@/services/driverService';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Combobox } from '@/components/ui/combobox';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -201,22 +202,32 @@ export default function CreateVehicleModal({ isOpen, onClose, onSuccess }: Creat
             <Label htmlFor="assigned_driver" className="text-xs font-semibold flex items-center gap-1.5">
               <UserRound className="w-3.5 h-3.5 text-slate-500" /> Assign Driver (Optional)
             </Label>
-            <Select value={assignedDriverId} onValueChange={(val) => setAssignedDriverId(val)}>
-              <SelectTrigger className="h-9 text-xs">
-                <SelectValue placeholder="Select driver" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="unassigned" className="text-xs italic text-slate-400">
-                  Unassigned
-                </SelectItem>
-                {drivers.map((d) => (
-                  <SelectItem key={d.id} value={d.id} className="text-xs">
-                    {d.first_name} {d.last_name} ({d.phone_primary || d.ref_id || 'No Phone'})
-                    {d.assignedVehicle ? <span className="text-amber-700 dark:text-amber-400"> · drives {d.assignedVehicle.plate_number}</span> : null}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Combobox
+              id="assigned_driver"
+              value={assignedDriverId}
+              onChange={(val) => setAssignedDriverId(val || 'unassigned')}
+              placeholder="Select driver"
+              searchPlaceholder="Search name, phone, ID or truck…"
+              emptyText="No driver matches."
+              triggerClassName="h-9 text-xs"
+              options={[
+                { value: 'unassigned', label: <span className="italic text-slate-400">Unassigned</span>, selectedLabel: 'Unassigned', keywords: 'unassigned none no driver' },
+                ...drivers.map((d) => {
+                  const name = `${d.first_name} ${d.last_name}`;
+                  return {
+                    value: d.id,
+                    selectedLabel: name,
+                    keywords: [name, d.phone_primary, d.ref_id, d.assignedVehicle?.plate_number].filter(Boolean).join(' '),
+                    label: (
+                      <span className="text-xs">
+                        {name} ({d.phone_primary || d.ref_id || 'No Phone'})
+                        {d.assignedVehicle ? <span className="text-amber-700 dark:text-amber-400"> · drives {d.assignedVehicle.plate_number}</span> : null}
+                      </span>
+                    ),
+                  };
+                }),
+              ]}
+            />
             {(() => {
               // Moving a driver off another truck leaves that truck without a driver — say so.
               const picked = drivers.find((d) => d.id === assignedDriverId);

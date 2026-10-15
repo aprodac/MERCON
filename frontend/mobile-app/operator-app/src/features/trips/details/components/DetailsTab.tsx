@@ -2,22 +2,25 @@
  * The rest of the trip: what to fix before it starts (or how it went), truck
  * and driver, money, the key facts, and paperwork.
  */
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
-  Check, ChevronRight, FileText, ListOrdered, Phone, Plus, Receipt, Smartphone, Truck, UploadCloud, X,
+  Check, ChevronRight, FileText, Files, ListOrdered, Phone, Plus, Receipt, Smartphone, Truck, UploadCloud, UserRound, X,
 } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import { DriverAvatar } from '../../../drivers/components/DriverAvatar';
+import { PhoneActivityRow } from '../../../drivers/phone/PhoneActivityRow';
+import { DocumentPackSheet, type PackOwnerKind } from '../../../documents/DocumentPackSheet';
 import { initialsOf, niceName } from '../../create/components/ui';
 import type { LiveGpsFix, OperatorTripDetail, OperatorTripDocument, TripOverview, TripPhase } from '../../../../lib/operator';
 import {
   ON_TIME_GRACE_MIN, TONE, type Tone, ago, billingLabel, canChangeAssignment, formatDuration, lineType, minutesLate, moneyOf, sar, sortedStops,
   type Formatters,
   tripLegsOf,
+  stopName,
 } from '../tripDetailsModel';
 import { Card, Chip, Divider, INK, InfoRow, MUTED, SectionHead } from './parts';
 
@@ -78,7 +81,7 @@ export function DetailsTab({ trip, phase, overview, f, onChange, onCharges, onUp
       ) : null}
 
       <Section title="Truck and driver" icon={Truck} tone="blue">
-        <Assignment trip={trip} phase={phase} overview={overview} onChange={onChange} />
+        <Assignment trip={trip} phase={phase} overview={overview} f={f} onChange={onChange} />
       </Section>
 
       <Section title="Financials" icon={Receipt} tone="green">
@@ -221,8 +224,9 @@ function Feed({ icon: Icon, label, fix, missing }: { icon: typeof Truck; label: 
   );
 }
 
-function Assignment({ trip, phase, overview, onChange }: { trip: OperatorTripDetail; phase: TripPhase; overview: TripOverview | null; onChange: (w: 'driver' | 'truck') => void }) {
+function Assignment({ trip, phase, overview, f, onChange }: { trip: OperatorTripDetail; phase: TripPhase; overview: TripOverview | null; f: Formatters; onChange: (w: 'driver' | 'truck') => void }) {
   const router = useRouter();
+  const [pack, setPack] = useState<{ kind: PackOwnerKind; id: string; name: string } | null>(null);
   const d = trip.driver;
   const v = trip.vehicle;
   const co = trip.coDriver;
@@ -271,6 +275,9 @@ function Assignment({ trip, phase, overview, onChange }: { trip: OperatorTripDet
         </View>
         {changeBtn('driver')}
       </TouchableOpacity>
+      {d && !tp ? (
+        <PhoneActivityRow driverId={d.id} driverName={driverName} tripId={trip.id} tripRef={trip.ref_id} compact style={s.phoneRow} />
+      ) : null}
       {co && !tp ? (
         <View style={s.coRow}>
           <DriverAvatar initials={initialsOf(`${co.first_name} ${co.last_name}`)} avatarUrl={co.avatar_url} size={28} />
@@ -288,8 +295,38 @@ function Assignment({ trip, phase, overview, onChange }: { trip: OperatorTripDet
           <Feed icon={Smartphone} label="Driver app" fix={unit?.driver_gps} missing={phase === 'planned' ? 'Off trip' : 'Not sending'} />
         </View>
       ) : null}
+      {!tp && (v || d) ? (
+        <View style={s.packRow}>
+          <TouchableOpacity style={[s.packBtn, !v && s.off]} disabled={!v} onPress={() => v && setPack({ kind: 'Vehicle', id: v.id, name: v.plate_number || 'Truck' })} activeOpacity={0.7}>
+            <Files size={15} color={INK} strokeWidth={2.1} />
+            <Text style={s.linkBtnText}>Truck documents</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[s.packBtn, !d && s.off]} disabled={!d} onPress={() => d && setPack({ kind: 'Driver', id: d.id, name: driverName })} activeOpacity={0.7}>
+            <UserRound size={15} color={INK} strokeWidth={2.1} />
+            <Text style={s.linkBtnText}>Driver documents</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+      {pack ? (
+        <DocumentPackSheet
+          visible
+          onClose={() => setPack(null)}
+          kind={pack.kind}
+          ownerId={pack.id}
+          ownerName={pack.name}
+          trip={{ ref: trip.ref_id, route: routeLine(trip), date: trip.planned_start ? f.dayTime(trip.planned_start) : null }}
+        />
+      ) : null}
     </Card>
   );
+}
+
+/** "Riyadh → Jeddah → Riyadh" for the details page of a document pack. */
+function routeLine(trip: OperatorTripDetail): string | null {
+  const stops = sortedStops(trip);
+  if (!stops.length) return null;
+  const names = stops.map((st, i) => stopName(st, i)).filter((n, i, a) => n !== a[i - 1]);
+  return names.length > 4 ? `${names[0]} → … → ${names[names.length - 1]}` : names.join(' → ');
 }
 
 // ── Money ─────────────────────────────────────────────────────────────────────
@@ -387,6 +424,10 @@ const s = StyleSheet.create({
   change: { backgroundColor: '#F1F3F7', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
   changeText: { fontSize: 13, fontWeight: '600', color: INK },
   coRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#F8F9FB' },
+  phoneRow: { paddingHorizontal: 14, paddingTop: 0, paddingBottom: 10 },
+  packRow: { flexDirection: 'row', gap: 8, padding: 12, borderTopWidth: 1, borderTopColor: '#F1F1F3' },
+  packBtn: { flex: 1, height: 40, borderRadius: 12, backgroundColor: '#F4F4F5', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  off: { opacity: 0.4 },
   coText: { flex: 1, fontSize: 13, fontWeight: '700', color: INK },
   feeds: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#F8F9FB', borderBottomLeftRadius: 18, borderBottomRightRadius: 18 },
   feed: { flexDirection: 'row', alignItems: 'center', gap: 5 },

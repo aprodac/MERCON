@@ -7,6 +7,8 @@ import { useOperatorMaintenanceRecords, type OperatorMaintenanceRecord } from '@
 import { EmptyState, ErrorState } from '@mercon/mobile-shared/ui';
 import { OperatorSidebarDrawer } from '@/components/OperatorSidebarDrawer';
 import { AppTopBar } from '@/components/AppTopBar';
+import { DeleteLink } from '@/components/DeleteRecord';
+import { api } from '@mercon/mobile-shared/lib/api';
 
 export default function MaintenanceScreen() {
   const router = useRouter();
@@ -66,6 +68,7 @@ export default function MaintenanceScreen() {
           </Text>
         )}
       </View>
+      <DeleteLink what="this maintenance record" consequence="It is removed from the truck's service history and costs. Admins can restore it from Trash." run={() => api.delete(`/maintenance/${item.id}`)} onDeleted={refetch} />
     </View>
   );
 

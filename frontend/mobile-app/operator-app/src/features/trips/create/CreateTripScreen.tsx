@@ -7,6 +7,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, StatusBar, Keyboa
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Check, ChevronLeft, MessageCircle } from 'lucide-react-native';
+import type { SameDayConflict } from '@mercon/shared-types';
 import { Colors, Spacing, Radius } from '@mercon/mobile-shared/theme/tokens';
 import { Toast } from '@mercon/mobile-shared/components/Toast';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
@@ -102,7 +103,26 @@ export default function CreateTripScreen() {
 
   const back = () => (form.step > 1 ? goTo((form.step - 1) as CreateTripStep) : router.back());
 
-  const confirm = async (pastChoice: 'Completed' | 'Incomplete') => {
+  // The driver already has a trip that day: the review sheet shows a warning
+  // with "Create anyway" (red) and "Cancel" instead of creating straight away.
+  const [sameDay, setSameDay] = useState<SameDayConflict[] | null>(null);
+  const [checking, setChecking] = useState(false);
+  const closeReview = () => {
+    setReviewOpen(false);
+    setSameDay(null);
+  };
+
+  const confirm = async (pastChoice: 'Completed' | 'Incomplete', anyway = false) => {
+    if (!anyway) {
+      setChecking(true);
+      const conflicts = await form.checkSameDay();
+      setChecking(false);
+      if (conflicts.length > 0) {
+        setSameDay(conflicts);
+        return;
+      }
+    }
+    setSameDay(null);
     const res = await form.submit(pastChoice);
     if (!res.ok) {
       setToast({ message: res.message, type: 'error' });
@@ -205,7 +225,7 @@ export default function CreateTripScreen() {
         </KeyboardAvoidingView>
       )}
 
-      <ReviewSheet form={form} visible={reviewOpen} onClose={() => setReviewOpen(false)} onConfirm={confirm} />
+      <ReviewSheet form={form} visible={reviewOpen} onClose={closeReview} onConfirm={confirm} sameDay={sameDay} checking={checking} />
       <PayoutMissingSheet
         visible={payoutOpen}
         quotationLabel={payoutLabel}

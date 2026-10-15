@@ -10,7 +10,8 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl, L
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  ArrowLeft, ChevronLeft, ChevronRight, FileText, IdCard, MessageCircle, Phone, SquarePen, Truck, UserX,
+  ArrowLeft, ChevronLeft, ChevronRight, FileText, IdCard, MessageCircle, Phone, Send, SquarePen, Truck, UserX,
+  Upload,
 } from 'lucide-react-native';
 import { EmptyHint, PageTitle, SectionLabel, TabIcon, Tile } from '@/components/pageCues';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
@@ -20,6 +21,8 @@ import { Card, Chip, INK, MUTED, PAGE, tap } from '../../trips/details/component
 import { fmtSar, niceName } from '../../trips/create/components/ui';
 import { TONE, statusChip, type Tone } from '../../trips/details/tripDetailsModel';
 import { DriverAvatar } from '../components/DriverAvatar';
+import { PhoneActivityRow } from '../phone/PhoneActivityRow';
+import { DocumentPackSheet } from '../../documents/DocumentPackSheet';
 import { SkeletonDriverDetails } from '../components/LoadingSkeleton';
 import { useDriver, useDriverActions, useDriverTrips } from '../hooks';
 import { useDriverPayouts } from '../hooks/useDriverPayouts';
@@ -49,6 +52,7 @@ export default function DriverDetailsScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [tab, setTab] = useState<Tab>('overview');
+  const [packOpen, setPackOpen] = useState(false);
   const {
     driver, vehicle, documents, documentsNeedingAttention, documentsLoading, documentsError, performance, assignment, loading, refreshing, error, notFound, refresh,
   } = useDriver(id);
@@ -131,6 +135,8 @@ export default function DriverDetailsScreen() {
               </View>
               {vehicle ? <ChevronRight size={18} color="#A1A1AA" /> : null}
             </TouchableOpacity>
+
+            <PhoneActivityRow driverId={driver.id} driverName={niceName(driverDisplayName(driver))} style={s.lineBorder} />
           </Card>
         </View>
 
@@ -253,6 +259,17 @@ export default function DriverDetailsScreen() {
           ) : null}
 
           {tab === 'documents' ? (
+            <>
+            <View style={s.docActions}>
+              <TouchableOpacity style={[s.sendDocs, s.addDocs]} onPress={() => { tap(); router.push({ pathname: '/documents', params: { kind: 'Driver', owner: driver.id } } as any); }} activeOpacity={0.85} accessibilityLabel="Add or update documents">
+                <Upload size={16} color={Colors.charcoal} strokeWidth={2.3} />
+                <Text style={[s.sendDocsText, { color: Colors.charcoal }]}>Add documents</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.sendDocs, { flex: 1 }]} onPress={() => { tap(); setPackOpen(true); }} activeOpacity={0.85}>
+                <Send size={16} color={Colors.white} strokeWidth={2.3} />
+                <Text style={s.sendDocsText} numberOfLines={1}>Send as one PDF</Text>
+              </TouchableOpacity>
+            </View>
             <Card style={s.listCard}>
               {documentsLoading ? <EmptyHint>Loading…</EmptyHint>
                 : documentsError ? <ErrorState message={documentsError} onRetry={refresh} />
@@ -274,6 +291,7 @@ export default function DriverDetailsScreen() {
                   );
                 })}
             </Card>
+            </>
           ) : null}
 
           {tab === 'trips' ? (
@@ -322,6 +340,9 @@ export default function DriverDetailsScreen() {
       >
         {body()}
       </ScrollView>
+      {driver && packOpen ? (
+        <DocumentPackSheet visible onClose={() => setPackOpen(false)} kind="Driver" ownerId={driver.id} ownerName={niceName(driverDisplayName(driver))} />
+      ) : null}
     </View>
   );
 }
@@ -391,6 +412,10 @@ const s = StyleSheet.create({
   mono: { fontSize: 16, fontWeight: '700', color: INK, letterSpacing: 0.5, fontVariant: ['tabular-nums'] },
 
   listCard: { paddingVertical: 4 },
+  sendDocs: { height: 46, borderRadius: 14, backgroundColor: Colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  docActions: { flexDirection: 'row', gap: 10 },
+  addDocs: { flex: 1, backgroundColor: Colors.white, borderWidth: 1, borderColor: '#E4E4E8' },
+  sendDocsText: { color: Colors.white, fontSize: 15, fontWeight: '700' },
   listEmpty: { paddingVertical: 12 },
   line: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11 },
   lineBorder: { borderTopWidth: 1, borderTopColor: '#F1F1F3' },

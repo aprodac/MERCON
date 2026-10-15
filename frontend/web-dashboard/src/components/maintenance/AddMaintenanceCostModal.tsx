@@ -190,7 +190,8 @@ export default function AddMaintenanceCostModal({
             </Label>
             <Select
               value={status}
-              onValueChange={(val: MaintenanceStatus) => {
+              onValueChange={(v) => {
+                const val = v as MaintenanceStatus;
                 setStatus(val);
                 if (val === 'Completed') {
                   setIsPaid(true);

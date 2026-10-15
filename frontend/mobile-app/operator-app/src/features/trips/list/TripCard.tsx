@@ -32,11 +32,13 @@ interface Props {
   now: number;
   /** Show the day as well as the time (search results, the Now list). */
   showDay?: boolean;
+  /** This trip double-books its driver or truck ("Overlaps TRP-0026 · same driver"). */
+  clash?: string | null;
   onPress: (t: OperatorTrip) => void;
   onLongPress: (t: OperatorTrip) => void;
 }
 
-function TripCardBase({ trip: t, f, now, showDay, onPress, onLongPress }: Props) {
+function TripCardBase({ trip: t, f, now, showDay, clash, onPress, onLongPress }: Props) {
   const phase = phaseOf(t.status);
   const ps = PHASE_STYLE[phase];
   const route = routeOf(t);
@@ -49,7 +51,17 @@ function TripCardBase({ trip: t, f, now, showDay, onPress, onLongPress }: Props)
   const reason = phase === 'delayed' ? delayReasonOf(t) : null;
 
   const when = done && t.actual_end ? t.actual_end : t.planned_start ?? t.createdAt ?? null;
-  const at = (iso: string) => (showDay && f.dayKey(iso) !== f.dayKey(now) ? `${f.day(iso)} · ${f.time(iso)}` : f.time(iso));
+  // With the day shown, today and tomorrow say so ("Today · 20:00") instead of dropping the date.
+  const dayWord = (iso: string) => {
+    const k = f.dayKey(iso);
+    if (k === f.dayKey(now)) return 'Today';
+    if (k === f.dayKey(now + 86_400_000)) return 'Tomorrow';
+    if (k === f.dayKey(now - 86_400_000)) return 'Yesterday';
+    return f.day(iso);
+  };
+  // Non-breaking spaces keep "Thu 15 Oct · 20:00" on one line when the row wraps.
+  const nb = (x: string) => x.replace(/ /g, '\u00A0');
+  const at = (iso: string) => nb(showDay ? `${dayWord(iso)} · ${f.time(iso)}` : f.time(iso));
   // Finished trips: started → delivered. The start gets its day when the trip ran overnight.
   const start = done && t.actual_end ? t.actual_start : null;
   const startLabel = start ? (f.dayKey(start) !== f.dayKey(t.actual_end!) ? `${f.day(start)} · ${f.time(start)}` : f.time(start)) : '';
@@ -62,7 +74,7 @@ function TripCardBase({ trip: t, f, now, showDay, onPress, onLongPress }: Props)
       onPress={() => onPress(t)}
       onLongPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {}); onLongPress(t); }}
       delayLongPress={300}
-      style={[s.card, phase === 'delayed' && s.cardUrgent, muted && { opacity: 0.65 }]}
+      style={[s.card, (phase === 'delayed' || !!clash) && s.cardUrgent, muted && { opacity: 0.65 }]}
     >
       {/* Customer · status */}
       <View style={s.top}>
@@ -104,6 +116,13 @@ function TripCardBase({ trip: t, f, now, showDay, onPress, onLongPress }: Props)
           </View>
         ) : null}
       </View>
+
+      {clash ? (
+        <View style={s.reason}>
+          <AlertCircle size={14} color={RED} strokeWidth={2.4} />
+          <Text style={s.reasonText} numberOfLines={2}>{clash}</Text>
+        </View>
+      ) : null}
 
       {reason ? (
         <View style={s.reason}>

@@ -1,5 +1,5 @@
 import { api, ApiResponse } from '@/lib/api';
-import type { DriverGroup, DriverReason } from '@mercon/shared-types';
+import type { DriverGroup, DriverReason, SameDayConflict } from '@mercon/shared-types';
 import type { ResolvedLocation } from './vehicleService';
 
 export type TripStatus = 'Draft' | 'Scheduled' | 'Loading' | 'Dispatched' | 'AtPickup' | 'InTransit' | 'AtDelivery' | 'Completed' | 'Invoiced' | 'Cancelled' | 'Delayed' | 'Emergency' | (string & {});
@@ -532,6 +532,11 @@ export const tripService = {
     await api.post(`/trips/${id}/charge-review`, { charges });
   },
 
+  /** After adding a stop to an existing trip: optional extra-stop charge line and/or driver payout raise. */
+  async addExtraStop(id: string, payload: { charge?: NewSubCharge; driver_payout_increase?: number }): Promise<void> {
+    await api.post(`/trips/${id}/extra-stop`, payload);
+  },
+
   async create(payload: CreateTripPayload): Promise<Trip> {
     const res = await api.post<ApiResponse<Trip>>('/trips', payload);
     return res.data.data;
@@ -718,6 +723,12 @@ export const tripService = {
 
   async bulkUpdateStatus(ids: string[], status: string): Promise<void> {
     await api.post('/trips/bulk-update-status', { ids, status });
+  },
+
+  /** Which of these new trips' drivers already have a trip that day (Create Trip warns). */
+  async sameDayCheck(trips: Array<{ driver_id?: string; co_driver_id?: string; planned_start: string }>): Promise<SameDayConflict[]> {
+    const res = await api.post<ApiResponse<SameDayConflict[]>>('/trips/same-day-check', { trips });
+    return res.data.data ?? [];
   },
 
   async bulkImport(rows: BulkImportTripRow[]): Promise<BulkImportResult> {
