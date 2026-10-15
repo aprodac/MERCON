@@ -155,7 +155,7 @@ export interface OperatorTripDetail {
   // Line type / quotation — drives the Round Trip vs Single Trip label.
   quotation_line_type?: string | null;
   quotationId?: string | null;
-  quotation?: { id?: string; name?: string | null; rate?: number | null; driver_payout?: number | null; pricing_basis?: string | null } | null;
+  quotation?: { id?: string; name?: string | null; rate?: number | null; driver_payout?: number | null; pricing_basis?: string | null; quotation_number?: number | null; stops?: { sequence?: number | null; leg_index?: number | null }[] | null } | null;
   rateCard?: { name?: string | null; rate_category?: string | null; vehicle_type?: string | null } | null;
   /** Truck class and trip type as booked ("5 TON", "SINGLE_TRIP"). */
   vehicle_type?: string | null;
@@ -1507,6 +1507,11 @@ export const operatorService = {
   async updateTripRoute(id: string, payload: UpdateTripRouteInput): Promise<OperatorTripDetail> {
     const { data } = await api.put(`/trips/${id}/stops`, payload);
     return data.data as OperatorTripDetail;
+  },
+
+  /** After adding a stop: optional extra-stop charge line and/or driver payout raise (POST /trips/:id/extra-stop). */
+  async addExtraStop(id: string, payload: { charge?: { surchargeRuleId?: string | null; charge_type: string; unit?: string | null; rate: number; quantity: number }; driver_payout_increase?: number }): Promise<void> {
+    await api.post(`/trips/${id}/extra-stop`, payload);
   },
 
   /** Billing amount and driver payout (PATCH /trips/:id/financials, as the web's Edit Trip). */

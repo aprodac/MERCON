@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { haltActivityLabel, insertByTime, legLabel, liveLegOf, splitLegs } from '@mercon/shared-types';
+import { extraStopNote, haltActivityLabel, insertByTime, legLabel, liveLegOf, splitLegs } from '@mercon/shared-types';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Copy, Check, CornerUpLeft, Smartphone, XCircle, AlertTriangle, MoreHorizontal, MapPin, ArrowRight,
@@ -623,6 +623,9 @@ export default function TripDetailsPage() {
                       )}
                       {statePhrase && <span className="text-sm text-muted-foreground">{statePhrase}</span>}
                     </div>
+                    {extraStopNote(trip as any) && (
+                      <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">{extraStopNote(trip as any)}</p>
+                    )}
                     <p className="mt-0.5 truncate text-sm font-medium text-foreground">{trip.customer?.name ?? 'No customer'}</p>
                     <RouteChain
                       names={(tripLegs.round ? tripLegs.outbound : stopsArr).map((st: any) => resolveStopName(st, `Stop ${stopsArr.indexOf(st) + 1}`))}

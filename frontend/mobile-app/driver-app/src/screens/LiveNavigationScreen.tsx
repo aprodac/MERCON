@@ -16,7 +16,8 @@ import { DelayButton } from '../components/DelayButton';
 import { useCurrentTrip } from '../hooks/use-current-trip';
 import { tripService, stopAddress, stopLabel, isRoundTrip, resolveAuthoritativeActiveStop, getLegEndpoints } from '@mercon/mobile-shared/lib/trips';
 
-import { targetFromWorkflowState, parseStopWorkflowState } from '../utils/routeParser';
+import { targetFromWorkflowState } from '../utils/routeParser';
+import { pendingStopFromWorkflow } from '@mercon/shared-types';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
@@ -92,7 +93,7 @@ const LiveNavigationScreen = () => {
   // record without actual_departure as "still pending", but intermediate
   // stops were never stamped, so finishing the last stop (→ IN_TRANSIT)
   // bounced the driver straight back to stop #1 — the stop ↔ navigate loop.
-  const pendingStop = parseStopWorkflowState(ws);
+  const pendingStop = pendingStopFromWorkflow(ws, trip);
 
   // The trip was cancelled or given to another driver: the server now says
   // there is no current trip. Go home instead of a map of placeholders

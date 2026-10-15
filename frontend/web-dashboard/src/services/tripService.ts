@@ -532,6 +532,11 @@ export const tripService = {
     await api.post(`/trips/${id}/charge-review`, { charges });
   },
 
+  /** After adding a stop to an existing trip: optional extra-stop charge line and/or driver payout raise. */
+  async addExtraStop(id: string, payload: { charge?: NewSubCharge; driver_payout_increase?: number }): Promise<void> {
+    await api.post(`/trips/${id}/extra-stop`, payload);
+  },
+
   async create(payload: CreateTripPayload): Promise<Trip> {
     const res = await api.post<ApiResponse<Trip>>('/trips', payload);
     return res.data.data;

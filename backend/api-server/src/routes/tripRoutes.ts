@@ -3,7 +3,7 @@ import {
   getTrips, getTripById, createTrip, updateTripStatus,
   dispatchTrip, replaceDriver, pickupArrive, pickupVerify, deliveryVerify,
   bulkDeleteTrips, bulkUpdateTripStatus, bulkAssignTrips, getUnsettledCompletedTrips, updateTripFinancials, reviewTripCharges,
-  logStopDelay, confirmEvidenceTime, confirmTripTimes, bulkImportTrips, updateTripStop, pinStop, updateTripStopsRoute, getMonthlyTripBoard, shareTripMediaToWhatsApp, sameDayCheck
+  logStopDelay, confirmEvidenceTime, confirmTripTimes, bulkImportTrips, updateTripStop, pinStop, updateTripStopsRoute, addExtraStopCharge, getMonthlyTripBoard, shareTripMediaToWhatsApp, sameDayCheck
 } from '../controllers/tripController';
 import { exportTrips } from '../controllers/tripExportController';
 import { getTripTrackingLink, getTripTrackingLinks, trackingLinkBody, trackingLinksBody } from '../controllers/trackingController';
@@ -12,7 +12,7 @@ import { getTripDriverTrail } from '../controllers/driverPhoneController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles, requireModuleEnabled } from '../middlewares/rbac';
 import { validate } from '../middlewares/validate';
-import { createTripBody, listQuery, logStopDelayBody, confirmEvidenceTimeBody, confirmTripTimesBody, bulkImportTripsBody, updateTripStopBody, updateTripStopsRouteBody, pinBody, reviewTripChargesBody, tripStepBackBody } from '../schemas';
+import { createTripBody, listQuery, logStopDelayBody, confirmEvidenceTimeBody, confirmTripTimesBody, bulkImportTripsBody, updateTripStopBody, updateTripStopsRouteBody, extraStopChargeBody, pinBody, reviewTripChargesBody, tripStepBackBody } from '../schemas';
 import { getProgressSteps, restoreStepBackPhotosHandler, stepBack } from '../controllers/tripStepBackController';
 
 import { getDriverRecommendations, getVehicleRecommendations } from '../controllers/fleetDispatchController';
@@ -66,6 +66,8 @@ router.patch('/:id/stops/:stopId/confirm-time', validate({ body: confirmEvidence
 router.patch('/:id/confirm-times', validate({ body: confirmTripTimesBody }), confirmTripTimes);
 
 router.put('/:id/stops', validate({ body: updateTripStopsRouteBody }), updateTripStopsRoute);
+// After adding a stop to an existing trip: optional extra-stop charge (TripCharge) and driver payout raise.
+router.post('/:id/extra-stop', validate({ body: extraStopChargeBody }), addExtraStopCharge);
 
 // Correct where a stop is (label, address, lane endpoint, pin). Allowed while
 // the trip is still running — a wrong address is exactly what needs fixing

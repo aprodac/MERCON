@@ -57,6 +57,7 @@
     "test:xlsx": "node -r ts-node/register --test src/services/reports/xlsxTemplate/splice.test.ts src/services/reports/xlsxTemplate/aliases.test.ts src/services/reports/xlsxTemplate/inspect.test.ts src/services/reports/xlsxTemplate/statementData.test.ts",
     "migrate:driver-avatars": "ts-node scripts/migrateDriverAvatars.ts",
     "test:assignment-notice": "node -r ts-node/register --test src/services/driverPhone/assignmentNotice.test.ts",
+    "test:trip-stops-edit": "node -r ts-node/register --test src/tests/tripStopsEdit.test.ts",
     "test:same-day-trips": "node -r ts-node/register --test src/tests/sameDayTrips.test.ts"
   },
   "prisma": {
