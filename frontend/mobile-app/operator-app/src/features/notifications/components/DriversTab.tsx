@@ -138,6 +138,7 @@ function UpdateCard({ u, when, onSend, onView, onMarkRead }: {
         <View style={{ flex: 1, gap: 1 }}>
           <Text style={s.title} numberOfLines={1}>{title}{where ? ` · ${where}` : ''}</Text>
           <Text style={s.meta} numberOfLines={1}>{[u.trip.ref_id, niceName(u.customer?.name)].filter(Boolean).join(' · ')}</Text>
+          {u.trip.route ? <Text style={s.route} numberOfLines={1}>{u.trip.route}</Text> : null}
         </View>
         <Text style={s.when}>{when}</Text>
       </View>
@@ -204,6 +205,7 @@ const s = StyleSheet.create({
   stage: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#F4F4F5', alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 15, fontWeight: '700', color: INK },
   meta: { fontSize: 12, color: MUTED },
+  route: { fontSize: 12, fontWeight: '600', color: INK },
   when: { fontSize: 12, color: MUTED, fontVariant: ['tabular-nums'] },
   thumbs: { flexDirection: 'row', gap: 6 },
   thumb: { borderRadius: 10, overflow: 'hidden', backgroundColor: '#E4E7EE' },

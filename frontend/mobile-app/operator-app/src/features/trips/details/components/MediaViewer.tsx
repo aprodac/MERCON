@@ -31,6 +31,8 @@ interface Props {
   items: ViewerItem[] | null;
   startIndex: number;
   title: string;
+  /** Which trip the photos belong to, e.g. "Riyadh → Jeddah · Nouman · KSA-6102". */
+  context?: string | null;
   onClose: () => void;
   /** Shown when the items came from one driver update. */
   onSend?: () => void;
@@ -40,7 +42,7 @@ interface Props {
   onOpenTrip?: () => void;
 }
 
-export function MediaViewer({ items, startIndex, title, onClose, onSend, status, onOpenTrip }: Props) {
+export function MediaViewer({ items, startIndex, title, context, onClose, onSend, status, onOpenTrip }: Props) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [index, setIndex] = useState(startIndex);
@@ -61,6 +63,7 @@ export function MediaViewer({ items, startIndex, title, onClose, onSend, status,
         <View style={s.top}>
           <View style={{ flex: 1 }}>
             <Text style={s.title} numberOfLines={1}>{title}</Text>
+            {context ? <Text style={s.sub} numberOfLines={1}>{context}</Text> : null}
             <Text style={s.sub} numberOfLines={1}>{current?.caption}{items && items.length > 1 ? ` · ${index + 1} of ${items.length}` : ''}</Text>
           </View>
           <TouchableOpacity style={s.close} onPress={onClose} accessibilityLabel="Close">

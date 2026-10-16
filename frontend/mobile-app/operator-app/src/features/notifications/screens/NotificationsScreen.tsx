@@ -174,6 +174,7 @@ export default function NotificationsScreen() {
         items={viewerItems}
         startIndex={viewing?.index ?? 0}
         title={viewed ? `${updateTitle(viewed)} · ${viewed.trip.ref_id ?? ''}` : ''}
+        context={viewed ? [viewed.trip.route, viewed.driver ? niceName(viewed.driver.name) : null, viewed.vehicle_plate].filter(Boolean).join(' · ') : null}
         status={viewed ? sendStatus(viewed) : undefined}
         onClose={() => setViewing(null)}
         onSend={viewed ? () => leaveViewer(() => openTrip(viewed.trip.id, { share: 'update', update: viewed.key })) : undefined}
