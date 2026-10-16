@@ -4,9 +4,10 @@
  *   Delayed  — every delayed trip, the longest-delayed first.
  *   Now      — trips under way only: needs attention, on the road. Trips
  *              that haven't started (draft / scheduled) live in Schedule.
- *   Schedule — a date strip (with a count per day) and every trip planned
- *              that day, finished ones included.
- *   History  — delivered and cancelled trips by day, loading as you scroll.
+ *   Schedule — a date strip (with a count per day) and the trips still to
+ *              run that day. Delivered and cancelled trips are in History.
+ *   History  — the same date strip, for the day trips finished: delivered
+ *              ones by when they ended, cancelled ones by their planned day.
  * Search looks across every trip on the server. Long-press a trip for quick
  * actions (call, WhatsApp, send status, change driver).
  */
@@ -26,10 +27,10 @@ import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import type { OperatorTrip } from '../../../lib/operator';
 import { TripCard } from './TripCard';
 import { AppTopBar } from '@/components/AppTopBar';
-import { useNow, useTripList, SCHEDULE_AFTER, SCHEDULE_BEFORE, type View as ListView } from './useTripList';
+import { useNow, useTripList, HISTORY_DAYS, SCHEDULE_AFTER, type View as ListView } from './useTripList';
 import { askDeleteTrip, canDeleteTrip } from '../edit/movePlan';
 import {
-  clashesOf, dayLabel, dayRange, driverNameOf, driverPhoneOf, finishedDayIso, groupByDay, needsAttention, phaseOf, tripDayIso, type TimeFmt,
+  clashesOf, dayLabel, dayRange, daysBetween, driverNameOf, driverPhoneOf, finishedDayIso, needsAttention, phaseOf, tripDayIso, type TimeFmt,
 } from './tripListModel';
 
 const INK = '#3E3C3D';
@@ -59,6 +60,7 @@ export default function TripsScreen() {
   const [debounced, setDebounced] = useState('');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [day, setDay] = useState<string | null>(null);
+  const [historyDay, setHistoryDay] = useState<string | null>(null);
   const [actionsFor, setActionsFor] = useState<OperatorTrip | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -120,38 +122,28 @@ export default function TripsScreen() {
     { key: 'road', title: 'On the road', tone: '#2F5FD0', data: board.road },
   ].filter((sct) => sct.data.length > 0), [board]);
 
-  // ── Schedule: counts per day and the chosen day's trips ───────────────────
-  const days = useMemo(() => dayRange(todayKey, SCHEDULE_BEFORE, SCHEDULE_AFTER), [todayKey]);
-  const perDay = useMemo(() => {
-    const m = new Map<string, DayCount>();
-    for (const t of data.window) {
-      const iso = tripDayIso(t);
-      if (!iso) continue;
-      const k = f.dayKey(iso);
-      const c = m.get(k) ?? { total: 0, attention: 0, done: 0, cancelled: 0 };
-      c.total += 1;
-      const p = phaseOf(t.status);
-      if (p === 'done') c.done += 1;
-      else if (p === 'cancelled') c.cancelled += 1;
-      else if (needsAttention(t, now)) c.attention += 1;
-      m.set(k, c);
-    }
-    return m;
-  }, [data.window, f, now]);
-  // Still-open trips first (what needs doing), then finished, then cancelled — each by planned time.
-  const dayTrips = useMemo(() => {
-    const rank = (t: OperatorTrip) => { const p = phaseOf(t.status); return p === 'cancelled' ? 2 : p === 'done' ? 1 : 0; };
-    return data.window
-      .filter((t) => { const iso = tripDayIso(t); return iso && f.dayKey(iso) === selectedDay; })
-      .sort((a, b) => rank(a) - rank(b) || new Date(tripDayIso(a) ?? 0).getTime() - new Date(tripDayIso(b) ?? 0).getTime());
-  }, [data.window, f, selectedDay]);
+  // ── Schedule: open trips only — counts per day and the chosen day's trips ─
+  const perDay = useMemo(() => countByDay(data.window, f, tripDayIso, now), [data.window, f, now]);
+  // From today on; earlier days only while a trip planned then still hasn't run.
+  const days = useMemo(() => {
+    const earliest = [...perDay.keys()].sort()[0];
+    return dayRange(todayKey, earliest && earliest < todayKey ? -daysBetween(todayKey, earliest) : 0, SCHEDULE_AFTER);
+  }, [perDay, todayKey]);
+  const dayTrips = useMemo(() => tripsOn(data.window, f, tripDayIso, selectedDay, false), [data.window, f, selectedDay]);
   const selectedCount = perDay.get(selectedDay);
-  const selectedPast = selectedDay < todayKey;
 
-  // ── History ───────────────────────────────────────────────────────────────
-  // Grouped by the day each trip finished, not the day it was planned.
-  const historySections = useMemo(() => groupByDay(data.history, f, todayKey, true, finishedDayIso), [data.history, f, todayKey]);
-  const historyCancelled = useMemo(() => data.history.filter((t) => phaseOf(t.status) === 'cancelled').length, [data.history]);
+  // ── History: the same strip, by the day each trip finished ─────────────────
+  const historyPerDay = useMemo(() => countByDay(data.history, f, finishedDayIso, now), [data.history, f, now]);
+  const historyLatest = useMemo(() => [...historyPerDay.keys()].sort().reverse(), [historyPerDay]);
+  // Opens on the latest day anything finished (today, if something did).
+  const historyDefault = historyLatest.find((k) => k <= todayKey) ?? todayKey;
+  const historySelected = historyDay ?? historyDefault;
+  const historyDays = useMemo(() => {
+    const last = historyLatest[0] && historyLatest[0] > todayKey ? historyLatest[0] : todayKey;
+    return dayRange(todayKey, HISTORY_DAYS, daysBetween(todayKey, last));
+  }, [historyLatest, todayKey]);
+  const historyTrips = useMemo(() => tripsOn(data.history, f, finishedDayIso, historySelected, true), [data.history, f, historySelected]);
+  const historyCount = historyPerDay.get(historySelected);
 
   // Trips that double-book a driver or truck, across everything loaded.
   const clashes = useMemo(() => {
@@ -288,53 +280,51 @@ export default function TripsScreen() {
                     <View style={{ flex: 1 }} />
                     <Text style={s.dayCount}>
                       {plural(selectedCount?.total ?? 0, 'trip')}
-                      {selectedCount?.done ? <Text style={{ color: '#146C3C' }}> · {selectedCount.done} delivered</Text> : null}
-                      {selectedCount?.cancelled ? <Text> · {selectedCount.cancelled} cancelled</Text> : null}
                       {selectedCount?.attention ? <Text style={{ color: '#B42318' }}> · {selectedCount.attention} need attention</Text> : null}
                     </Text>
                   </View>
                 </View>
               )}
-              ListEmptyComponent={data.windowLoading ? <Loading /> : selectedPast ? (
+              ListEmptyComponent={data.windowLoading ? <Loading /> : (
                 <Empty
                   icon={CalendarDays}
-                  title="No trips planned this day"
-                  text="Trips show on the day they were planned to start. To see trips by the day they finished, open History."
-                  action={{ label: 'Open History', icon: History, onPress: () => { tap(); setView('history'); } }}
-                />
-              ) : (
-                <Empty
-                  icon={CalendarDays}
-                  title="No trips this day"
-                  text="Pick another day, or create a trip."
+                  title="No trips to run this day"
+                  text="Pick another day, or create a trip. Delivered and cancelled trips are in History."
                   action={{ label: 'New trip', icon: Plus, onPress: () => router.push('/create-trip') }}
                 />
               )}
             />
           ) : (
-            <SectionList
-              sections={historySections}
+            <FlatList
+              data={historyTrips}
               keyExtractor={(t) => t.id}
               contentContainerStyle={s.list}
               refreshControl={refreshControl}
-              stickySectionHeadersEnabled
-              renderSectionHeader={({ section }) => <SectionHead title={section.title} count={section.data.length} sticky />}
               renderItem={({ item }) => renderCard(item)}
               ItemSeparatorComponent={Gap}
-              onEndReached={data.loadMoreHistory}
-              onEndReachedThreshold={0.4}
-              ListHeaderComponent={data.history.length ? (
-                <Text style={s.resultsHead}>
-                  By the day they finished · newest first
-                  {data.historyMore ? '' : ` · ${plural(data.history.length - historyCancelled, 'delivered trip')}${historyCancelled ? `, ${historyCancelled} cancelled` : ''}`}
-                </Text>
-              ) : null}
-              ListFooterComponent={data.historyFetchingMore ? <Loading /> : data.history.length && !data.historyMore ? <Text style={s.endNote}>{"That's every finished trip."}</Text> : null}
+              ListHeaderComponent={(
+                <View style={{ gap: 10, marginBottom: 4 }}>
+                  <DateStrip days={historyDays} selected={historySelected} today={todayKey} counts={historyPerDay} onSelect={(k) => { tap(); setHistoryDay(k); }} f={f} />
+                  <View style={s.dayHead}>
+                    <Text style={s.dayTitle}>{dayLabel(historySelected, todayKey, f)}</Text>
+                    {historySelected !== historyDefault ? (
+                      <TouchableOpacity onPress={() => { tap(); setHistoryDay(null); }} hitSlop={8} accessibilityRole="button">
+                        <Text style={s.todayLink}>{historyDefault === todayKey ? 'Back to today' : 'Latest'}</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    <View style={{ flex: 1 }} />
+                    <Text style={s.dayCount}>
+                      <Text style={{ color: '#146C3C' }}>{historyCount?.done ?? 0} delivered</Text>
+                      {historyCount?.cancelled ? <Text> · {historyCount.cancelled} cancelled</Text> : null}
+                    </Text>
+                  </View>
+                </View>
+              )}
               ListEmptyComponent={data.historyLoading ? <Loading /> : (
                 <Empty
                   icon={History}
-                  title="No finished trips yet"
-                  text="Delivered and cancelled trips show up here. Trips still running are in Now and Schedule."
+                  title="Nothing finished this day"
+                  text="Delivered trips show on the day they ended, cancelled ones on their planned day. Trips still to run are in Schedule."
                   action={{ label: 'Open Schedule', icon: CalendarDays, onPress: () => { tap(); setView('schedule'); } }}
                 />
               )}
@@ -362,6 +352,32 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 type DayCount = { total: number; attention: number; done: number; cancelled: number };
 
+/** Trips per day (by `dayOf`), for a date strip. */
+function countByDay(trips: OperatorTrip[], f: TimeFmt, dayOf: (t: OperatorTrip) => string | null, now: number) {
+  const m = new Map<string, DayCount>();
+  for (const t of trips) {
+    const iso = dayOf(t);
+    if (!iso) continue;
+    const k = f.dayKey(iso);
+    const c = m.get(k) ?? { total: 0, attention: 0, done: 0, cancelled: 0 };
+    c.total += 1;
+    const p = phaseOf(t.status);
+    if (p === 'done') c.done += 1;
+    else if (p === 'cancelled') c.cancelled += 1;
+    else if (needsAttention(t, now)) c.attention += 1;
+    m.set(k, c);
+  }
+  return m;
+}
+
+/** One day's trips (by `dayOf`), in time order — newest first for History. */
+function tripsOn(trips: OperatorTrip[], f: TimeFmt, dayOf: (t: OperatorTrip) => string | null, key: string, newestFirst: boolean) {
+  const at = (t: OperatorTrip) => new Date(dayOf(t) ?? 0).getTime();
+  return trips
+    .filter((t) => { const iso = dayOf(t); return iso && f.dayKey(iso) === key; })
+    .sort((a, b) => (newestFirst ? at(b) - at(a) : at(a) - at(b)));
+}
+
 function Empty({ icon: Icon, title, text, good, action }: {
   icon: LucideIcon; title: string; text: string; good?: boolean;
   action?: { label: string; icon: LucideIcon; onPress: () => void };
@@ -381,9 +397,9 @@ function Empty({ icon: Icon, title, text, good, action }: {
   );
 }
 
-function SectionHead({ title, count, tone, sticky }: { title: string; count: number; tone?: string; sticky?: boolean }) {
+function SectionHead({ title, count, tone }: { title: string; count: number; tone?: string }) {
   return (
-    <View style={[s.sectionHead, sticky && { backgroundColor: PAGE }]}>
+    <View style={s.sectionHead}>
       {tone ? <View style={[s.sectionDot, { backgroundColor: tone }]} /> : null}
       <Text style={s.sectionTitle}>{title}</Text>
       <Text style={s.sectionCount}>{count}</Text>
@@ -507,7 +523,6 @@ const s = StyleSheet.create({
   emptyText: { fontSize: 13, color: MUTED, textAlign: 'center' },
   emptyBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, height: 40, paddingHorizontal: 16, borderRadius: 12, backgroundColor: INK },
   emptyBtnText: { fontSize: 14, fontWeight: '700', color: Colors.white },
-  endNote: { fontSize: 12, fontWeight: '600', color: '#9898A4', textAlign: 'center', marginTop: 16 },
   qaRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 9 },
   qaIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   qaLabel: { fontSize: 15, fontWeight: '700', color: INK },
