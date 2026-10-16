@@ -6,7 +6,7 @@
  * Start Round 2 is tapped.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowRight, Coffee, Home, RotateCcw, CheckCircle2 } from 'lucide-react-native';
@@ -73,6 +73,8 @@ export default function RoundCompletedScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+      {/* Light page: dark clock/battery icons (they were white on white). */}
+      <StatusBar barStyle="dark-content" backgroundColor={Colors.gray100} />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.hero}>
           <View style={styles.heroIcon}>

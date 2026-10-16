@@ -10,6 +10,14 @@ import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 import { Colors, Radius, Spacing, Typography } from '@mercon/mobile-shared/theme/tokens';
 import { formatClock, formatMinutes, type RoundSummary } from '../services/roundTimes';
 
+/**
+ * "14:05 → 15:30", kept left-to-right inside Urdu text (Unicode isolate) —
+ * it showed backwards ("15:30 → 14:05") on Urdu phones.
+ */
+function timeRange(start: string | null, end: string | null): string {
+  return `\u2066${formatClock(start)} → ${formatClock(end)}\u2069`;
+}
+
 export function RoundTimeline({
   title,
   round,
@@ -33,7 +41,7 @@ export function RoundTimeline({
         </View>
       </View>
       <Text style={styles.range}>
-        {formatClock(round.start)} → {formatClock(round.end)}
+        {timeRange(round.start, round.end)}
       </Text>
       {showSteps
         ? round.steps.map((s, i) => (
@@ -66,7 +74,7 @@ export function RoundBreakRow({ start, end, minutes }: { start: string | null; e
       <View style={styles.stepText}>
         <Text style={styles.title}>{t('label_break', 'Break')}</Text>
         <Text style={styles.range}>
-          {formatClock(start)} → {formatClock(end)}
+          {timeRange(start, end)}
         </Text>
       </View>
       <Text style={styles.breakValue}>{formatMinutes(minutes, language === 'ur')}</Text>

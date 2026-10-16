@@ -550,7 +550,7 @@ const DeliveryVerificationScreen = () => {
             ]}
             activeOpacity={0.85}
             onPress={handleCompleteDelivery}
-            disabled={!hasAllPhotos || submitting}
+            disabled={submitting}
           >
             <CircleCheckBig size={22} color={hasAllPhotos ? "#FFFFFF" : "#94A3B8"} strokeWidth={2} />
             <Text style={[styles.mainActionBtnText, !hasAllPhotos && styles.mainActionBtnTextDisabled]}>

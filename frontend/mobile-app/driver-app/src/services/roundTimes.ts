@@ -97,6 +97,12 @@ export function formatClock(iso?: string | null): string {
   return `${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} ${time}`;
 }
 
+function earliest(values: (string | null | undefined)[]): string | null {
+  const times = values.filter((v): v is string => !!v && !Number.isNaN(new Date(v).getTime()));
+  if (times.length === 0) return null;
+  return times.reduce((a, b) => (new Date(b).getTime() < new Date(a).getTime() ? b : a));
+}
+
 const placeOf = (s: TripStop | null | undefined) =>
   s?.location?.name || s?.location_name || null;
 
@@ -122,7 +128,8 @@ export function buildRoundTripSummary(
   const out = getLegEndpoints(trip, 0);
   const ret = getLegEndpoints(trip, 1);
 
-  const r1Start = trip.actual_start ?? (trip as any).actual_pickup ?? out.loading?.actual_arrival ?? null;
+  // Earliest known moment: "Trip started" must never come after "Arrived at loading".
+  const r1Start = earliest([trip.actual_start, (trip as any).actual_pickup, out.loading?.actual_arrival]);
   const r1End = local.round1DoneAt ?? out.delivery?.actual_departure ?? out.delivery?.actual_arrival ?? null;
   const r2Start = local.round2StartedAt ?? ret.loading?.actual_arrival ?? null;
   const r2End = trip.actual_end ?? ret.delivery?.actual_departure ?? null;

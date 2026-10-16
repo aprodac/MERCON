@@ -369,15 +369,18 @@ export default function StopVerificationScreen() {
           <View style={styles.photosGrid}>
             {Array.from({ length: MIN_STOP_PHOTOS }, (_, i) => i).map((i) => (
               <TouchableOpacity
-                key={i}
-                style={[photos[i] ? styles.photoSlotFilled : styles.addPhotoCardSlot, MIN_STOP_PHOTOS === 1 && styles.photoSlotWide]}
+                // Remount the box when its photo changes or the camera closes: a box
+                // updated while the in-app camera covered the screen stayed a blank
+                // grey square on Android (no image, no delete button).
+                key={`${i}-${photos[i]?.uri ?? 'empty'}-${cameraOpen ? 'cam' : 'page'}`}
+                style={[styles.photoSlot, photos[i] ? styles.photoSlotFilled : styles.addPhotoCardSlot, MIN_STOP_PHOTOS === 1 && styles.photoSlotWide]}
                 activeOpacity={0.8}
                 onPress={photos[i] ? () => setPreviewPhoto(photos[i]) : () => handleAddPhoto()}
                 onLongPress={photos[i] ? undefined : () => handleAddPhoto(otherSource)}
               >
                 {photos[i] ? (
                   <>
-                    <Image source={{ uri: photos[i].uri }} style={styles.photoThumb} resizeMode={evidence.screenshot ? 'contain' : 'cover'} />
+                    <Image source={{ uri: photos[i].uri }} style={StyleSheet.absoluteFill} resizeMode={evidence.screenshot ? 'contain' : 'cover'} />
                     <TouchableOpacity
                       style={styles.removePhotoBtn}
                       activeOpacity={0.7}
@@ -580,12 +583,17 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 16,
   },
-  photoSlotFilled: {
+  // Same base for empty and filled boxes (as on the loading screen), so a
+  // box never swaps its whole layout when a photo lands in it.
+  photoSlot: {
     flex: 1,
     aspectRatio: 1.1,
     borderRadius: 14,
     overflow: 'hidden',
-    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoSlotFilled: {
     backgroundColor: '#F1F5F9',
   },
   photoSlotWide: {
@@ -596,11 +604,6 @@ const styles = StyleSheet.create({
     color: '#64748B',
     lineHeight: 17,
     marginBottom: 10,
-  },
-  photoThumb: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 14,
   },
   removePhotoBtn: {
     position: 'absolute',
@@ -614,9 +617,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addPhotoCardSlot: {
-    flex: 1,
-    aspectRatio: 1.1,
-    borderRadius: 14,
     borderWidth: 1.5,
     borderColor: '#FCA5A5',
     borderStyle: 'dashed',

@@ -569,7 +569,7 @@ const PickupVerificationScreen = () => {
             ]}
             activeOpacity={0.85}
             onPress={handleCompletePickup}
-            disabled={!hasAllPhotos || submitting}
+            disabled={submitting}
           >
             <PackagePlus size={22} color={hasAllPhotos ? "#FFFFFF" : "#94A3B8"} strokeWidth={2} />
             <Text style={[styles.mainActionBtnText, !hasAllPhotos && styles.mainActionBtnTextDisabled]}>
