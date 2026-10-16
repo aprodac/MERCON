@@ -230,15 +230,12 @@ Firebase project `mercon-driver` with an Android app for `tech.mercon.driver`, i
 `google-services.json` in `driver-app/`, and the FCM v1 key in the Expo project. Set up and
 tested on a real phone (2026-10-03).
 
-The operator app (`tech.mercon.operator`) is **not** in Firebase yet — without it Android
-operator phones get no push token at all. To add it:
-
-1. Firebase console → project `mercon-driver` → Add app → Android → package
-   `tech.mercon.operator`. Download its `google-services.json` into `operator-app/`
-   (its `app.config.ts` reads it from there, or from the `GOOGLE_SERVICES_JSON` env var).
-2. Upload the Firebase **FCM v1 service-account key** to the operator app's Expo project
-   (expo.dev → project → Credentials → Android → FCM V1) — after `eas init` below.
-3. New Android build, sign in, check the phone appears in the `user_devices` table with a token.
+The operator app (`tech.mercon.operator`) was added to the same Firebase project on 2026-10-16;
+its `google-services.json` is in `operator-app/` (it lists both apps — the build picks the
+matching package). Still needed once: upload the Firebase **FCM v1 service-account key** to the
+operator app's Expo project (expo.dev → `@alan32/mercon-operator` → Credentials → Android →
+FCM V1) — the same key file as the driver app. Then a new Android build, sign in, and check the
+phone appears in `user_devices` with a token.
 
 ## Operator app push
 
