@@ -12,6 +12,7 @@ import { useCargoPodPhotos, docTypeLabel, type DriverDocument } from '@mercon/mo
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 import { GoogleMapsGeotagPreview } from '../components/GoogleMapsGeotagPreview';
 import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
+import { inCompanyZone } from '@mercon/mobile-shared/lib/dates';
 
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');
 
@@ -19,7 +20,7 @@ function formatDate(iso?: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  return d.toLocaleDateString('en-GB', inCompanyZone({ day: '2-digit', month: 'short', year: 'numeric' }));
 }
 
 function openFile(fileUrl: string) {

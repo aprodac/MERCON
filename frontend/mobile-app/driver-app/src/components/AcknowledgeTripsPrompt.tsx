@@ -15,6 +15,7 @@ import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 import { queryClient } from '@mercon/mobile-shared/lib/query-client';
 import { Colors, Radius, Spacing, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
 import { showToast } from './AppToast';
+import { inCompanyZone } from '@mercon/mobile-shared/lib/dates';
 
 interface PendingTrip {
   id: string;
@@ -30,7 +31,7 @@ export const PENDING_ACKS_KEY = ['pending-acknowledgements'];
 function formatStart(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return d.toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleString(undefined, inCompanyZone({ weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }));
 }
 
 async function lastKnownPosition(): Promise<{ lat?: number; lng?: number }> {

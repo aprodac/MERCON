@@ -18,7 +18,7 @@ import { statusLabel, stopLabel, getTripChargeValue, getMonthlyDriverPayout, typ
 import { matchesSearch } from '@mercon/mobile-shared/lib/search';
 import { useLanguage, formatCurrency, getLocalizedStatus, LanguageMode } from '@mercon/mobile-shared/lib/language-context';
 import { API_URL } from '@mercon/mobile-shared/lib/api';
-import { formatDayTime } from '@mercon/mobile-shared/lib/dates';
+import { formatDayTime, inCompanyZone } from '@mercon/mobile-shared/lib/dates';
 
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');
 
@@ -35,7 +35,7 @@ function formatRelativeDate(iso?: string | null, lang: LanguageMode = 'en'): str
   if (diffDays === 0) return lang === 'ur' ? 'آج' : 'Today';
   if (diffDays === 1) return lang === 'ur' ? 'کل' : 'Tomorrow';
   if (diffDays > 1 && diffDays <= 7) return lang === 'ur' ? `${diffDays} دنوں میں` : `In ${diffDays} days`;
-  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  return d.toLocaleDateString('en-GB', inCompanyZone({ day: '2-digit', month: 'short' }));
 }
 
 interface CardData {

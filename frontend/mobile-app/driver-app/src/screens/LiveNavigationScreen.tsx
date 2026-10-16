@@ -21,6 +21,7 @@ import { pendingStopFromWorkflow } from '@mercon/shared-types';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
+import { inCompanyZone } from '@mercon/mobile-shared/lib/dates';
 
 /** Great-circle distance between two lat/lng points, in meters. */
 function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -35,7 +36,7 @@ function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number) 
 
 /** Clock time the driver arrives if `secondsLeft` more seconds of driving remain ("14:05"). */
 function arrivalClock(secondsLeft: number): string {
-  return new Date(Date.now() + secondsLeft * 1000).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+  return new Date(Date.now() + secondsLeft * 1000).toLocaleTimeString(undefined, inCompanyZone({ hour: '2-digit', minute: '2-digit', hour12: false }));
 }
 
 const LiveNavigationScreen = () => {

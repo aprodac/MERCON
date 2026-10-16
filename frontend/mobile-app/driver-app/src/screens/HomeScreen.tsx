@@ -27,6 +27,7 @@ import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useLanguage, getLocalizedStatus, bilingual, translate } from '@mercon/mobile-shared/lib/language-context';
 import { parseTripRouteNodes, getIntermediateStops, getOutboundIntermediateStops, getReturnIntermediateStops, targetFromWorkflowState, type TimelineStop } from '../utils/routeParser';
 import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
+import { inCompanyZone } from '@mercon/mobile-shared/lib/dates';
 
 
 const WORKFLOW_URDU_LABEL: Record<string, string> = {
@@ -106,7 +107,7 @@ function shortWhen(iso?: string | null, fallback = 'Scheduled'): string {
   if (!iso) return fallback;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return fallback;
-  return d.toLocaleString(undefined, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleString(undefined, inCompanyZone({ day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }));
 }
 
 /** "14:05" for a planned/actual stop time, or null when there is none. */
@@ -114,7 +115,7 @@ function fmtTime(value?: Date | string | null): string | null {
   if (!value) return null;
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+  return d.toLocaleTimeString(undefined, inCompanyZone({ hour: '2-digit', minute: '2-digit', hour12: false }));
 }
 
 /** Minutes the pickup is overdue (planned start passed, driver not there yet), else 0. */

@@ -18,6 +18,7 @@ import { API_URL } from '@mercon/mobile-shared/lib/api';
 
 import { parseTripRouteNodes } from '../utils/routeParser';
 import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
+import { inCompanyZone } from '@mercon/mobile-shared/lib/dates';
 
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');
 
@@ -25,7 +26,7 @@ function formatDateTime(iso?: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleString('en-GB', inCompanyZone({ day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }));
 }
 
 function isValidUri(url?: string | null): boolean {
