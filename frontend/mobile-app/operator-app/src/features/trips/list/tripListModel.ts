@@ -215,24 +215,13 @@ export function dayRange(todayKey: string, before: number, after: number): strin
   return out;
 }
 
-/** Groups trips into day sections (newest day first for history, soonest first otherwise). */
-export function groupByDay(trips: OperatorTrip[], f: TimeFmt, todayKey: string, newestFirst: boolean, dayOf = tripDayIso) {
-  const map = new Map<string, OperatorTrip[]>();
-  for (const t of trips) {
-    const iso = dayOf(t);
-    const key = iso ? f.dayKey(iso) : 'none';
-    map.set(key, [...(map.get(key) ?? []), t]);
-  }
-  const keys = [...map.keys()].sort((a, b) => (newestFirst ? b.localeCompare(a) : a.localeCompare(b)));
-  return keys.map((k) => ({
-    key: k,
-    title: k === 'none' ? 'No date' : dayLabel(k, todayKey, f),
-    data: map.get(k)!.sort((a, b) => {
-      const ta = new Date(dayOf(a) ?? 0).getTime();
-      const tb = new Date(dayOf(b) ?? 0).getTime();
-      return newestFirst ? tb - ta : ta - tb;
-    }),
-  }));
+/** Whole days from `a` to `b` (YYYY-MM-DD keys); negative when b is before a. */
+export function daysBetween(a: string, b: string): number {
+  const toDate = (k: string) => {
+    const [y, m, d] = k.split('-').map(Number);
+    return Date.UTC(y, m - 1, d);
+  };
+  return Math.round((toDate(b) - toDate(a)) / 86400000);
 }
 
 /**
