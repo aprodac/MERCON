@@ -293,6 +293,8 @@ export interface DriverUpdate {
   shares: { id: string; recipient: ShareRecipient; channel: 'link' | 'whatsapp_api'; shared_by: string | null; shared_at: string; count: number }[];
   sent_ids: string[];
   unsent_count: number;
+  /** Marked as read without sending (by whom, when); new photos in the set clear it. */
+  marked_read?: { by: string | null; at: string } | null;
 }
 
 /**
@@ -300,7 +302,8 @@ export interface DriverUpdate {
  * one of a set's photos (most have three) reaches the customer; the others
  * stay marked "not sent" on the trip without being asked for again.
  */
-export const needsSending = (u: Pick<DriverUpdate, 'items' | 'sent_ids'>): boolean => u.items.length > 0 && u.sent_ids.length === 0;
+export const needsSending = (u: Pick<DriverUpdate, 'items' | 'sent_ids' | 'marked_read'>): boolean =>
+  u.items.length > 0 && u.sent_ids.length === 0 && !u.marked_read;
 
 export interface ShareResult {
   share_url: string;
@@ -1495,6 +1498,12 @@ export const operatorService = {
   }): Promise<ShareResult> {
     const { data } = await api.post('/operator-inbox/driver-updates/share', body);
     return data.data as ShareResult;
+  },
+
+  /** Takes photo sets out of "To send" for everyone without sending them. */
+  async markDriverUpdatesRead(updates: Array<{ trip_id: string; update_key: string }>): Promise<number> {
+    const { data } = await api.post('/operator-inbox/driver-updates/mark-read', { updates });
+    return Number(data.data?.marked ?? 0);
   },
 
   /** The chosen photos combined into one picture (POST /operator-inbox/driver-updates/collage) — its /uploads URL. */

@@ -4,12 +4,13 @@
  * customer hasn't had yet come first under "To send"; Send opens the trip
  * with its share sheet on that set, so the WhatsApp message and the "sent"
  * record are the same as from the trip page. Sets already passed on sit
- * under "Sent". Tapping a card or a photo opens the photos themselves
- * (each marked sent or not) with Send and Open trip.
+ * under "Sent". "Mark read" takes a set out of "To send" for everyone without
+ * sending it (new photos in the set bring it back). Tapping a card or a photo
+ * opens the photos themselves (each marked sent or not) with Send and Open trip.
  */
 import React, { useMemo } from 'react';
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Image, StyleSheet } from 'react-native';
-import { CheckCheck, ImageOff, MessageCircle, Play, TriangleAlert, Camera } from 'lucide-react-native';
+import { Check, CheckCheck, ImageOff, MessageCircle, Play, TriangleAlert, Camera } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import { needsSending, type DriverUpdate, type LiveMediaItem } from '../../../lib/operator';
@@ -30,7 +31,7 @@ function countLabel(list: LiveMediaItem[]): string {
   return `${list.length} items`;
 }
 
-export function DriversTab({ updates, loading, now, refreshing, onRefresh, onSend, onView }: {
+export function DriversTab({ updates, loading, now, refreshing, onRefresh, onSend, onView, onMarkRead }: {
   updates: DriverUpdate[];
   loading: boolean;
   now: number;
@@ -40,6 +41,8 @@ export function DriversTab({ updates, loading, now, refreshing, onRefresh, onSen
   onSend: (u: DriverUpdate) => void;
   /** Opens the set's photos full screen, at `index`. */
   onView: (u: DriverUpdate, index: number) => void;
+  /** Takes these sets out of "To send" without sending them. */
+  onMarkRead: (us: DriverUpdate[]) => void;
 }) {
   const { toSend, sent } = useMemo(() => {
     const newest = [...updates].sort((a, b) => new Date(b.latest_at).getTime() - new Date(a.latest_at).getTime());
@@ -70,16 +73,24 @@ export function DriversTab({ updates, loading, now, refreshing, onRefresh, onSen
             </View>
           ) : (
             <View>
-              <SectionLabel title="To send" count={toSend.length} />
+              <SectionLabel
+                title="To send"
+                count={toSend.length}
+                right={toSend.length > 1 ? (
+                  <TouchableOpacity onPress={() => { tap(); onMarkRead(toSend); }} hitSlop={8} accessibilityRole="button">
+                    <Text style={s.markAll}>Mark all read</Text>
+                  </TouchableOpacity>
+                ) : null}
+              />
               <View style={{ gap: 10 }}>
-                {toSend.map((u) => <UpdateCard key={`${u.trip.id}:${u.key}`} u={u} when={ago(u.latest_at)} onSend={onSend} onView={onView} />)}
+                {toSend.map((u) => <UpdateCard key={`${u.trip.id}:${u.key}`} u={u} when={ago(u.latest_at)} onSend={onSend} onView={onView} onMarkRead={onMarkRead} />)}
               </View>
             </View>
           )}
 
           {sent.length ? (
             <View>
-              <SectionLabel title="Sent" count={sent.length} />
+              <SectionLabel title="Sent or read" count={sent.length} />
               <View style={p.card}>
                 {sent.map((u, i) => <SentRow key={`${u.trip.id}:${u.key}`} u={u} first={i === 0} when={ago(u.latest_at)} onView={onView} />)}
               </View>
@@ -105,7 +116,9 @@ function Thumb({ m, size, more }: { m: LiveMediaItem; size: number; more?: numbe
   );
 }
 
-function UpdateCard({ u, when, onSend, onView }: { u: DriverUpdate; when: string; onSend: (u: DriverUpdate) => void; onView: (u: DriverUpdate, index: number) => void }) {
+function UpdateCard({ u, when, onSend, onView, onMarkRead }: {
+  u: DriverUpdate; when: string; onSend: (u: DriverUpdate) => void; onView: (u: DriverUpdate, index: number) => void; onMarkRead: (us: DriverUpdate[]) => void;
+}) {
   const unsent = u.items.filter((m) => !u.sent_ids.includes(m.id));
   const shown = unsent.slice(0, THUMBS);
   const extra = unsent.length - shown.length;
@@ -144,6 +157,10 @@ function UpdateCard({ u, when, onSend, onView }: { u: DriverUpdate; when: string
           <Text style={s.count}>{countLabel(unsent)} new{partSent ? ` · ${u.sent_ids.length} sent before` : ''}</Text>
           {crew ? <Text style={s.meta} numberOfLines={1}>{crew}</Text> : null}
         </View>
+        <TouchableOpacity style={s.read} onPress={() => { tap(); onMarkRead([u]); }} hitSlop={6} accessibilityLabel="Mark as read without sending">
+          <Check size={15} color={INK} strokeWidth={2.4} />
+          <Text style={s.readText}>Mark read</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={s.send} onPress={() => { tap(); onSend(u); }} hitSlop={6} accessibilityLabel={`Send to ${to}`}>
           <MessageCircle size={15} color={Colors.white} strokeWidth={2.4} />
           <Text style={s.sendText}>Send</Text>
@@ -156,6 +173,8 @@ function UpdateCard({ u, when, onSend, onView }: { u: DriverUpdate; when: string
 function SentRow({ u, first, when, onView }: { u: DriverUpdate; first: boolean; when: string; onView: (u: DriverUpdate, index: number) => void }) {
   const last = [...u.shares].sort((a, b) => new Date(b.shared_at).getTime() - new Date(a.shared_at).getTime())[0];
   const cover = u.items[0];
+  // Marked read without sending: say so, never "sent to the customer".
+  const readOnly = !last && !!u.marked_read;
   return (
     <TouchableOpacity style={[s.row, !first && p.rowBorder]} onPress={() => { tap(); onView(u, 0); }} activeOpacity={0.6}
       accessibilityRole="button" accessibilityLabel={`${STAGE_TITLE[u.stage] ?? 'Photos'}, ${u.trip.ref_id ?? ''}, sent`}>
@@ -163,11 +182,13 @@ function SentRow({ u, first, when, onView }: { u: DriverUpdate; first: boolean; 
       <View style={{ flex: 1, gap: 1 }}>
         <Text style={s.rowTitle} numberOfLines={1}>{STAGE_TITLE[u.stage] ?? 'Photos'} · {u.trip.ref_id ?? ''}</Text>
         <Text style={s.meta} numberOfLines={1}>
-          {countLabel(u.items)}{last ? ` · to ${RECIPIENT[last.recipient] ?? 'customer'}${last.shared_by ? ` by ${niceName(last.shared_by)}` : ''}` : ''}
+          {countLabel(u.items)}
+          {last ? ` · to ${RECIPIENT[last.recipient] ?? 'customer'}${last.shared_by ? ` by ${niceName(last.shared_by)}` : ''}` : ''}
+          {readOnly ? ` · read, not sent${u.marked_read?.by ? ` · ${niceName(u.marked_read.by)}` : ''}` : ''}
         </Text>
       </View>
       <View style={{ alignItems: 'flex-end', gap: 2 }}>
-        <CheckCheck size={16} color={WA} strokeWidth={2.4} />
+        {readOnly ? <Check size={16} color={MUTED} strokeWidth={2.4} /> : <CheckCheck size={16} color={WA} strokeWidth={2.4} />}
         <Text style={s.when}>{when}</Text>
       </View>
     </TouchableOpacity>
@@ -194,6 +215,9 @@ const s = StyleSheet.create({
   count: { fontSize: 13, fontWeight: '600', color: INK },
   send: { height: 36, paddingHorizontal: 16, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: WA },
   sendText: { fontSize: 14, fontWeight: '700', color: Colors.white },
+  read: { height: 36, paddingHorizontal: 12, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#F4F4F5' },
+  readText: { fontSize: 13, fontWeight: '700', color: INK },
+  markAll: { fontSize: 13, fontWeight: '700', color: '#FA634E' },
 
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 12, borderColor: LINE },
   rowTitle: { fontSize: 14, fontWeight: '600', color: INK },
