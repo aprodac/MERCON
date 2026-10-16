@@ -2,8 +2,10 @@
  * Who to offer on step 3, and why — the web wizard's rules
  * (useCreateTripForm driverOptions / vehicleOptions):
  *  - drivers keep the server ranking's order and groups (rankDrivers), with its
- *    "why" chips; only "can't take this trip" (clash, rest) blocks a driver.
- *    Still running another trip only warns (owner decision 2026-10-03).
+ *    "why" chips; only a clash ("can't take this trip") blocks a driver.
+ *    Too little rest asks "are you sure?" and can be booked anyway (TestFlight
+ *    feedback 2026-10-16); still running another trip only warns (owner
+ *    decision 2026-10-03).
  *  - trucks follow the class compatibility rules (preferred / allowed); a truck
  *    on another trip warns, one in the workshop or out of service is blocked.
  */
@@ -21,6 +23,8 @@ export interface DriverChoice {
   group: DriverGroup;
   groupLabel: string;
   blocked: boolean;
+  /** Unavailable only for too little rest — pickable after a confirm. */
+  resting: boolean;
   /** "Free", "On a trip", "Booked", "Resting", "Unavailable". */
   statusLabel: string;
   chips: FactChip[];
@@ -69,12 +73,14 @@ export function driverChoices(
       }
       (rec?.reasons ?? []).forEach((r) => chips.push({ label: r.text, tone: toneOf(r.tone) }));
       const reason = rec?.unavailabilityReason || '';
+      const resting = unavailable && reason.startsWith('Only');
       return {
         driver: d,
         group,
         groupLabel: group === 'best' ? bestLabel : group === 'unavailable' ? unavailableLabel : DRIVER_GROUP_LABELS[group],
-        blocked: unavailable && d.id !== opts.keepId,
-        statusLabel: unavailable ? (reason.startsWith('Only') ? 'Resting' : reason.startsWith('Already') ? 'Booked' : 'Unavailable') : openTrips.length ? 'On a trip' : 'Free',
+        blocked: unavailable && !resting && d.id !== opts.keepId,
+        resting,
+        statusLabel: unavailable ? (resting ? 'Resting' : reason.startsWith('Already') ? 'Booked' : 'Unavailable') : openTrips.length ? 'On a trip' : 'Free',
         chips,
         rec,
       };
@@ -84,7 +90,7 @@ export function driverChoices(
 
 /** Up to three drivers to offer straight away: the best matches, else the first free ranked ones. */
 export function topPicks(choices: DriverChoice[]): { picks: DriverChoice[]; best: boolean } {
-  const ranked = choices.filter((c) => c.rec && !c.blocked);
+  const ranked = choices.filter((c) => c.rec && !c.blocked && !c.resting);
   const best = ranked.filter((c) => c.group === 'best');
   return best.length ? { picks: best.slice(0, 3), best: true } : { picks: ranked.slice(0, 3), best: false };
 }
