@@ -1,6 +1,6 @@
 /** Step 3 — who: own driver and truck (or several, for a monthly contract), or a 3PL partner. */
 import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, TextInput, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, TextInput, StyleSheet, ScrollView, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { CalendarDays, ChevronRight, Clock3, Handshake, SlidersHorizontal, Sparkles, Truck, User, Users, X } from 'lucide-react-native';
 import { Colors, Spacing } from '@mercon/mobile-shared/theme/tokens';
@@ -102,6 +102,23 @@ export function StepAssign({ form, showErrors }: { form: CreateTripForm; showErr
   const onPickDriver = (id: string) => {
     const t = driverTarget;
     if (!t) return;
+    // Too little rest: the operator may still book them, once they've confirmed.
+    const choice = choices.find((c) => c.driver.id === id);
+    if (choice?.resting && id !== form.driverId) {
+      Alert.alert(
+        'Not enough rest',
+        `${fullName(choice.driver) || 'This driver'} hasn't had enough rest before this trip. ${choice.rec?.unavailabilityReason ?? ''}\n\nAssign anyway?`.trim(),
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Assign anyway', style: 'destructive', onPress: () => applyDriver(t, id) },
+        ],
+      );
+      return;
+    }
+    applyDriver(t, id);
+  };
+
+  const applyDriver = (t: NonNullable<typeof driverTarget>, id: string) => {
     if (t.kind === 'master') form.selectDriver(id);
     else if (t.kind === 'co') form.setCoDriverId(id);
     else if (t.kind === 'rotation') {
