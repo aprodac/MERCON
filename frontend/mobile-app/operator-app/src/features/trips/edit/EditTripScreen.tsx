@@ -114,6 +114,15 @@ const ask = (title: string, message: string, yes: string, no: string) =>
 const isoMs = (w: WhenValue, tz: string) => (w.date && w.time ? Date.parse(zonedWallTimeToUtcIso(w.date, w.time, tz)) : null);
 const shiftIso = (iso: string | null, deltaMs: number) => (iso && deltaMs ? new Date(Date.parse(iso) + deltaMs).toISOString() : iso);
 
+/** "8 h 30 m" for a transit time in minutes. */
+const transitText = (min: number) => {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return h && m ? `${h} h ${m} m` : h ? `${h} h` : `${m} m`;
+};
+/** Transit times offered: every 30 minutes up to two days. */
+const TRANSIT_CHOICES = Array.from({ length: 96 }, (_, i) => (i + 1) * 30);
+
 function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; onDone: () => void }) {
   const queryClient = useQueryClient();
   const status = trip.status as string;
@@ -165,6 +174,11 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
 
   const [locations, setLocations] = useState<OperatorLocation[]>([]);
   const [when, setWhen] = useState<'start' | 'end' | null>(null);
+  // Transit time = delivery − pickup; picking one moves the delivery (TestFlight feedback).
+  const [transitPicker, setTransitPicker] = useState(false);
+  const startMs = isoMs(start, tz);
+  const endMs = isoMs(end, tz);
+  const transitMin = startMs != null && endMs != null && endMs > startMs ? Math.round((endMs - startMs) / 60000) : null;
   const [stopWhen, setStopWhen] = useState<string | null>(null);
   const [stopPicker, setStopPicker] = useState<string | null>(null);
   const [errors, setErrors] = useState<Errors>({});
@@ -379,6 +393,13 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
               error={!!errors.schedule}
               onPress={() => routeOpen && setWhen('end')}
             />
+            <ValueTile
+              style={(!routeOpen || startMs == null) && s.off}
+              caption="Transit time"
+              value={transitMin != null ? transitText(transitMin) : undefined}
+              placeholder={startMs == null ? 'Set the pickup first' : 'Not set'}
+              onPress={() => routeOpen && startMs != null && setTransitPicker(true)}
+            />
           </View>
           {errors.schedule ? <Text style={s.error}>{errors.schedule}</Text> : null}
           {endFollowed && !endTouched ? <Text style={s.hint}>Delivery moved with the pickup, so the trip keeps its length. Tap Delivery to change it.</Text> : null}
@@ -529,6 +550,24 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
         tz={tz}
         onDone={(v) => { setEnd(v); setEndTouched(true); clear('schedule'); setWhen(null); }}
         onClose={() => setWhen(null)}
+      />
+      <PickerSheet
+        visible={transitPicker}
+        title="Transit time"
+        options={TRANSIT_CHOICES.map((m) => ({
+          value: String(m),
+          label: transitText(m),
+          sub: startMs != null ? `Delivery ${whenText(wallOf(new Date(startMs + m * 60000).toISOString(), tz))}` : undefined,
+        }))}
+        value={transitMin != null ? String(Math.round(transitMin / 30) * 30) : null}
+        onSelect={(value) => {
+          if (startMs == null) return;
+          setEnd(wallOf(new Date(startMs + Number(value) * 60000).toISOString(), tz));
+          setEndTouched(true);
+          clear('schedule');
+        }}
+        onClose={() => setTransitPicker(false)}
+        searchPlaceholder="Hours, e.g. 8"
       />
       <PickerSheet
         visible={!!stopPicker}
