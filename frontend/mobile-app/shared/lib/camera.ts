@@ -95,6 +95,33 @@ async function compressPhoto(uri: string, location?: Promise<LocationTag | null>
   return { uri: result.uri, mimeType: 'image/jpeg', fileName: 'photo.jpg', location: loc };
 }
 
+/**
+ * Saved draft photos whose local file still exists (Android may clear the app
+ * cache between sessions). Server URLs are kept as they are; entries without
+ * a uri are dropped. If the file check itself fails, everything with a uri is kept.
+ */
+export async function keepExistingPhotos<T extends { uri?: string | null }>(photos: (T | null | undefined)[]): Promise<T[]> {
+  const withUri = photos.filter((p): p is T => !!p?.uri);
+  let FileSystem: typeof import('expo-file-system/legacy') | null = null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    FileSystem = require('expo-file-system/legacy');
+  } catch {
+    return withUri;
+  }
+  const checks = await Promise.all(
+    withUri.map(async (p) => {
+      if (!p.uri!.startsWith('file:')) return true;
+      try {
+        return (await FileSystem!.getInfoAsync(p.uri!)).exists;
+      } catch {
+        return true;
+      }
+    }),
+  );
+  return withUri.filter((_, i) => checks[i]);
+}
+
 /** Compress + geotag a photo taken by the in-app camera. */
 export function preparePhoto(uri: string, location?: Promise<LocationTag | null>): Promise<CapturedPhoto> {
   return compressPhoto(uri, location);
@@ -121,6 +148,23 @@ export async function capturePhoto(): Promise<CapturedPhoto | null> {
   });
 
   return toPhoto(result, location);
+}
+
+/**
+ * Android can close MERCON while the phone's camera app is open (low-memory
+ * phones). The photo isn't lost: it is handed back on the next start. Returns
+ * it (compressed, geotagged now) or null.
+ */
+export async function recoverPendingPhoto(): Promise<CapturedPhoto | null> {
+  try {
+    const pending = await ImagePicker.getPendingResultAsync();
+    const result = Array.isArray(pending) ? pending[0] : pending;
+    if (!result || 'code' in result) return null;
+    if (result.assets?.[0]?.type === 'video') return null;
+    return await toPhoto(result, getDeviceLocationTag());
+  } catch {
+    return null;
+  }
 }
 
 export async function pickFromGallery(): Promise<CapturedPhoto | null> {

@@ -233,6 +233,8 @@ const HomeScreen = () => {
   interface WorkflowStateInfo {
     badgeLabel: string;
     btnLabel: string;
+    /** Urdu button text when the per-workflow-state one doesn't fit this card. */
+    btnLabelUr?: string;
     onPress: () => void;
   }
 
@@ -286,7 +288,11 @@ const HomeScreen = () => {
         return {
           badgeLabel: 'Round 1 of 2 completed',
           btnLabel: 'Start Round 2 of 2',
-          onPress: () => router.push('/trip/pickup'),
+          // The server is already in RETURN_LOADING here, whose Urdu label reads
+          // "complete return loading" — wrong while the driver is on a break.
+          btnLabelUr: 'راؤنڈ 2 از 2 شروع کریں',
+          // Round 1 page (times, break, Start Round 2); it forwards to loading once round 2 has started.
+          onPress: () => router.push('/trip/round-done' as any),
         };
       }
       if (ws === 'ARRIVED_AT_PICKUP' || ws === 'LOADING') {
@@ -695,7 +701,7 @@ const HomeScreen = () => {
                       ) : (
                         <View style={styles.ctaContentRow}>
                           <BilingualText
-                            ur={WORKFLOW_URDU_LABEL[displayTrip.driver_workflow_state || 'ASSIGNED'] || 'ٹرپ شروع کریں'}
+                            ur={info.btnLabelUr ?? WORKFLOW_URDU_LABEL[displayTrip.driver_workflow_state || 'ASSIGNED'] ?? 'ٹرپ شروع کریں'}
                             en={info.btnLabel || 'Start Trip'}
                             align="center"
                             primaryStyle={styles.ctaUrduPrimary}
