@@ -8,6 +8,7 @@ import { X, Share2, Image as ImageIcon, FileText } from 'lucide-react-native';
 import { GoogleMapsGeotagPreview } from '../components/GoogleMapsGeotagPreview';
 import { generateGeotaggedEvidenceImage } from '../utils/geotagImageGenerator';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
+import { inCompanyZone } from '@mercon/mobile-shared/lib/dates';
 
 export interface CargoPhotoPreviewScreenProps {
   photoUri?: string;
@@ -163,8 +164,8 @@ export const CargoPhotoPreviewScreen: React.FC<CargoPhotoPreviewScreenProps> = (
     try {
       setSharing(true);
       const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
-      const dateStr = new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
-      const timeStr = new Date(timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+      const dateStr = new Date(timestamp).toLocaleDateString('en-US', inCompanyZone({ month: 'short', day: '2-digit', year: 'numeric' }));
+      const timeStr = new Date(timestamp).toLocaleTimeString('en-US', inCompanyZone({ hour: '2-digit', minute: '2-digit', hour12: true }));
 
       const shareMessage = 
         `📷 MERCON CARGO PROOF OF EVIDENCE\n\n` +

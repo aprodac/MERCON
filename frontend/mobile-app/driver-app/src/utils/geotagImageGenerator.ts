@@ -3,6 +3,7 @@
  * containing the original cargo photo with the official MERCON Geotag Panel stamped at the bottom.
  * Works seamlessly across Web, iOS, Android, and Expo Go.
  */
+import { inCompanyZone } from '@mercon/mobile-shared/lib/dates';
 
 export interface GeotagData {
   photoUri: string;
@@ -20,8 +21,8 @@ export async function generateGeotaggedEvidenceImage(data: GeotagData): Promise<
   } = data;
 
   const dateObj = new Date(timestamp);
-  const formattedDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
-  const formattedTime = dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const formattedDate = dateObj.toLocaleDateString('en-US', inCompanyZone({ month: 'short', day: '2-digit', year: 'numeric' }));
+  const formattedTime = dateObj.toLocaleTimeString('en-US', inCompanyZone({ hour: '2-digit', minute: '2-digit', hour12: true }));
   const coordsStr = `${latitude.toFixed(4)}°N · ${longitude.toFixed(4)}°E`;
   const cleanAddress = fullAddress.replace(/\n/g, ' ');
 
