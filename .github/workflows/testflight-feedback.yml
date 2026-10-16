@@ -21,6 +21,10 @@ on:
         description: 'How many days back'
         type: number
         default: 30
+      print_images:
+        description: 'Also print the screenshots (shrunk, base64) into the log — for readers that cannot download artifacts'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -66,6 +70,23 @@ jobs:
         run: >
           node .github/scripts/testflight-feedback.mjs
           "${{ matrix.bundle_id }}" "${{ inputs.days }}" feedback-out
+
+      # One "IMG <file> <part>/<parts> <base64>" line per 8000 characters, so a
+      # session that can read job logs but not artifact storage can rebuild them.
+      - name: Print screenshots into the log
+        if: inputs.print_images
+        run: |
+          shopt -s nullglob
+          python3 -m pip install --quiet pillow
+          for f in feedback-out/screenshots/*.png; do
+            name=$(basename "$f" .png)
+            python3 -c 'import sys; from PIL import Image; im = Image.open(sys.argv[1]).convert("RGB"); im.thumbnail((700, 700)); im.save(sys.argv[2], quality=55)' "$f" "/tmp/$name.jpg"
+            b64=$(base64 -w0 "/tmp/$name.jpg")
+            parts=$(( (${#b64} + 7999) / 8000 ))
+            for ((i = 0; i < parts; i++)); do
+              echo "IMG $name.jpg $((i + 1))/$parts ${b64:$((i * 8000)):8000}"
+            done
+          done
 
       - uses: actions/upload-artifact@v4
         if: always()

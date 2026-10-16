@@ -696,7 +696,9 @@ const HomeScreen = () => {
                       ) : (
                         <View style={styles.ctaContentRow}>
                           <BilingualText
-                            ur={WORKFLOW_URDU_LABEL[displayTrip.driver_workflow_state || 'ASSIGNED'] || 'ٹرپ شروع کریں'}
+                            // Same state as the button's action: after the office undoes a step the stored
+                            // state and the stop times can differ, and the label said "Start" while the tap did more.
+                            ur={WORKFLOW_URDU_LABEL[getEffectiveWorkflowState(displayTrip)] || 'ٹرپ شروع کریں'}
                             en={info.btnLabel || 'Start Trip'}
                             align="center"
                             primaryStyle={styles.ctaUrduPrimary}

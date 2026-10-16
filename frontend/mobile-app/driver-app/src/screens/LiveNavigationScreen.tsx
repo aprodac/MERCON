@@ -44,6 +44,12 @@ const LiveNavigationScreen = () => {
   const insets = useSafeAreaInsets();
   const { t, language, tr } = useLanguage();
   const { trip, loading, error, refetch } = useCurrentTrip();
+  // Open on the trip as the server has it now: a copy cached before the office
+  // undid a step sent the driver to the delivery of a trip taken back to "Not started".
+  useEffect(() => {
+    void refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [position, setPosition] = useState<{ lat: number; lng: number; heading?: number | null; speedKph?: number | null } | null>(null);
   // Map camera: follow the truck in a tilted driver view by default; night map after dark.
   const [follow, setFollow] = useState(true);
