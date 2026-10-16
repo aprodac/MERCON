@@ -105,6 +105,27 @@ export function isRouteEditable(status?: string | null): boolean {
   return ROUTE_EDITABLE_STATUSES.includes(status);
 }
 
+/**
+ * Delayed only because it is late to start: nothing reached, never left, the
+ * driver hasn't tapped Start. Such a trip is still fully editable (TestFlight
+ * feedback: a late trip's Edit page said "on the road" and locked its times).
+ */
+export function isDelayedNotStarted(trip?: {
+  status?: string | null;
+  actual_start?: unknown;
+  driver_workflow_state?: string | null;
+  stops?: Array<{ actual_arrival?: unknown; actual_departure?: unknown }> | null;
+} | null): boolean {
+  if (!trip || trip.status !== 'Delayed' || trip.actual_start) return false;
+  if (trip.driver_workflow_state && trip.driver_workflow_state !== 'ASSIGNED') return false;
+  return !(trip.stops ?? []).some((s) => isStopReached(s));
+}
+
+/** Times and every stop can change: Draft / Scheduled, or late but not started. */
+export function isTripRouteEditable(trip?: Parameters<typeof isDelayedNotStarted>[0]): boolean {
+  return isRouteEditable(trip?.status) || isDelayedNotStarted(trip);
+}
+
 export function isRouteLocked(status?: string | null): boolean {
   if (!status) return false;
   return !isRouteEditable(status);

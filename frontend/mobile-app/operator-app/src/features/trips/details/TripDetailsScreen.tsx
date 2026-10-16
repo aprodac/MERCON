@@ -226,18 +226,38 @@ export default function TripDetailsScreen() {
     }
   };
 
-  const applyChange = async (value: string) => {
+  const applyChange = async (value: string, withDriver?: string) => {
     if (!picker) return;
     setBusy(true);
     try {
-      if (picker.kind === 'driver') await operatorService.replaceDriver(trip.id, value);
+      // A trip booked with "Assign later" has no driver to replace: assign one
+      // (replace-driver answered "This trip has no driver yet" — TestFlight feedback).
+      if (picker.kind === 'driver') {
+        if (trip.driver) await operatorService.replaceDriver(trip.id, value);
+        else await operatorService.assignTrip(trip.id, { driver_id: value });
+      } else if (withDriver) await operatorService.assignTrip(trip.id, { vehicle_id: value, driver_id: withDriver });
       else await operatorService.replaceVehicle(trip.id, value);
       reload();
     } catch (e) {
-      Alert.alert(picker.kind === 'driver' ? 'Could not change the driver' : 'Could not change the truck', getApiErrorMessage(e));
+      Alert.alert(picker.kind === 'driver' ? 'Could not assign the driver' : 'Could not assign the truck', getApiErrorMessage(e));
     } finally {
       setBusy(false);
     }
+  };
+
+  /** A truck picked for a trip with no driver: offer the truck's own driver too. */
+  const pickValue = (value: string) => {
+    const truck = picker?.kind === 'truck' ? picker.vehicles?.find((v) => v.id === value) : null;
+    const usual = truck?.assignedDriver;
+    if (picker?.kind === 'truck' && !trip.driver && !trip.is_third_party && usual?.id) {
+      const name = niceName(`${usual.first_name} ${usual.last_name}`);
+      Alert.alert('Add the driver too?', `${name} drives ${truck!.plate_number}. Assign them to this trip as well?`, [
+        { text: 'Truck only', onPress: () => applyChange(value) },
+        { text: `Add ${name}`, onPress: () => applyChange(value, usual.id) },
+      ]);
+      return;
+    }
+    applyChange(value);
   };
 
   const upload = async (kind: TripDocKind) => {
@@ -550,14 +570,14 @@ export default function TripDetailsScreen() {
       <ChargesSheet visible={sheet === 'charges'} trip={trip} onClose={() => setSheet(null)} onSaved={reload} />
       <PickerSheet
         visible={!!picker}
-        title={picker?.kind === 'driver' ? 'Change driver' : 'Change truck'}
+        title={picker?.kind === 'driver' ? (trip.driver ? 'Change driver' : 'Assign driver') : (trip.vehicle ? 'Change truck' : 'Assign truck')}
         options={
           picker?.kind === 'driver'
             ? (picker.drivers ?? []).map((d) => ({ value: d.id, label: niceName(`${d.first_name} ${d.last_name}`), sub: [d.ref_id, d.phone_primary].filter(Boolean).join(' · ') }))
             : (picker?.vehicles ?? []).map((v) => ({ value: v.id, label: v.plate_number, sub: [v.capacity_kg ? `${Math.round(v.capacity_kg / 1000)} ton` : null, v.asset_type].filter(Boolean).join(' · ') }))
         }
         value={picker?.kind === 'driver' ? trip.driver?.id : trip.vehicle?.id}
-        onSelect={(value) => applyChange(value)}
+        onSelect={pickValue}
         onClose={() => setPicker(null)}
         searchPlaceholder={picker?.kind === 'driver' ? 'Search drivers' : 'Search trucks'}
         emptyText={picker?.kind === 'driver' ? 'No drivers available right now' : 'No trucks available right now'}
