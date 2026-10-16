@@ -22,6 +22,11 @@ const MAX_UPDATES = 80;
 
 export type ShareRecipient = 'customer_contact' | 'customer_group' | 'internal' | 'other';
 export type ShareChannel = 'link' | 'whatsapp_api';
+/**
+ * A share-log row with this channel is not a forward: an operator marked the
+ * set as read without sending it (TestFlight feedback "Add mark as read").
+ */
+export const MARKED_READ_CHANNEL = 'marked_read';
 
 export interface InboxCustomer {
   name: string;
@@ -58,6 +63,8 @@ export interface DriverUpdate {
   sent_ids: string[];
   /** Items not included in any forward yet. */
   unsent_count: number;
+  /** Marked as read without sending — every item in the set at the time (new photos bring it back). */
+  marked_read: { by: string | null; at: string } | null;
 }
 
 interface TripRowForUpdates {
@@ -111,7 +118,8 @@ export function routeOf(stops: TripRowForUpdates['stops']): string {
  * one photo of a set reaches the customer; the rest are kept (and shown as
  * not sent on the trip) without asking again.
  */
-export const needsSending = (u: Pick<DriverUpdate, 'items' | 'sent_ids'>): boolean => u.items.length > 0 && u.sent_ids.length === 0;
+export const needsSending = (u: Pick<DriverUpdate, 'items' | 'sent_ids'> & { marked_read?: DriverUpdate['marked_read'] }): boolean =>
+  u.items.length > 0 && u.sent_ids.length === 0 && !u.marked_read;
 
 /**
  * Turns trips + their recent uploads + the share log into one row per batch
@@ -161,8 +169,12 @@ export function buildDriverUpdates(
       for (const it of b.items) byStage.set(it.stage, [...(byStage.get(it.stage) ?? []), it]);
       for (const [stage, items] of byStage) {
         const key = `${b.stopId ?? 'trip'}:${stage}`;
-        const rows = sharesByKey.get(`${t.id}|${key}`) ?? [];
+        const all = sharesByKey.get(`${t.id}|${key}`) ?? [];
+        const rows = all.filter((r) => r.channel !== MARKED_READ_CHANNEL);
         const sent = new Set(rows.flatMap((r) => r.media_ids));
+        const readMark = all
+          .filter((r) => r.channel === MARKED_READ_CHANNEL && items.every((i) => r.media_ids.includes(i.id)))
+          .sort((a, z) => new Date(z.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
         const s = b.stopId ? stopById.get(b.stopId) : undefined;
         out.push({
           ...base,
@@ -184,6 +196,9 @@ export function buildDriverUpdates(
             })),
           sent_ids: items.filter((i) => sent.has(i.id)).map((i) => i.id),
           unsent_count: items.filter((i) => !sent.has(i.id)).length,
+          marked_read: readMark
+            ? { by: readMark.sharedBy?.name || readMark.sharedBy?.username || null, at: new Date(readMark.createdAt).toISOString() }
+            : null,
         });
       }
     }

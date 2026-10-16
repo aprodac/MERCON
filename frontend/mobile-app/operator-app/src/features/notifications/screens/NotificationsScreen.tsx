@@ -12,6 +12,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Toast } from '@mercon/mobile-shared/components/Toast';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
@@ -29,7 +30,7 @@ import { DriversTab } from '../components/DriversTab';
 import { MediaViewer } from '../../trips/details/components/MediaViewer';
 import { ago, sendStatus, updateTitle } from '../../trips/details/tripDetailsModel';
 import { niceName } from '../../trips/create/components/ui';
-import { needsSending, type DriverUpdate } from '../../../lib/operator';
+import { needsSending, operatorService, type DriverUpdate } from '../../../lib/operator';
 import { BG, INK, LINE, MUTED, tap } from '../components/parts';
 
 type Tab = 'drivers' | 'todo' | 'activity';
@@ -80,6 +81,18 @@ export default function NotificationsScreen() {
     if (target) router.push(target);
   };
 
+  // "Mark read": out of "To send" for every operator, nothing is sent.
+  const queryClient = useQueryClient();
+  const markUpdatesRead = async (us: DriverUpdate[]) => {
+    try {
+      const n = await operatorService.markDriverUpdatesRead(us.map((u) => ({ trip_id: u.trip.id, update_key: u.key })));
+      await queryClient.invalidateQueries({ queryKey: ['dashboard', 'actions', 'driver-updates'] });
+      setToast({ message: n === 1 ? 'Marked as read' : `${n} marked as read`, type: 'success' });
+    } catch (e) {
+      setToast({ message: getApiErrorMessage(e), type: 'error' });
+    }
+  };
+
   const urgent = inbox.counts.now;
   const toSend = inbox.updates.filter(needsSending).length;
   const tabs: { value: Tab; label: string; count: number; hot: boolean }[] = [
@@ -126,6 +139,7 @@ export default function NotificationsScreen() {
             onRefresh={refresh}
             onSend={(u) => openTrip(u.trip.id, { share: 'update', update: u.key })}
             onView={(update, index) => setViewing({ update, index })}
+            onMarkRead={markUpdatesRead}
           />
         ) : tab === 'todo' ? (
           <TodoTab
@@ -160,6 +174,7 @@ export default function NotificationsScreen() {
         items={viewerItems}
         startIndex={viewing?.index ?? 0}
         title={viewed ? `${updateTitle(viewed)} · ${viewed.trip.ref_id ?? ''}` : ''}
+        context={viewed ? [viewed.trip.route, viewed.driver ? niceName(viewed.driver.name) : null, viewed.vehicle_plate].filter(Boolean).join(' · ') : null}
         status={viewed ? sendStatus(viewed) : undefined}
         onClose={() => setViewing(null)}
         onSend={viewed ? () => leaveViewer(() => openTrip(viewed.trip.id, { share: 'update', update: viewed.key })) : undefined}

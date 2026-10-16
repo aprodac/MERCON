@@ -28,10 +28,13 @@ export interface DriverUpdate {
   shares: { id: string; recipient: ShareRecipient; channel: ShareChannel; shared_by: string | null; shared_at: string; count: number }[];
   sent_ids: string[];
   unsent_count: number;
+  /** An operator marked the set as read without sending it (operator app). */
+  marked_read?: { by: string | null; at: string } | null;
 }
 
 /** A photo set waits to be forwarded only while none of it has gone out — one photo of a set is usually enough. */
-export const needsSending = (u: Pick<DriverUpdate, 'items' | 'sent_ids'>): boolean => u.items.length > 0 && u.sent_ids.length === 0;
+export const needsSending = (u: Pick<DriverUpdate, 'items' | 'sent_ids' | 'marked_read'>): boolean =>
+  u.items.length > 0 && u.sent_ids.length === 0 && !u.marked_read;
 
 export interface ExpiryItem {
   key: string;

@@ -5,8 +5,8 @@
  * time, rolls the hour / minute / second wheels to the screenshot's value and
  * hits "Next" to move on. An untouched time keeps the driver's tapped time.
  */
-import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, Alert, ScrollView } from 'react-native';
+import React, { useMemo, useRef, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Image, Alert, ScrollView, FlatList } from 'react-native';
 import { isoToWall, resolveStopTimes, type StopTimeRow } from '@mercon/shared-types';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
@@ -44,6 +44,9 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
   const [typed, setTyped] = useState<Record<string, Record<Field, string>>>({});
   const [shotIdx, setShotIdx] = useState(0);
   const [tall, setTall] = useState(false);
+  /** Width of the screenshot strip — one screenshot per page, swiped sideways. */
+  const [shotW, setShotW] = useState(0);
+  const shotList = useRef<FlatList<OperatorTripDocument>>(null);
   const [saving, setSaving] = useState(false);
   /** Which time the wheels are editing: index into stops × FIELDS. */
   const [active, setActive] = useState<number | null>(null);
@@ -114,17 +117,35 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
     <AppModal visible={visible} onClose={onClose} type="bottom-sheet" title={`Check times · ${trip.ref_id}`} maxHeight="94%">
       {shotUrl ? (
         <View style={{ gap: 6 }}>
-          <TouchableOpacity activeOpacity={0.9} onPress={() => { if (active !== null) { setActive(null); setTall(true); } else setTall((t) => !t); }}>
-            <Image source={{ uri: shotUrl }} style={[s.shot, tall && active === null && s.shotTall]} resizeMode="contain" />
-          </TouchableOpacity>
+          {/* Swipe sideways between the screenshots; tap one to enlarge it. */}
+          <View onLayout={(e) => setShotW(e.nativeEvent.layout.width)}>
+            {shotW > 0 ? (
+              <FlatList
+                ref={shotList}
+                data={shots}
+                keyExtractor={(d) => d.id}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                initialScrollIndex={Math.min(shotIdx, shots.length - 1)}
+                getItemLayout={(_, i) => ({ length: shotW, offset: shotW * i, index: i })}
+                onMomentumScrollEnd={(e) => setShotIdx(Math.round(e.nativeEvent.contentOffset.x / shotW))}
+                renderItem={({ item }) => (
+                  <TouchableOpacity style={{ width: shotW }} activeOpacity={0.9} onPress={() => { if (active !== null) { setActive(null); setTall(true); } else setTall((t) => !t); }}>
+                    <Image source={{ uri: resolveMediaUrl(item.file_url) ?? undefined }} style={[s.shot, tall && active === null && s.shotTall]} resizeMode="contain" />
+                  </TouchableOpacity>
+                )}
+              />
+            ) : null}
+          </View>
           <View style={s.shotBar}>
             <Text style={s.hint} numberOfLines={1}>
-              {shotStop >= 0 ? stopName(stops[shotStop], shotStop) : 'Trip'} · tap to {tall && active === null ? 'shrink' : 'enlarge'}
+              {shotStop >= 0 ? stopName(stops[shotStop], shotStop) : 'Trip'} · {shots.length > 1 ? 'swipe for the next · ' : ''}tap to {tall && active === null ? 'shrink' : 'enlarge'}
             </Text>
             {shots.length > 1 ? (
               <View style={s.pager}>
                 {shots.map((d, i) => (
-                  <TouchableOpacity key={d.id} onPress={() => setShotIdx(i)} hitSlop={6}>
+                  <TouchableOpacity key={d.id} onPress={() => { setShotIdx(i); shotList.current?.scrollToIndex({ index: i, animated: true }); }} hitSlop={6}>
                     <View style={[s.dot, i === shotIdx && s.dotOn, pendingTimeCheck(d) && i !== shotIdx && s.dotPending]} />
                   </TouchableOpacity>
                 ))}

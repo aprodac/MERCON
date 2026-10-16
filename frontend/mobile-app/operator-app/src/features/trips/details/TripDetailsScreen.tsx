@@ -520,6 +520,11 @@ export default function TripDetailsScreen() {
         items={viewer?.items ?? null}
         startIndex={viewer?.index ?? 0}
         title={viewer?.title ?? ''}
+        context={[
+          stops.length > 1 ? `${stopName(stops[0], 0)} → ${stopName(stops[stops.length - 1], stops.length - 1)}` : null,
+          trip.driver ? `${trip.driver.first_name} ${trip.driver.last_name}`.trim() : trip.third_party_driver_name ?? null,
+          trip.vehicle?.plate_number ?? trip.third_party_vehicle_plate ?? null,
+        ].filter(Boolean).join(' · ')}
         onClose={() => setViewer(null)}
         status={viewer?.update ? sendStatus(viewer.update) : undefined}
         onSend={viewer?.update ? () => { const u = viewer.update!; setViewer(null); setTimeout(() => setShare({ type: 'update', update: u }), 250); } : undefined}
