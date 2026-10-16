@@ -176,9 +176,13 @@ export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors
     >
       <View style={styles.chipRow}>
         <InfoChip label={lineTypeLabel(form.rateCategory)} />
-        <InfoChip label={form.vehicleType} />
+        {/* The truck type can still change with a quotation picked (TestFlight feedback); the price stays the quotation's. */}
+        <SelectChip label={form.vehicleType} onPress={() => setSheet('class')} />
         <InfoChip label={form.isMonthly ? 'Monthly' : 'Extra'} />
       </View>
+      {applied && quotationClass(applied) && quotationClass(applied) !== form.vehicleType ? (
+        <Text style={styles.note}>{`The quotation is for ${quotationClass(applied)}. Its price is kept — tap Edit price if the ${form.vehicleType} rate differs.`}</Text>
+      ) : null}
 
       {editingPrice ? (
         <>
