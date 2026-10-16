@@ -1239,6 +1239,12 @@ export const operatorService = {
     return data.data as StepBackResult;
   },
 
+  /** Move the trip on one step for the driver (POST /trips/:id/step-forward); not the step that finishes it. */
+  async stepForwardTrip(id: string): Promise<{ to: { index: number; label: string; next: string } }> {
+    const { data } = await api.post(`/trips/${id}/step-forward`);
+    return data.data;
+  },
+
   /** Bring back the photos a step-back removed. */
   async restoreStepBackPhotos(id: string, removedAt: string): Promise<number> {
     const { data } = await api.post(`/trips/${id}/step-back/restore-photos`, { removed_at: removedAt });
