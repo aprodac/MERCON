@@ -570,7 +570,9 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
       quotationMatchesRoute(card as any, routeLegsFromSlot(current, isRound), isRound) &&
       isRoundTripCategory(lineTypeOf(card)) === isRound &&
       billingOf(card) === billingType;
-    if (stillFits) return;
+    // Truck class changed to one this customer has its own quotation for on this route: use that one.
+    const classMoved = !!card && !!classOf(card) && classOf(card) !== vehicleType && routeMatches.some((q) => q.id !== card.id && classOf(q) === vehicleType);
+    if (stillFits && !classMoved) return;
 
     // Keeping the applied quotation in step with the route is this effect's job, so it sets state on purpose.
     // eslint-disable-next-line react-hooks/set-state-in-effect

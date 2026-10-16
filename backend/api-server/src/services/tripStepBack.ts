@@ -358,6 +358,65 @@ export async function stepBackTrip(tripId: string, toIndex: number, photoChoice:
   });
 }
 
+export interface StepForwardResult {
+  trip_id: string;
+  from: { index: number; label: string };
+  to: { index: number; label: string; next: string };
+  driver_id: string | null;
+}
+
+/**
+ * The office moves the trip on one step for the driver (TestFlight feedback:
+ * "operator can also undo the step of driver and also make it next step").
+ * The exact reverse of a step-back: stamps now on the stop times that step
+ * records, and sets the status and driver-app state it leaves behind. The
+ * step that finishes the trip is not done here — Confirm delivery does that,
+ * since it also makes the invoice.
+ */
+export async function stepForwardTrip(tripId: string, userId: string | null): Promise<StepForwardResult> {
+  return prisma.$transaction(async (tx) => {
+    const trip = await loadTrip(tx, tripId);
+    const steps = buildSteps(trip.stops);
+    const state = stepState(trip, steps);
+    let current = -1;
+    state.forEach((s, i) => { if (s.done) current = i; });
+
+    if (trip.status === TripStatus.Invoiced || trip.status === TripStatus.Cancelled || trip.status === TripStatus.Completed) {
+      throw new StepBackError(409, 'CANNOT_STEP_FORWARD', `The trip is ${trip.status === TripStatus.Cancelled ? 'cancelled' : 'already finished'}.`);
+    }
+    if (trip.status === TripStatus.Draft) throw new StepBackError(409, 'CANNOT_STEP_FORWARD', 'The trip is a draft — schedule it first.');
+    const next = steps[current + 1];
+    if (!next) throw new StepBackError(409, 'CANNOT_STEP_FORWARD', 'The trip has no further step.');
+    if (next.completes) throw new StepBackError(409, 'USE_CONFIRM_DELIVERY', 'The last step finishes the trip — use Confirm delivery.');
+
+    const now = new Date();
+    for (const m of next.marks) {
+      await tx.tripStop.updateMany({ where: { id: m.stopId, tripId, [m.field]: null }, data: { [m.field]: now } });
+    }
+    let status: TripStatus = next.status;
+    // Delayed is the office's flag on a running trip — keep it while still on the road.
+    if (trip.status === TripStatus.Delayed && (status === TripStatus.Loading || status === TripStatus.InTransit)) status = TripStatus.Delayed;
+    await tx.trip.update({
+      where: { id: tripId },
+      data: {
+        status,
+        driver_workflow_state: next.workflow,
+        // "Loaded and left" is when the trip started moving.
+        ...(next.key === 'pickup_left' && !trip.actual_start ? { actual_start: now } : {}),
+        updated_by: userId ?? undefined,
+      },
+    });
+    if (status !== TripStatus.Scheduled) await markOnTrip(tx, trip);
+
+    return {
+      trip_id: tripId,
+      from: { index: current, label: current >= 0 ? steps[current].label : 'Not started' },
+      to: { index: current + 1, label: next.label, next: next.next },
+      driver_id: trip.driverId,
+    };
+  });
+}
+
 /** Bring back the photos a step-back removed (tagged with its time). Returns how many came back. */
 export async function restoreStepBackPhotos(tripId: string, removedAt: string, userId: string | null): Promise<number> {
   const docs = await prisma.document.findMany({
