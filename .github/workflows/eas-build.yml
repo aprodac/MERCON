@@ -78,9 +78,7 @@ jobs:
       - name: Setup EAS
         uses: expo/expo-github-action@v8
         with:
-          # Pinned: builds failed to queue right after eas-cli 25.0.0 (2026-10-16).
-          # Bump deliberately after checking a build still queues.
-          eas-version: 24.14.0
+          eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
       # Mobile npm workspace root (both apps + shared code); lockfile lives here.
