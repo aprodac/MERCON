@@ -2345,6 +2345,8 @@ model DriverDevice {
   low_power_mode       Boolean?
   network_type         String? // wifi | cellular | none | unknown
   health_reported_at   DateTime? @db.Timestamptz
+  // The app's language (en | ur | ur-en) — pushes to this phone are written in it.
+  language             String?
 
   pushDeliveries PushDelivery[]
 
