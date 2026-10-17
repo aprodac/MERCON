@@ -21,13 +21,14 @@ import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import {
   operatorService, invalidateOperatorTrips,
-  type OperatorLocation, type OperatorTripDetail, type UpdateTripRouteInput,
+  type OperatorLocation, type OperatorTrip, type OperatorTripDetail, type UpdateTripRouteInput,
 } from '../../../lib/operator';
 import { Field, FormHeader, SaveBar, Section, formStyles } from '@/features/users/components/FormKit';
 import { PickerSheet, ValueTile, fmtDay, niceName, tap } from '../create/components/ui';
 import { WhenSheet, type WhenValue } from '../create/components/WhenSheet';
 import { deltaText, moveTrips, tripsMadeWith } from './movePlan';
 import { ExtraStopSheet, type ExtraStopSheetValue } from './ExtraStopSheet';
+import { MovePlanSheet } from './MovePlanSheet';
 import { isMonthly, sortedStops, stopName } from '../details/tripDetailsModel';
 
 interface StopDraft {
@@ -101,15 +102,6 @@ export default function EditTripScreen() {
     </SafeAreaView>
   );
 }
-
-/** A two-button question; resolves true for `yes`. */
-const ask = (title: string, message: string, yes: string, no: string) =>
-  new Promise<boolean>((resolve) =>
-    Alert.alert(title, message, [
-      { text: no, style: 'cancel', onPress: () => resolve(false) },
-      { text: yes, onPress: () => resolve(true) },
-    ], { cancelable: false }),
-  );
 
 const isoMs = (w: WhenValue, tz: string) => (w.date && w.time ? Date.parse(zonedWallTimeToUtcIso(w.date, w.time, tz)) : null);
 const shiftIso = (iso: string | null, deltaMs: number) => (iso && deltaMs ? new Date(Date.parse(iso) + deltaMs).toISOString() : iso);
@@ -186,6 +178,9 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
   const [saving, setSaving] = useState(false);
   const [extra, setExtra] = useState<null | { added: number; rate: number | null; ruleId: string | null; unit: string | null; chargeType: string }>(null);
   const [extraSaving, setExtraSaving] = useState(false);
+  // "Move the other trips too?" — resolves with the ids picked ([] = only this trip).
+  const [movePick, setMovePick] = useState<null | { others: OperatorTrip[]; delta: number; resolve: (ids: string[]) => void }>(null);
+  const pickToMove = (others: OperatorTrip[], delta: number) => new Promise<string[]>((resolve) => setMovePick({ others, delta, resolve }));
 
   const customerId = trip.customer?.id;
   useEffect(() => {
@@ -296,14 +291,11 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
           })),
         };
         // A month plan / bulk booking: offer to move the trips made with this one by the same amount.
-        const others = startDelta ? await tripsMadeWith(trip).catch(() => []) : [];
-        const all = others.length > 0 && await ask(
-          `Move the other ${others.length} ${others.length === 1 ? 'trip' : 'trips'} too?`,
-          `${others.length === 1 ? 'It was' : 'They were'} created together with this one (same customer and driver). Move ${others.length === 1 ? 'it' : 'them'} ${deltaText(startDelta)} as well?`,
-          `Move all ${others.length + 1}`,
-          'Only this trip',
-        );
-        if (all) {
+        const madeWith = startDelta ? await tripsMadeWith(trip).catch(() => []) : [];
+        // Pick which of them move too — all, from this trip on, or some (not all-or-nothing).
+        const pickedIds = madeWith.length > 0 ? await pickToMove(madeWith, startDelta) : [];
+        const others = madeWith.filter((t) => pickedIds.includes(t.id));
+        if (others.length) {
           const r = await moveTrips(others, startDelta, { trip, payload });
           if (!r.editedSaved) {
             if (r.moved) refreshLists();
@@ -500,6 +492,15 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
 
       <SaveBar label="Save changes" onPress={handleSave} saving={saving} disabled={!dirty} />
 
+      <MovePlanSheet
+        visible={!!movePick}
+        others={movePick?.others ?? []}
+        editedStart={trip.planned_start ?? null}
+        shiftText={movePick ? deltaText(movePick.delta) : ''}
+        tz={tz}
+        onMove={(ids) => { movePick?.resolve(ids); setMovePick(null); }}
+        onOnlyThis={() => { movePick?.resolve([]); setMovePick(null); }}
+      />
       <ExtraStopSheet
         visible={!!extra}
         added={extra?.added ?? 0}

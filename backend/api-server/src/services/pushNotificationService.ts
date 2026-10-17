@@ -3,6 +3,7 @@ import { prisma } from '../db';
 import { logger } from '../utils/logger';
 import { WATCH_TIMINGS } from './driverPhone/rules';
 import { pushReceiptLink, receiptBase } from './pushReceipts';
+import { localizeDriverNotification } from '@mercon/shared-types';
 
 export interface ExpoPushMessage {
   to: string;
@@ -210,12 +211,13 @@ export async function sendDriverPushNotification(
   try {
     const devices = await prisma.driverDevice.findMany({
       where: { driverId, isActive: true },
-      select: { id: true, token: true },
+      select: { id: true, token: true, language: true },
     });
 
     const targets: Target[] = devices
       .filter((d) => isExpoPushToken(d.token))
       .map((d) => ({ deviceId: d.id, token: d.token as string }));
+    const languageOf = new Map(devices.map((d) => [d.id, d.language]));
 
     if (targets.length === 0) {
       logger.debug({ driverId }, '[PushService] No push-capable device for driver');
@@ -239,7 +241,16 @@ export async function sendDriverPushNotification(
       return;
     }
 
-    await deliver(notificationId, targets, { ...DRIVER_PUSH, title, body, data });
+    // Each phone gets the push in its app's language (Urdu phones read Urdu on the lock screen).
+    const byLanguage = new Map<string, Target[]>();
+    for (const t of targets) {
+      const lang = languageOf.get(t.deviceId!) ?? 'en';
+      byLanguage.set(lang, [...(byLanguage.get(lang) ?? []), t]);
+    }
+    for (const [lang, group] of byLanguage) {
+      const shown = localizeDriverNotification({ type: String(data.type ?? ''), title, message: body }, lang);
+      await deliver(notificationId, group, { ...DRIVER_PUSH, title: shown.title, body: shown.message, data });
+    }
   } catch (error: any) {
     logger.error({ err: error?.message || error, driverId }, '[PushService] Failed to send push notification');
   }

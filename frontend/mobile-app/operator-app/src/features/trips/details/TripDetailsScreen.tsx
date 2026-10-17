@@ -57,7 +57,7 @@ export default function TripDetailsScreen() {
   // a driver's update (push or Activity) opens on its stop (`stop`) or on the photos it sent (`photo`).
   const params = useLocalSearchParams<{ id: string; tab?: string; share?: string; update?: string; assign?: string; times?: string; stop?: string; photo?: string }>();
   const { id } = params;
-  const { trip, overview, updates, whatsappApi, tz, phase, remaining, tracking, trackingUrl, refreshTracking, loading, refreshing, error, refresh, reload } = useTripDetails(id);
+  const { trip, overview, updates, whatsappApi, tz, phase, remaining, tracking, trackingUrl, refreshTracking, loading, refreshing, error, deleted, refresh, reload } = useTripDetails(id);
   const f = useMemo(() => makeFormatters(tz), [tz]);
   const queryClient = useQueryClient();
 
@@ -143,11 +143,11 @@ export default function TripDetailsScreen() {
   if (!trip || !phase) {
     return (
       <View style={[s.center, { backgroundColor: PAGE, padding: 24 }]}>
-        <Text style={s.errTitle}>Couldn’t open this trip</Text>
+        <Text style={s.errTitle}>{deleted ? 'This trip was deleted' : 'Couldn’t open this trip'}</Text>
         <Text style={s.errText}>{error ?? 'Trip not found'}</Text>
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
           <TouchableOpacity style={s.errBtn} onPress={() => router.back()}><Text style={s.errBtnText}>Go back</Text></TouchableOpacity>
-          <TouchableOpacity style={[s.errBtn, { backgroundColor: ACTION }]} onPress={refresh}><Text style={[s.errBtnText, { color: Colors.white }]}>Retry</Text></TouchableOpacity>
+          {deleted ? null : <TouchableOpacity style={[s.errBtn, { backgroundColor: ACTION }]} onPress={refresh}><Text style={[s.errBtnText, { color: Colors.white }]}>Retry</Text></TouchableOpacity>}
         </View>
       </View>
     );
