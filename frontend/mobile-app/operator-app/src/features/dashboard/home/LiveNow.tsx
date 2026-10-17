@@ -10,7 +10,7 @@ import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { ChevronRight, Maximize2 } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
-import type { LiveUnit } from '../../../lib/operator';
+import { isOnRoad, type LiveUnit } from '../../../lib/operator';
 import { FleetMap } from '../../fleet/FleetMap';
 import { isDelayed, isSilent } from '../../fleet/fleetModel';
 import { niceName } from '../../trips/create/components/ui';
@@ -51,7 +51,7 @@ export function LiveNow({ units, tz, now, onOpenMap, onOpenTrip, onAll }: {
   onOpenTrip: (id: string) => void;
   onAll: () => void;
 }) {
-  const onRoad = useMemo(() => units.filter((u) => u.trip && u.trip.phase !== 'upcoming'), [units]);
+  const onRoad = useMemo(() => units.filter(isOnRoad), [units]);
   const rows = useMemo<Row[]>(
     () => onRoad
       .map((u) => ({ unit: u, trip: u.trip!, rank: isDelayed(u) ? 0 : isSilent(u, now) ? 1 : 2 }))

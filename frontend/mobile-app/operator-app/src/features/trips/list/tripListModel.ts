@@ -3,6 +3,7 @@
  * it (the warning pills), a one-line route, stop progress, and day buckets in
  * the deployment's timezone.
  */
+import { isDelayedNotStarted } from '@mercon/shared-types';
 import type { OperatorTrip } from '../../../lib/operator';
 import { liveLegOf, splitLegs } from '../tripLegs';
 
@@ -32,8 +33,14 @@ export const PHASE_STYLE: Record<Phase, { label: string; bg: string; fg: string;
   cancelled: { label: 'Cancelled', bg: '#F1F1F3', fg: '#6E6E80', dot: '#B8BCC8' },
 };
 
+/** Delayed, but the driver never started: waiting to start, not on the road. */
+export const isLateToStart = (t: OperatorTrip) => isDelayedNotStarted(t);
+
 export const statusText = (t: OperatorTrip) =>
-  t.status === 'Loading' ? 'Loading' : t.status === 'Invoiced' ? 'Invoiced' : PHASE_STYLE[phaseOf(t.status)].label;
+  t.status === 'Loading' ? 'Loading'
+  : t.status === 'Invoiced' ? 'Invoiced'
+  : t.status === 'Delayed' ? (isLateToStart(t) ? 'Starting late' : 'Late arriving')
+  : PHASE_STYLE[phaseOf(t.status)].label;
 
 interface Stop {
   id: string;

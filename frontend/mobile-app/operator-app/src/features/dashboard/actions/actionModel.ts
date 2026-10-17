@@ -158,7 +158,7 @@ export function buildActions(src: ActionSources): ActionItem[] {
     const who = [t.ref_id, t.customer_name].filter(Boolean).join(' · ');
 
     // 2 · Delayed trips — tell the customer.
-    if (t.phase === 'delayed') {
+    if (t.phase === 'delayed' && t.started !== false) {
       const due = t.next_stop_index != null ? t.stops[t.next_stop_index]?.planned_arrival ?? null : null;
       out.push({
         key: `delay-${t.id}`,
@@ -175,7 +175,7 @@ export function buildActions(src: ActionSources): ActionItem[] {
     }
 
     // 3 · Should have started but hasn't.
-    if (t.phase === 'upcoming' && t.planned_start && minutesSince(t.planned_start, now) > LATE_START_GRACE_MIN) {
+    if ((t.phase === 'upcoming' || t.started === false) && t.planned_start && minutesSince(t.planned_start, now) > LATE_START_GRACE_MIN) {
       out.push({
         key: `late-${t.id}`,
         kind: 'late-start',
@@ -191,7 +191,7 @@ export function buildActions(src: ActionSources): ActionItem[] {
 
     // 5 · Truck gone quiet on a running trip.
     const quiet = minutesSince(u.position?.recorded_at, now);
-    if (t.phase !== 'upcoming' && quiet > QUIET_MINUTES) {
+    if (t.phase !== 'upcoming' && t.started !== false && quiet > QUIET_MINUTES) {
       out.push({
         key: `quiet-${t.id}`,
         kind: 'gps-quiet',
