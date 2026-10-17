@@ -1,0 +1,9 @@
+Fixes from your feedback. Please check:
+
+1. All dates and times are company (Riyadh) time, whatever your phone's time zone: Home, trips, trip details, charges, photos, map ETA, geotag stamp.
+2. Office undoes a step or marks the next step done: Home shows a banner about it until you tap it, and the trip shows the right step.
+3. After the office resets a trip to "Not started", Start shows the correct first step (not "On the way to delivery"). Please retry the TRP-0034 case.
+4. Trip number on the map screen and on each step screen.
+5. App in Urdu: Notifications list is in Urdu, and new lock-screen notifications arrive in Urdu (open the app once after updating).
+6. The Urdu button on Home shows the right step.
+7. The map screen refreshes the trip when opened.

@@ -27,6 +27,9 @@ import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useLanguage, getLocalizedStatus, bilingual, translate } from '@mercon/mobile-shared/lib/language-context';
 import { parseTripRouteNodes, getIntermediateStops, getOutboundIntermediateStops, getReturnIntermediateStops, targetFromWorkflowState, type TimelineStop } from '../utils/routeParser';
 import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
+import { inCompanyZone } from '@mercon/mobile-shared/lib/dates';
+import { useNotifications } from '../hooks/use-notifications';
+import { localizeNotification } from '../utils/notificationText';
 
 
 const WORKFLOW_URDU_LABEL: Record<string, string> = {
@@ -106,7 +109,7 @@ function shortWhen(iso?: string | null, fallback = 'Scheduled'): string {
   if (!iso) return fallback;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return fallback;
-  return d.toLocaleString(undefined, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleString(undefined, inCompanyZone({ day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }));
 }
 
 /** "14:05" for a planned/actual stop time, or null when there is none. */
@@ -114,7 +117,7 @@ function fmtTime(value?: Date | string | null): string | null {
   if (!value) return null;
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+  return d.toLocaleTimeString(undefined, inCompanyZone({ hour: '2-digit', minute: '2-digit', hour12: false }));
 }
 
 /** Minutes the pickup is overdue (planned start passed, driver not there yet), else 0. */
@@ -155,6 +158,9 @@ const HomeScreen = () => {
   const { language, openLanguageModal, t } = useLanguage();
   /** Short UI text in the driver's language (bilingual mode shows both). */
   const L = (en: string, ur: string) => (language === 'ur' ? ur : language === 'ur-en' ? bilingual(ur, en) : en);
+  // The office undid a step (or moved the trip on): say so on Home until read,
+  // so what Start does next is no surprise (TestFlight feedback after an undo).
+  const { items: notes, markRead: markNoteRead } = useNotifications();
   /** Same, but one language only — for small pills where both would not fit. */
   const LS = (en: string, ur: string) => (language === 'ur' ? ur : en);
   const [activeTab, setActiveTab] = useState('Home');
@@ -671,8 +677,16 @@ const HomeScreen = () => {
                 const info = getWorkflowStateInfo(displayTrip);
                 const late = minutesLate(displayTrip);
                 const lateText = late >= 60 ? `${Math.floor(late / 60)} h ${late % 60} min` : `${late} min`;
+                const officeChange = notes.find((n) => n.type === 'TripSteppedBack' && !n.is_read && n.entity_id === displayTrip.id);
                 return (
                   <View style={styles.actionsContainer}>
+                    {officeChange ? (
+                      <TouchableOpacity style={styles.officeBanner} activeOpacity={0.8} onPress={() => markNoteRead(officeChange.id)} accessibilityRole="button" accessibilityLabel="Dismiss">
+                        <Text style={styles.officeBannerTitle}>{localizeNotification(officeChange, language).title}</Text>
+                        <Text style={styles.officeBannerText}>{localizeNotification(officeChange, language).message}</Text>
+                        <Text style={styles.officeBannerHint}>{L('Tap to dismiss', 'بند کرنے کے لیے ٹیپ کریں')}</Text>
+                      </TouchableOpacity>
+                    ) : null}
                     {late > 0 ? (
                       <View style={styles.lateBanner}>
                         <Clock size={16} color="#92400E" strokeWidth={2.2} />
@@ -695,7 +709,9 @@ const HomeScreen = () => {
                       ) : (
                         <View style={styles.ctaContentRow}>
                           <BilingualText
-                            ur={WORKFLOW_URDU_LABEL[displayTrip.driver_workflow_state || 'ASSIGNED'] || 'ٹرپ شروع کریں'}
+                            // Same state as the button's action: after the office undoes a step the stored
+                            // state and the stop times can differ, and the label said "Start" while the tap did more.
+                            ur={WORKFLOW_URDU_LABEL[getEffectiveWorkflowState(displayTrip)] || 'ٹرپ شروع کریں'}
                             en={info.btnLabel || 'Start Trip'}
                             align="center"
                             primaryStyle={styles.ctaUrduPrimary}
@@ -1639,6 +1655,19 @@ const styles = StyleSheet.create({
   stepTagTextCurrent: {
     color: '#C2410C',
   },
+  officeBanner: {
+    backgroundColor: '#EEF2FF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+    gap: 2,
+  },
+  officeBannerTitle: { fontSize: 14, fontWeight: '800', color: '#312E81' },
+  officeBannerText: { fontSize: 13, fontWeight: '500', color: '#3730A3' },
+  officeBannerHint: { fontSize: 11, color: '#6366F1', marginTop: 2 },
   lateBanner: {
     flexDirection: 'row',
     alignItems: 'center',

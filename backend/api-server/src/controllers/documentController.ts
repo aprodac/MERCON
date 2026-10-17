@@ -47,6 +47,12 @@ export const getDocuments = async (req: Request, res: Response) => {
         return res.json({ success: true, data: [], meta: { page: pageNumber, per_page: limit, total: 0 } });
       }
     }
+    // Trip documents across all trips: leave out deleted trips. Their customer-app
+    // screenshots stayed "to check" for ever, and opening one said Retry (TestFlight feedback).
+    if (entity_type === 'Trip' && !entity_id) {
+      const deletedTrips = await prisma.trip.findMany({ where: { deletedAt: { not: null } }, select: { id: true } });
+      if (deletedTrips.length) whereClause.entity_id = { notIn: deletedTrips.map((t) => t.id) };
+    }
     if (doc_type)    whereClause.doc_type = doc_type as DocType;
     if (document_type_id) whereClause.documentTypeId = document_type_id as string;
     if (status)      whereClause.status = status as DocStatus;

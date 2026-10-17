@@ -6,9 +6,10 @@ import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import type { DriverUpdate, LiveMediaItem, OperatorTripDetail, OperatorTripDocument, TripPhase } from '../../../../lib/operator';
 import { ON_TIME_GRACE_MIN, TONE, delayText, mapsLink, minutesLate, minutesText, photoPinsForStop, sendStatus, sortedStops, stopName, stopTiming, tripLegsOf, updateTitle, type Formatters, type Stop } from '../tripDetailsModel';
+import { extraStopNote } from '@mercon/shared-types';
 import { liveLegOf } from '../../tripLegs';
 import { Card, Chip, INK, MUTED, WA, WA_INK, WA_LIGHT, tap } from './parts';
-import { isAppScreenshot, pendingTimeCheck } from './TripTimesSheet';
+import { isAppScreenshot, isDropoff, pendingTimeCheck } from './TripTimesSheet';
 
 interface Props {
   trip: OperatorTripDetail;
@@ -20,7 +21,8 @@ interface Props {
   /** Open the share sheet on one photo set. */
   onSendUpdate: (u: DriverUpdate) => void;
   /** Open "Check times" — every stop's real time, copied off the customer-app screenshots. */
-  onCheckTimes: () => void;
+  /** Open "Check times"; from one stop's link, with only that stop's screenshots. */
+  onCheckTimes: (stopId?: string) => void;
   /** Open "Set pin" for a stop still on a guessed location. */
   onSetPin: (stop: Stop) => void;
   /** A stop to highlight — the one a tapped notification is about. */
@@ -63,6 +65,9 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
 
   return (
     <Card style={{ paddingVertical: 8 }}>
+      {extraStopNote(trip) ? (
+        <Text style={{ fontSize: 12, fontWeight: '600', color: '#B54708', paddingHorizontal: 12, paddingVertical: 6 }}>{extraStopNote(trip)}</Text>
+      ) : null}
       {(trip.step_backs ?? []).slice(0, 3).map((b, k) => (
         <View key={`${b.at}-${k}`} style={s.backNote}>
           <Undo2 size={14} color="#5B34B0" />
@@ -98,8 +103,16 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
           </Text>
         </View>
       ) : null}
+      {shots.length === 0 && stops.some((st) => st.actual_arrival) ? (
+        // Any trip's times can be corrected, not only customer-app trips with screenshots.
+        <TouchableOpacity style={[s.timesBar, s.timesBarDone]} activeOpacity={0.8} onPress={() => onCheckTimes()} accessibilityRole="button">
+          <Clock3 size={14} color={MUTED} />
+          <Text style={[s.timesText, { color: MUTED }]}>Driver tapped a time wrong? Correct the stop times</Text>
+          <Text style={[s.timesCta, { color: MUTED }]}>Edit</Text>
+        </TouchableOpacity>
+      ) : null}
       {shots.length > 0 ? (
-        <TouchableOpacity style={[s.timesBar, pendingShots === 0 && s.timesBarDone]} activeOpacity={0.8} onPress={onCheckTimes}>
+        <TouchableOpacity style={[s.timesBar, pendingShots === 0 && s.timesBarDone]} activeOpacity={0.8} onPress={() => onCheckTimes()}>
           <Clock3 size={14} color={pendingShots > 0 ? '#8A5200' : MUTED} />
           <Text style={[s.timesText, pendingShots === 0 && { color: MUTED }]}>
             {pendingShots > 0 ? `${pendingShots} screenshot${pendingShots === 1 ? '' : 's'} · check the stop times` : 'Stop times checked against screenshots'}
@@ -163,11 +176,11 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
                     <View style={s.timeGrid}>
                       <TimeCell label="PLANNED" f={f} iso={st.planned_arrival} />
                       <TimeCell label="ARRIVED" f={f} iso={st.actual_arrival} tone={lateMin != null && lateMin > ON_TIME_GRACE_MIN ? 'red' : lateMin != null ? 'green' : undefined} />
-                      <TimeCell label="LEFT" f={f} iso={st.actual_departure} empty={phase === 'active' ? 'Still there' : '—'} />
+                      {isDropoff(st) ? null : <TimeCell label="LEFT" f={f} iso={st.actual_departure} empty={phase === 'active' ? 'Still there' : '—'} />}
                     </View>
                     <Text style={s.timeNote}>
                       {lateMin == null ? 'No planned time' : lateMin > ON_TIME_GRACE_MIN ? `${minutesText(lateMin)} late` : lateMin < -ON_TIME_GRACE_MIN ? `${minutesText(lateMin)} early` : 'On time'}
-                      {dwell != null ? ` · ${minutesText(dwell)} at the stop` : ''}
+                      {dwell != null && !isDropoff(st) ? ` · ${minutesText(dwell)} at the stop` : ''}
                     </Text>
                   </>
                 );
@@ -192,7 +205,7 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
               ) : null}
 
               {check ? (
-                <TouchableOpacity style={s.check} activeOpacity={0.8} onPress={onCheckTimes}>
+                <TouchableOpacity style={s.check} activeOpacity={0.8} onPress={() => onCheckTimes(st.id)}>
                   <Clock3 size={13} color="#8A5200" />
                   <Text style={s.checkText}>Screenshot time needs checking</Text>
                 </TouchableOpacity>

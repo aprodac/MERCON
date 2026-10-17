@@ -16,10 +16,12 @@ import { DelayButton } from '../components/DelayButton';
 import { useCurrentTrip } from '../hooks/use-current-trip';
 import { tripService, stopAddress, stopLabel, isRoundTrip, resolveAuthoritativeActiveStop, getLegEndpoints } from '@mercon/mobile-shared/lib/trips';
 
-import { targetFromWorkflowState, parseStopWorkflowState } from '../utils/routeParser';
+import { targetFromWorkflowState } from '../utils/routeParser';
+import { pendingStopFromWorkflow } from '@mercon/shared-types';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
+import { inCompanyZone } from '@mercon/mobile-shared/lib/dates';
 
 /** Great-circle distance between two lat/lng points, in meters. */
 function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -34,7 +36,7 @@ function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number) 
 
 /** Clock time the driver arrives if `secondsLeft` more seconds of driving remain ("14:05"). */
 function arrivalClock(secondsLeft: number): string {
-  return new Date(Date.now() + secondsLeft * 1000).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+  return new Date(Date.now() + secondsLeft * 1000).toLocaleTimeString(undefined, inCompanyZone({ hour: '2-digit', minute: '2-digit', hour12: false }));
 }
 
 const LiveNavigationScreen = () => {
@@ -42,6 +44,12 @@ const LiveNavigationScreen = () => {
   const insets = useSafeAreaInsets();
   const { t, language, tr } = useLanguage();
   const { trip, loading, error, refetch } = useCurrentTrip();
+  // Open on the trip as the server has it now: a copy cached before the office
+  // undid a step sent the driver to the delivery of a trip taken back to "Not started".
+  useEffect(() => {
+    void refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [position, setPosition] = useState<{ lat: number; lng: number; heading?: number | null; speedKph?: number | null } | null>(null);
   // Map camera: follow the truck in a tilted driver view by default; night map after dark.
   const [follow, setFollow] = useState(true);
@@ -92,7 +100,7 @@ const LiveNavigationScreen = () => {
   // record without actual_departure as "still pending", but intermediate
   // stops were never stamped, so finishing the last stop (→ IN_TRANSIT)
   // bounced the driver straight back to stop #1 — the stop ↔ navigate loop.
-  const pendingStop = parseStopWorkflowState(ws);
+  const pendingStop = pendingStopFromWorkflow(ws, trip);
 
   // The trip was cancelled or given to another driver: the server now says
   // there is no current trip. Go home instead of a map of placeholders
@@ -362,7 +370,7 @@ const LiveNavigationScreen = () => {
               <View style={styles.headerTitleCenter}>
                 <View style={styles.currentStepTagRow}>
                   <View style={styles.coralIndicatorDot} />
-                  <Text style={styles.currentStepTag}>{t('label_current_step', 'CURRENT STEP')}</Text>
+                  <Text style={styles.currentStepTag}>{t('label_current_step', 'CURRENT STEP')}{trip?.ref_id ? ` · ${trip.ref_id}` : ''}</Text>
                 </View>
                 <Text style={styles.headerStateTitle} numberOfLines={1}>
                   {isHeadingToPickup ? t('msg_en_route_pickup', 'On the way to pickup') : t('msg_en_route_delivery', 'On the way to delivery')}

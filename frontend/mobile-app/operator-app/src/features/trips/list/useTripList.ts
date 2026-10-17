@@ -1,14 +1,14 @@
 /**
  * Data for the Trips page, one query per view:
  *   now      — every open trip (draft → delayed); refreshes every 30 s
- *   schedule — every trip planned in a 3-week window around today, for the
- *              date strip — finished and cancelled ones too, so a past day
- *              shows what ran that day (History lists them by finish day)
- *   history  — finished / cancelled trips, page by page
+ *   schedule — open trips (not finished, not cancelled) planned in a window
+ *              around today, for the date strip; finished ones live in History
+ *   history  — trips finished in the last HISTORY_DAYS days, for History's
+ *              date strip: delivered by when they ended, cancelled by plan day
  *   search   — the server's word search across all trips
  */
 import { useEffect, useMemo, useState } from 'react';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '@mercon/mobile-shared/lib/api';
 import { operatorService, type OperatorTrip } from '../../../lib/operator';
 import { makeTime } from './tripListModel';
@@ -18,7 +18,8 @@ export type View = 'now' | 'delayed' | 'schedule' | 'history';
 // Two weeks back, and two months ahead — month plans are booked well into next month.
 export const SCHEDULE_BEFORE = 14;
 export const SCHEDULE_AFTER = 62;
-const HISTORY_PAGE = 30;
+// How far back History's date strip goes; older trips are found with search.
+export const HISTORY_DAYS = 60;
 const OPEN_STATUSES = 'Draft,Scheduled,Loading,InTransit,Delayed';
 
 async function fetchTrips(params: Record<string, string | number>): Promise<{ trips: OperatorTrip[]; total: number }> {
@@ -66,16 +67,25 @@ export function useTripList(view: View, search: string, now: number, scope?: Rec
 
   const schedule = useQuery({
     queryKey: ['trips', 'window', todayKey, scopeKey ?? 'all'],
-    queryFn: () => fetchTrips({ start_date: windowStart.toISOString(), end_date: new Date(windowEnd.getTime() - 1).toISOString(), per_page: 1000, ...filter }),
+    queryFn: () => fetchTrips({ status: OPEN_STATUSES, start_date: windowStart.toISOString(), end_date: new Date(windowEnd.getTime() - 1).toISOString(), per_page: 1000, ...filter }),
     enabled: view === 'schedule',
     refetchInterval: view === 'schedule' ? 60_000 : false,
   });
 
-  const history = useInfiniteQuery({
-    queryKey: ['trips', 'history', scopeKey ?? 'all'],
-    initialPageParam: 1,
-    queryFn: ({ pageParam }) => fetchTrips({ status: 'Completed,Invoiced,Cancelled', per_page: HISTORY_PAGE, page: pageParam, ...filter }),
-    getNextPageParam: (last, pages) => (last.trips.length < HISTORY_PAGE ? undefined : pages.length + 1),
+  const historyStart = useMemo(() => {
+    const [y, m, d] = todayKey.split('-').map(Number);
+    return f.startOfDay(new Date(Date.UTC(y, m - 1, d - HISTORY_DAYS)).toISOString().slice(0, 10));
+  }, [f, todayKey]);
+  // Delivered trips by when they ended; cancelled ones have no end, so by their planned day.
+  const history = useQuery({
+    queryKey: ['trips', 'history', todayKey, scopeKey ?? 'all'],
+    queryFn: async () => {
+      const [done, cancelled] = await Promise.all([
+        fetchTrips({ status: 'Completed,Invoiced', ended_since: historyStart.toISOString(), per_page: 1000, ...filter }),
+        fetchTrips({ status: 'Cancelled', start_date: historyStart.toISOString(), per_page: 1000, ...filter }),
+      ]);
+      return [...done.trips, ...cancelled.trips];
+    },
     enabled: view === 'history',
   });
 
@@ -95,11 +105,8 @@ export function useTripList(view: View, search: string, now: number, scope?: Rec
     openLoading: openQ.isLoading,
     window: schedule.data?.trips ?? [],
     windowLoading: schedule.isLoading,
-    history: history.data?.pages.flatMap((p) => p.trips) ?? [],
+    history: history.data ?? [],
     historyLoading: history.isLoading,
-    historyMore: history.hasNextPage,
-    loadMoreHistory: () => { if (history.hasNextPage && !history.isFetchingNextPage) history.fetchNextPage(); },
-    historyFetchingMore: history.isFetchingNextPage,
     results: found.data?.trips ?? [],
     searching: term.length >= 2,
     searchLoading: found.isFetching,

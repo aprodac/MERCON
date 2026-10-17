@@ -207,7 +207,7 @@ export async function checkTripsForDelay(now: Date = new Date()): Promise<number
       let delayMinutes = 0;
       let targetStop: (typeof trip.stops)[number] | null = trip.stops[0] || null;
       // Every case below is "not there yet", except a pickup that was reached but not left.
-      let situation: 'not_arrived' | 'not_departed' = 'not_arrived';
+      let situation: 'not_arrived' | 'not_departed' | 'not_started' = 'not_arrived';
 
       if (stage === TripStatus.Scheduled) {
         const pickupStop = trip.stops.find((s) => s.stop_type === StopType.Pickup) || trip.stops[0];
@@ -221,6 +221,7 @@ export async function checkTripsForDelay(now: Date = new Date()): Promise<number
               isDelayed = true;
               delayMinutes = diffMinutes;
               targetStop = pickupStop || null;
+              if (!trip.actual_start && (!trip.driver_workflow_state || trip.driver_workflow_state === 'ASSIGNED')) situation = 'not_started';
             }
           }
 

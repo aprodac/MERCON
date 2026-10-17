@@ -2,8 +2,10 @@
  * Who to offer on step 3, and why — the web wizard's rules
  * (useCreateTripForm driverOptions / vehicleOptions):
  *  - drivers keep the server ranking's order and groups (rankDrivers), with its
- *    "why" chips; only "can't take this trip" (clash, rest) blocks a driver.
- *    Still running another trip only warns (owner decision 2026-10-03).
+ *    "why" chips; only a clash ("can't take this trip") blocks a driver.
+ *    Too little rest asks "are you sure?" and can be booked anyway (TestFlight
+ *    feedback 2026-10-16); still running another trip only warns (owner
+ *    decision 2026-10-03).
  *  - trucks follow the class compatibility rules (preferred / allowed); a truck
  *    on another trip warns, one in the workshop or out of service is blocked.
  */
@@ -21,6 +23,8 @@ export interface DriverChoice {
   group: DriverGroup;
   groupLabel: string;
   blocked: boolean;
+  /** Unavailable only for too little rest — pickable after a confirm. */
+  resting: boolean;
   /** "Free", "On a trip", "Booked", "Resting", "Unavailable". */
   statusLabel: string;
   chips: FactChip[];
@@ -58,7 +62,9 @@ export function driverChoices(
       const openTrips = rec?.openTrips ?? [];
       const chips: FactChip[] = [];
       if (unavailable && rec?.unavailabilityReason) {
-        chips.push({ label: rec.clashStart ? `Booked ${fmtClash(rec.clashStart, opts.tz)}` : rec.unavailabilityReason, tone: 'warning' });
+        // "Only 3 h rest before pickup (needs 6 h)" → "Rested 3 h of 6 h" — short enough to read in the list.
+        const rest = rec.unavailabilityReason.match(/^Only ([\d.]+) h rest .*needs ([\d.]+) h/);
+        chips.push({ label: rec.clashStart ? `Booked ${fmtClash(rec.clashStart, opts.tz)}` : rest ? `Rested ${rest[1]} h of ${rest[2]} h` : rec.unavailabilityReason, tone: 'warning' });
       }
       if (!unavailable && openTrips.length) {
         const first = openTrips[0];
@@ -69,12 +75,14 @@ export function driverChoices(
       }
       (rec?.reasons ?? []).forEach((r) => chips.push({ label: r.text, tone: toneOf(r.tone) }));
       const reason = rec?.unavailabilityReason || '';
+      const resting = unavailable && reason.startsWith('Only');
       return {
         driver: d,
         group,
         groupLabel: group === 'best' ? bestLabel : group === 'unavailable' ? unavailableLabel : DRIVER_GROUP_LABELS[group],
-        blocked: unavailable && d.id !== opts.keepId,
-        statusLabel: unavailable ? (reason.startsWith('Only') ? 'Resting' : reason.startsWith('Already') ? 'Booked' : 'Unavailable') : openTrips.length ? 'On a trip' : 'Free',
+        blocked: unavailable && !resting && d.id !== opts.keepId,
+        resting,
+        statusLabel: unavailable ? (resting ? 'Resting' : reason.startsWith('Already') ? 'Booked' : 'Unavailable') : openTrips.length ? 'On a trip' : 'Free',
         chips,
         rec,
       };
@@ -84,7 +92,7 @@ export function driverChoices(
 
 /** Up to three drivers to offer straight away: the best matches, else the first free ranked ones. */
 export function topPicks(choices: DriverChoice[]): { picks: DriverChoice[]; best: boolean } {
-  const ranked = choices.filter((c) => c.rec && !c.blocked);
+  const ranked = choices.filter((c) => c.rec && !c.blocked && !c.resting);
   const best = ranked.filter((c) => c.group === 'best');
   return best.length ? { picks: best.slice(0, 3), best: true } : { picks: ranked.slice(0, 3), best: false };
 }
@@ -101,7 +109,12 @@ const GROUP_ORDER = ['Recommended', 'Preferred', 'Allowed alternatives', 'Other 
 
 export function truckChoices(
   vehicles: OperatorVehicleOption[],
-  opts: { tripClass: string; rules: VehicleCompatibilityRule[]; usualTruckId?: string | null; driverName?: string; selectedId?: string },
+  opts: {
+    tripClass: string; rules: VehicleCompatibilityRule[]; usualTruckId?: string | null; driverName?: string; selectedId?: string;
+    /** Trucks booked on another open trip in this trip's window, with that trip. */
+    clashes?: Map<string, { ref: string | null; start: string }>;
+    tz?: string;
+  },
 ): TruckChoice[] {
   const want = normalizeTruckClass(opts.tripClass);
   const rule = opts.rules.find((r) => r.isActive !== false && normalizeTruckClass(r.serviceVehicleClassCode) === want && r.allowedVehicleClassCodes?.length);
@@ -130,11 +143,14 @@ export function truckChoices(
     const onTrip = status === 'OnTrip';
     const isSelected = v.id === opts.selectedId;
     const chips: FactChip[] = [];
-    if (onTrip && !isSelected) chips.push({ label: 'On another trip', tone: 'warning' });
+    // Booked over the same hours: Create would be refused, so it can't be picked.
+    const clash = opts.clashes?.get(v.id);
+    if (clash) chips.push({ label: `Booked on ${clash.ref ?? 'another trip'} · ${opts.tz ? fmtClash(clash.start, opts.tz) : ''}`.replace(/ · $/, ''), tone: 'warning' });
+    else if (onTrip && !isSelected) chips.push({ label: 'On another trip', tone: 'warning' });
     if (!free && !onTrip) chips.push({ label: status === 'Maintenance' ? 'In the workshop' : status === 'Inactive' ? 'Out of service' : status, tone: 'neutral' });
     if (isUsual) chips.push({ label: `Usual truck${opts.driverName ? ` for ${opts.driverName}` : ''}`, tone: 'success' });
     else if (group === 'Allowed alternatives') chips.push({ label: 'Allowed alternative', tone: 'neutral' });
-    return { vehicle: v, cls, group, blocked: !free && !onTrip && !isSelected, chips };
+    return { vehicle: v, cls, group, blocked: (!free && !onTrip && !isSelected) || (!!clash && !isSelected), chips };
   });
   return out.sort((a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group) || (a.vehicle.plate_number || '').localeCompare(b.vehicle.plate_number || ''));
 }

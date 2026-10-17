@@ -1,0 +1,43 @@
+Fixes from your feedback + new features. Please check:
+
+TRIPS
+1. Trips > History: date strip like Schedule; last 60 days, incl. cancelled.
+2. Trips > Schedule: no past or completed trips (they are in History). The day line ("4 trips · 2 need attention") wraps instead of cutting off.
+3. Schedule > "By truck": one row per truck, trips as bars; overlapping trips sit on separate lines in red.
+4. Create a trip with a truck/driver already booked at that time: refused ("already on TRP-x"). On Assign, booked trucks show "Booked on TRP-x" and can't be picked.
+5. Assign a driver to a trip made with "Assign later" - works now. Picking a truck offers its own driver.
+6. Driver short on rest: chip says "Rested 3 h of 6 h"; tapping asks "Assign anyway?".
+7. Pick a quotation, then change the truck class - quotation switches to the matching one. Quotation sheet has From/To.
+
+EDIT TRIP
+8. A trip that is only late to start (Delayed, not started) can be edited.
+9. New "Transit time" tile.
+10. Change the date of a month-plan trip: pick which other trips move (All / From this trip on / some / None).
+11. Open a deleted trip (e.g. from a notification): "This trip was deleted", no Retry.
+
+DRIVER STEPS
+12. Trip > "Driver's steps": undo a step, or "Mark next step done" (not the final delivery).
+13. Trip map shows only the current leg.
+14. Check times: swipe between screenshots.
+
+FROM DRIVERS / TO DO
+15. From drivers: "Mark read" / "Mark all read" without sending to the customer.
+16. Photos show route, driver and truck.
+17. To do: "Mark all read" (emergencies stay).
+
+LATE TO START
+19. A trip past its start that the driver never started: shows "Starting late" (a started trip that is late shows "Late arriving"). On Trips > Now it sits under "Not started - past start time", not "On the road". Home and the menu no longer count it as on the road; it counts as to start.
+20. New alert "Trip not started" for it, separate from "Trip Delayed".
+
+STOP TIMES
+22. Trip > Stops: pickups show Planned / Arrived / Left; drop-offs show Planned / Arrived only.
+23. Any trip (not only iMile / JD) can have its stop times corrected: Stops > "Correct the stop times" > Edit.
+24. Tap one stop's "Screenshot time needs checking": Check times shows only that stop's screenshots ("See all" for the rest). Tapping a stop's time also switches to its screenshots.
+
+ZOOM
+21. Check times: tap a screenshot to enlarge, then pinch to zoom. Photos opened full screen also pinch-zoom.
+
+RECYCLE BIN
+18. Menu > Settings > Recycle bin: deleted trips, drivers, trucks, customers, quotations, places. Restore works; Admins can also delete for good.
+
+Times are company (Riyadh) time.

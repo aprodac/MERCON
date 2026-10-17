@@ -203,3 +203,14 @@ test('fleet live map: customer id and stopped-since', async (t) => {
     assert.equal(planned.stopped_since, null);
   });
 });
+
+test('fleet live map: a late trip the driver never started is not on the road', () => {
+  const notReached = trip('t1').stops.map((s) => ({ ...s, actual_arrival: null, actual_departure: null }));
+  const [late] = buildLiveUnits({ vehicles: [vehicle('v1')], trips: [trip('t1', { vehicleId: 'v1', status: 'Delayed', stops: notReached })], tripLocations: [] }, NOW);
+  assert.equal(late.trip?.phase, 'delayed');
+  assert.equal(late.trip?.started, false);
+  const [running] = buildLiveUnits({ vehicles: [vehicle('v1')], trips: [trip('t1', { vehicleId: 'v1', status: 'Delayed' })], tripLocations: [] }, NOW);
+  assert.equal(running.trip?.started, true);
+  const [planned] = buildLiveUnits({ vehicles: [vehicle('v1')], trips: [trip('t1', { vehicleId: 'v1', status: 'Scheduled', stops: notReached })], tripLocations: [] }, NOW);
+  assert.equal(planned.trip?.started, false);
+});

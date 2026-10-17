@@ -3,6 +3,7 @@
  * it (the warning pills), a one-line route, stop progress, and day buckets in
  * the deployment's timezone.
  */
+import { isDelayedNotStarted } from '@mercon/shared-types';
 import type { OperatorTrip } from '../../../lib/operator';
 import { liveLegOf, splitLegs } from '../tripLegs';
 
@@ -32,8 +33,14 @@ export const PHASE_STYLE: Record<Phase, { label: string; bg: string; fg: string;
   cancelled: { label: 'Cancelled', bg: '#F1F1F3', fg: '#6E6E80', dot: '#B8BCC8' },
 };
 
+/** Delayed, but the driver never started: waiting to start, not on the road. */
+export const isLateToStart = (t: OperatorTrip) => isDelayedNotStarted(t);
+
 export const statusText = (t: OperatorTrip) =>
-  t.status === 'Loading' ? 'Loading' : t.status === 'Invoiced' ? 'Invoiced' : PHASE_STYLE[phaseOf(t.status)].label;
+  t.status === 'Loading' ? 'Loading'
+  : t.status === 'Invoiced' ? 'Invoiced'
+  : t.status === 'Delayed' ? (isLateToStart(t) ? 'Starting late' : 'Late arriving')
+  : PHASE_STYLE[phaseOf(t.status)].label;
 
 interface Stop {
   id: string;
@@ -215,24 +222,13 @@ export function dayRange(todayKey: string, before: number, after: number): strin
   return out;
 }
 
-/** Groups trips into day sections (newest day first for history, soonest first otherwise). */
-export function groupByDay(trips: OperatorTrip[], f: TimeFmt, todayKey: string, newestFirst: boolean, dayOf = tripDayIso) {
-  const map = new Map<string, OperatorTrip[]>();
-  for (const t of trips) {
-    const iso = dayOf(t);
-    const key = iso ? f.dayKey(iso) : 'none';
-    map.set(key, [...(map.get(key) ?? []), t]);
-  }
-  const keys = [...map.keys()].sort((a, b) => (newestFirst ? b.localeCompare(a) : a.localeCompare(b)));
-  return keys.map((k) => ({
-    key: k,
-    title: k === 'none' ? 'No date' : dayLabel(k, todayKey, f),
-    data: map.get(k)!.sort((a, b) => {
-      const ta = new Date(dayOf(a) ?? 0).getTime();
-      const tb = new Date(dayOf(b) ?? 0).getTime();
-      return newestFirst ? tb - ta : ta - tb;
-    }),
-  }));
+/** Whole days from `a` to `b` (YYYY-MM-DD keys); negative when b is before a. */
+export function daysBetween(a: string, b: string): number {
+  const toDate = (k: string) => {
+    const [y, m, d] = k.split('-').map(Number);
+    return Date.UTC(y, m - 1, d);
+  };
+  return Math.round((toDate(b) - toDate(a)) / 86400000);
 }
 
 /**

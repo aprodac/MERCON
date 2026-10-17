@@ -8,7 +8,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@mercon/mobile-shared/lib/api';
 import { useNotifications } from '@/features/notifications/hooks/useNotifications';
-import { operatorService } from '../../../lib/operator';
+import { isLateToStart, isOnRoad, operatorService } from '../../../lib/operator';
 import { buildActions, type ActionItem, type ActionSources } from './actionModel';
 import { makeTime } from '../../trips/list/tripListModel';
 
@@ -102,7 +102,8 @@ export function useActionInbox() {
   );
 
 
-  const running = units.filter((u) => u.trip && u.trip.phase !== 'upcoming').length;
+  const running = units.filter(isOnRoad).length;
+  const lateToStart = units.filter(isLateToStart).length;
   const delayed = units.filter((u) => u.trip?.phase === 'delayed').length;
 
   return {
@@ -119,6 +120,8 @@ export function useActionInbox() {
     tz,
     counts: {
       running,
+      /** Late trips that never started: still to start, not on the road. */
+      lateToStart,
       delayed,
       action: items.filter((i) => i.urgency !== 'watch').length,
       now: items.filter((i) => i.urgency === 'now').length,

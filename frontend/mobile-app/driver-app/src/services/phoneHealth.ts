@@ -14,6 +14,7 @@ import * as Network from 'expo-network';
 import { api, PUSH_TOKEN_KEY } from '@mercon/mobile-shared/lib/api';
 import { getInstallId } from '@mercon/mobile-shared/lib/install-id';
 import { safeSecureStore as SecureStore } from '@mercon/mobile-shared/lib/secure-store';
+import { getCurrentLanguage } from '@mercon/mobile-shared/lib/language-context';
 
 let Notifications: typeof import('expo-notifications') | null = null;
 try {
@@ -151,6 +152,7 @@ export async function reportPhoneHealth(event?: 'AppOpened'): Promise<void> {
     const { data } = await api.post('/mobile/health', {
       install_id: installId,
       platform: Platform.OS,
+      language: getCurrentLanguage(),
       token: health.notif_permission === 'granted' ? token : undefined,
       ...health,
       event,

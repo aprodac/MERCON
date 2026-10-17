@@ -21,10 +21,11 @@ import {
   Map as MapIcon,
   Bell, BellRing, Building2, CreditCard, FileText, FolderOpen, House, Link2, Plus, Route, Search, SquareUserRound, Tag, Truck, UserCog, Users, Wrench, X,
   type LucideIcon,
+  Trash2,
 } from 'lucide-react-native';
 import { useNotifications } from '@/features/notifications/hooks/useNotifications';
 import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
-import { operatorService } from '@/lib/operator';
+import { isOnRoad, operatorService } from '@/lib/operator';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { TONE, type Tone } from '@/features/trips/details/tripDetailsModel';
 
@@ -108,6 +109,7 @@ const GROUPS: MenuGroup[] = [
     items: [
       { Icon: UserCog, label: 'User management', route: '/user-management', keywords: 'users accounts drivers passwords logins admin operator' },
       { Icon: BellRing, label: 'Push log', route: '/push-log', adminOnly: true, keywords: 'notifications alerts delivered failed delay phones audit' },
+      { Icon: Trash2, label: 'Recycle bin', route: '/recycle-bin', keywords: 'deleted trash restore undo remove permanently' },
     ],
   },
 ];
@@ -132,7 +134,7 @@ function useMenuBadges(enabled: boolean): { badges: Record<BadgeKey, Badge | nul
   return useMemo(() => {
     const unread = (notifications.data ?? []).filter((n) => !n.is_read).length;
     const units = live.data ?? [];
-    const running = units.filter((u) => u.trip && u.trip.phase !== 'upcoming').length;
+    const running = units.filter(isOnRoad).length;
     const delayed = units.filter((u) => u.trip?.phase === 'delayed').length;
     const upcoming = units.filter((u) => u.trip?.phase === 'upcoming').length;
     const moving = units.filter((u) => u.motion === 'moving').length;

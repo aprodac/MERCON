@@ -15,6 +15,7 @@ import EditDriverModal from '@/components/drivers/EditDriverModal';
 import EditThirdPartyModal from '@/components/third-party/EditThirdPartyModal';
 import TripStep1UnifiedWorkspace from '@/components/trips/wizard/TripStep1UnifiedWorkspace';
 import { Button } from '@/components/ui/button';
+import { ExtraStopChargeDialog } from '@/components/trips/ExtraStopChargeDialog';
 import { Badge } from '@/components/ui/badge';
 import { KbdBadge } from '@/components/ui/KbdBadge';
 import { useEditTripForm, isRoundTripCategory, normalizeRateCategory } from '@/hooks/useEditTripForm';
@@ -136,6 +137,8 @@ export default function EditTripPage() {
               dayAssignments={form.dayAssignments}
               isEditMode={true}
               isRouteLocked={form.isRouteLocked}
+              canEditStops={form.canEditStops}
+              reachedStops={form.reachedStops}
               isScheduleLocked={form.isScheduleLocked}
               isAssignmentLocked={form.isAssignmentLocked}
               isBaseBillingLocked={form.isBaseBillingLocked}
@@ -148,6 +151,7 @@ export default function EditTripPage() {
       </div>
 
       {/* Modal Dialogs */}
+      <ExtraStopChargeDialog prompt={form.extraStopPrompt} onClose={form.closeExtraStopPrompt} />
       <CreateDriverModal
         isOpen={form.isCreateDriverOpen}
         onClose={() => form.setIsCreateDriverOpen(false)}

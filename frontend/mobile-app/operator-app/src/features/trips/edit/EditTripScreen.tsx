@@ -2,7 +2,7 @@
  * Route: /trip-edit?id= — change a trip after it was created: its times, its
  * places and its price. Same rules and endpoints as the web's Edit Trip page:
  *
- *   times + route  PUT   /trips/:id/stops       Draft and Scheduled trips only
+ *   times + route  PUT   /trips/:id/stops       Draft and Scheduled fully; a running trip only the stops not reached yet
  *   price          PATCH /trips/:id/financials  until the trip is invoiced
  *
  * Driver, truck, extra charges and the status are changed from the trip page
@@ -16,17 +16,19 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CalendarClock, Clock, Lock, MapPin, Plus, Route, Wallet, X } from 'lucide-react-native';
-import { dateInZone, isRouteEditable, zonedWallTimeToUtcIso } from '@mercon/shared-types';
+import { dateInZone, extraStopNote, findExtraStopRule, isStopReached, isTripRouteEditable, stopsEditMode, zonedWallTimeToUtcIso } from '@mercon/shared-types';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import {
   operatorService, invalidateOperatorTrips,
-  type OperatorLocation, type OperatorTripDetail, type UpdateTripRouteInput,
+  type OperatorLocation, type OperatorTrip, type OperatorTripDetail, type UpdateTripRouteInput,
 } from '../../../lib/operator';
 import { Field, FormHeader, SaveBar, Section, formStyles } from '@/features/users/components/FormKit';
 import { PickerSheet, ValueTile, fmtDay, niceName, tap } from '../create/components/ui';
 import { WhenSheet, type WhenValue } from '../create/components/WhenSheet';
 import { deltaText, moveTrips, tripsMadeWith } from './movePlan';
+import { ExtraStopSheet, type ExtraStopSheetValue } from './ExtraStopSheet';
+import { MovePlanSheet } from './MovePlanSheet';
 import { isMonthly, sortedStops, stopName } from '../details/tripDetailsModel';
 
 interface StopDraft {
@@ -42,6 +44,8 @@ interface StopDraft {
   lng: number | null;
   planned_arrival: string | null;
   changed: boolean;
+  /** The driver has already been here — locked. */
+  reached: boolean;
   /** The arrival time was set by hand on this page (so it doesn't move with the pickup). */
   timeSet?: boolean;
 }
@@ -99,22 +103,25 @@ export default function EditTripScreen() {
   );
 }
 
-/** A two-button question; resolves true for `yes`. */
-const ask = (title: string, message: string, yes: string, no: string) =>
-  new Promise<boolean>((resolve) =>
-    Alert.alert(title, message, [
-      { text: no, style: 'cancel', onPress: () => resolve(false) },
-      { text: yes, onPress: () => resolve(true) },
-    ], { cancelable: false }),
-  );
-
 const isoMs = (w: WhenValue, tz: string) => (w.date && w.time ? Date.parse(zonedWallTimeToUtcIso(w.date, w.time, tz)) : null);
 const shiftIso = (iso: string | null, deltaMs: number) => (iso && deltaMs ? new Date(Date.parse(iso) + deltaMs).toISOString() : iso);
+
+/** "8 h 30 m" for a transit time in minutes. */
+const transitText = (min: number) => {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return h && m ? `${h} h ${m} m` : h ? `${h} h` : `${m} m`;
+};
+/** Transit times offered: every 30 minutes up to two days. */
+const TRANSIT_CHOICES = Array.from({ length: 96 }, (_, i) => (i + 1) * 30);
 
 function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; onDone: () => void }) {
   const queryClient = useQueryClient();
   const status = trip.status as string;
-  const routeOpen = isRouteEditable(status);
+  // Late but never started counts as not started: times and stops stay open.
+  const routeOpen = isTripRouteEditable(trip as never);
+  // A running trip still takes stops the driver has not reached yet; finished trips take none.
+  const stopsOpen = stopsEditMode(status) !== 'locked';
   const monthly = isMonthly(trip);
   const hasCoDriver = Number(trip.co_driver_payout) > 0;
   // Same locks as the web: the customer's price until the truck is on the road, the payout until it is invoiced.
@@ -132,6 +139,7 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
     lng: Number.isFinite(st.location_lng) ? st.location_lng : null,
     planned_arrival: st.planned_arrival,
     changed: false,
+    reached: isStopReached(st),
   })), [trip]);
   const initialStart = useMemo(() => wallOf(trip.planned_start, tz), [trip, tz]);
   const initialEnd = useMemo(() => wallOf(trip.planned_end, tz), [trip, tz]);
@@ -159,28 +167,49 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
 
   const [locations, setLocations] = useState<OperatorLocation[]>([]);
   const [when, setWhen] = useState<'start' | 'end' | null>(null);
+  // Transit time = delivery − pickup; picking one moves the delivery (TestFlight feedback).
+  const [transitPicker, setTransitPicker] = useState(false);
+  const startMs = isoMs(start, tz);
+  const endMs = isoMs(end, tz);
+  const transitMin = startMs != null && endMs != null && endMs > startMs ? Math.round((endMs - startMs) / 60000) : null;
   const [stopWhen, setStopWhen] = useState<string | null>(null);
   const [stopPicker, setStopPicker] = useState<string | null>(null);
   const [errors, setErrors] = useState<Errors>({});
   const [saving, setSaving] = useState(false);
+  const [extra, setExtra] = useState<null | { added: number; rate: number | null; ruleId: string | null; unit: string | null; chargeType: string }>(null);
+  const [extraSaving, setExtraSaving] = useState(false);
+  // "Move the other trips too?" — resolves with the ids picked ([] = only this trip).
+  const [movePick, setMovePick] = useState<null | { others: OperatorTrip[]; delta: number; resolve: (ids: string[]) => void }>(null);
+  const pickToMove = (others: OperatorTrip[], delta: number) => new Promise<string[]>((resolve) => setMovePick({ others, delta, resolve }));
 
   const customerId = trip.customer?.id;
   useEffect(() => {
-    if (!customerId || !routeOpen) return;
+    if (!customerId || !stopsOpen) return;
     let live = true;
     operatorService.locations(customerId).then((l) => { if (live) setLocations(l); }).catch(() => {});
     return () => { live = false; };
-  }, [customerId, routeOpen]);
+  }, [customerId, stopsOpen]);
 
   const [today] = useState(() => dateInZone(Date.now(), tz));
-  // Stops can be added or removed on a one-way trip; a round trip keeps its two legs as they are.
   const oneWay = stops.every((st) => st.leg_index === 0);
+  const legs = Array.from(new Set(stops.map((st) => st.leg_index)));
+  // First and last stop of a leg (pickup / drop-off) are fixed; stops in between can be added or removed, on either leg.
+  const legEdge = (i: number) => i === 0 || i === stops.length - 1 || stops[i - 1].leg_index !== stops[i].leg_index || stops[i + 1].leg_index !== stops[i].leg_index;
+  // On a running trip only unreached middle stops can change; reached ones stay locked.
+  const editable = (i: number) => routeOpen || (stopsOpen && !stops[i].reached && !legEdge(i));
+  // No stop can be slotted in before one the driver is already past.
+  const legClosed = (leg: number) => !routeOpen && (
+    stops.some((st) => st.leg_index > leg && st.reached) ||
+    stops.filter((st) => st.leg_index === leg).slice(-1)[0]?.reached === true
+  );
+  const added = stops.filter((st) => st.key.startsWith('new')).length;
 
   const scheduleChanged = start.date !== initialStart.date || start.time !== initialStart.time || end.date !== initialEnd.date || end.time !== initialEnd.time;
   const routeChanged = stops.length !== initialStops.length || stops.some((st, i) => st.changed || st.timeSet || st.key !== initialStops[i]?.key);
   const billingChanged = billingOpen && billing !== initialBilling;
   const payoutChanged = payoutOpen && payout !== initialPayout;
-  const dirty = (routeOpen && (scheduleChanged || routeChanged)) || billingChanged || payoutChanged;
+  const routeSave = routeOpen ? scheduleChanged || routeChanged : stopsOpen && routeChanged;
+  const dirty = routeSave || billingChanged || payoutChanged;
 
   const clear = (k: keyof Errors) => errors[k] && setErrors((prev) => ({ ...prev, [k]: undefined }));
 
@@ -188,26 +217,31 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
     setStops((list) => list.map((st) => (st.key === key ? { ...st, ...patch, changed: true } : st)));
     clear('route');
   };
-  const addStop = () => setStops((list) => [
-    ...list.slice(0, -1),
-    { key: `new${Date.now()}`, stop_type: 'Dropoff', leg_index: 0, rawName: '', name: '', locationId: null, lat: null, lng: null, planned_arrival: null, changed: true },
-    list[list.length - 1],
-  ]);
+  const addStop = (leg: number) => setStops((list) => {
+    let at = list.length - 1;
+    list.forEach((st, i) => { if (st.leg_index === leg) at = i; });
+    return [
+      ...list.slice(0, at),
+      { key: `new${Date.now()}`, stop_type: 'Dropoff', leg_index: leg, rawName: '', name: '', locationId: null, lat: null, lng: null, planned_arrival: null, changed: true, reached: false },
+      ...list.slice(at),
+    ];
+  });
   const removeStop = (key: string) => setStops((list) => list.filter((st) => st.key !== key));
 
   const stopLabel = (i: number) => {
     const st = stops[i];
     const back = st.leg_index > 0 ? ' (return)' : '';
     if (i === 0) return 'Pickup';
-    if (i === stops.length - 1) return `Drop-off${back}`;
+    if (legEdge(i) && st.leg_index > 0 && stops[i - 1].leg_index !== st.leg_index) return 'Return pickup';
+    if (legEdge(i)) return `Drop-off${back}`;
     return `Stop ${i}${back}`;
   };
 
   const validate = (): Errors => {
     const e: Errors = {};
-    if (routeOpen) {
+    if (routeSave) {
       if (stops.some((st) => !st.name.trim())) e.route = 'Choose a place for every stop';
-      if (start.date && start.time && end.date && end.time) {
+      if (routeOpen && start.date && start.time && end.date && end.time) {
         const a = zonedWallTimeToUtcIso(start.date, start.time, tz);
         const b = zonedWallTimeToUtcIso(end.date, end.time, tz);
         if (new Date(b).getTime() <= new Date(a).getTime()) e.schedule = 'Delivery must be after pickup';
@@ -234,9 +268,10 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
     setSaving(true);
     let routeSaved = false;
     try {
-      if (routeOpen && (scheduleChanged || routeChanged)) {
-        const startIso = start.date && start.time ? zonedWallTimeToUtcIso(start.date, start.time, tz) : undefined;
-        const endIso = end.date && end.time ? zonedWallTimeToUtcIso(end.date, end.time, tz) : undefined;
+      if (routeSave) {
+        // A running trip keeps its times; only its stops change.
+        const startIso = routeOpen && start.date && start.time ? zonedWallTimeToUtcIso(start.date, start.time, tz) : undefined;
+        const endIso = routeOpen && end.date && end.time ? zonedWallTimeToUtcIso(end.date, end.time, tz) : undefined;
         // Stops in between keep their place in the plan: the way out moves with the pickup, the way back with the delivery.
         const startDelta = startIso && trip.planned_start ? Date.parse(startIso) - Date.parse(trip.planned_start) : 0;
         const endDelta = endIso && trip.planned_end ? Date.parse(endIso) - Date.parse(trip.planned_end) : startDelta;
@@ -252,18 +287,15 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
             lat: st.lat,
             lng: st.lng,
             // First and last follow the trip's times; a middle stop moves with its leg's end of the trip.
-            planned_arrival: i === 0 ? startIso ?? st.planned_arrival : i === stops.length - 1 ? endIso ?? st.planned_arrival : st.timeSet ? st.planned_arrival : shiftIso(st.planned_arrival, st.leg_index > 0 ? endDelta : startDelta),
+            planned_arrival: !routeOpen ? st.planned_arrival : i === 0 ? startIso ?? st.planned_arrival : i === stops.length - 1 ? endIso ?? st.planned_arrival : st.timeSet ? st.planned_arrival : shiftIso(st.planned_arrival, st.leg_index > 0 ? endDelta : startDelta),
           })),
         };
         // A month plan / bulk booking: offer to move the trips made with this one by the same amount.
-        const others = startDelta ? await tripsMadeWith(trip).catch(() => []) : [];
-        const all = others.length > 0 && await ask(
-          `Move the other ${others.length} ${others.length === 1 ? 'trip' : 'trips'} too?`,
-          `${others.length === 1 ? 'It was' : 'They were'} created together with this one (same customer and driver). Move ${others.length === 1 ? 'it' : 'them'} ${deltaText(startDelta)} as well?`,
-          `Move all ${others.length + 1}`,
-          'Only this trip',
-        );
-        if (all) {
+        const madeWith = startDelta ? await tripsMadeWith(trip).catch(() => []) : [];
+        // Pick which of them move too — all, from this trip on, or some (not all-or-nothing).
+        const pickedIds = madeWith.length > 0 ? await pickToMove(madeWith, startDelta) : [];
+        const others = madeWith.filter((t) => pickedIds.includes(t.id));
+        if (others.length) {
           const r = await moveTrips(others, startDelta, { trip, payload });
           if (!r.editedSaved) {
             if (r.moved) refreshLists();
@@ -285,6 +317,15 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
         });
       }
       refreshLists();
+      if (routeSaved && added > 0 && status !== 'Draft') {
+        // Optional extra-stop charge, pre-filled from the customer's "additional stop" rule.
+        let rule = null;
+        try {
+          if (customerId) rule = findExtraStopRule(await operatorService.surchargeRules({ customerId }));
+        } catch { /* no rule to pre-fill — a rate can still be typed */ }
+        setExtra({ added, rate: rule?.rate ?? null, ruleId: rule?.id ?? null, unit: rule?.unit ?? 'per stop', chargeType: rule?.charge_type || 'Additional Stop' });
+        return;
+      }
       onDone();
     } catch (err) {
       if (routeSaved) refreshLists();
@@ -298,13 +339,34 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
     }
   };
 
+  const saveExtra = async (v: ExtraStopSheetValue) => {
+    if (!extra) return;
+    setExtraSaving(true);
+    try {
+      await operatorService.addExtraStop(trip.id, {
+        ...(v.addCharge ? { charge: { surchargeRuleId: extra.ruleId, charge_type: extra.chargeType, unit: extra.unit, rate: v.rate, quantity: extra.added } } : {}),
+        ...(v.payoutIncrease > 0 ? { driver_payout_increase: v.payoutIncrease } : {}),
+      });
+      refreshLists();
+      setExtra(null);
+      onDone();
+    } catch (err) {
+      Alert.alert('Stop saved, charge not saved', getApiErrorMessage(err));
+    } finally {
+      setExtraSaving(false);
+    }
+  };
+
   const picked = stopPicker ? stops.find((st) => st.key === stopPicker) : undefined;
-  const lockedNote = `This trip is ${statusWord(status)}, so its times and places can no longer be changed.`;
+  const lockedNote = stopsOpen
+    ? `This trip is ${statusWord(status)}. Its times and the stops the driver has reached are locked — you can add or remove stops not reached yet.`
+    : `This trip is ${statusWord(status)}, so its times and places can no longer be changed.`;
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={formStyles.scroll} keyboardShouldPersistTaps="handled">
         {!routeOpen ? <LockNote text={lockedNote} /> : null}
+        {extraStopNote(trip) ? <Text style={s.hint}>{extraStopNote(trip)}</Text> : null}
 
         <Section title="Schedule" Icon={CalendarClock}>
           <View style={{ gap: 8 }}>
@@ -324,12 +386,19 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
               error={!!errors.schedule}
               onPress={() => routeOpen && setWhen('end')}
             />
+            <ValueTile
+              style={(!routeOpen || startMs == null) && s.off}
+              caption="Transit time"
+              value={transitMin != null ? transitText(transitMin) : undefined}
+              placeholder={startMs == null ? 'Set the pickup first' : 'Not set'}
+              onPress={() => routeOpen && startMs != null && setTransitPicker(true)}
+            />
           </View>
           {errors.schedule ? <Text style={s.error}>{errors.schedule}</Text> : null}
           {endFollowed && !endTouched ? <Text style={s.hint}>Delivery moved with the pickup, so the trip keeps its length. Tap Delivery to change it.</Text> : null}
         </Section>
 
-        <Section title="Route" Icon={Route} note={routeOpen ? 'Tap a stop to change its place, or its time to change when it happens.' : undefined}>
+        <Section title="Route" Icon={Route} note={routeOpen ? 'Tap a stop to change its place, or its time to change when it happens.' : stopsOpen ? 'Stops the driver has reached are locked.' : undefined}>
           <View style={{ gap: 8 }}>
             {stops.map((st, i) => {
               const edge = i === 0 || i === stops.length - 1;
@@ -340,9 +409,9 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
                     {i < stops.length - 1 ? <View style={s.railLine} /> : null}
                   </View>
                   <TouchableOpacity
-                    style={[s.stopBox, !routeOpen && s.off, errors.route && !st.name.trim() ? { borderColor: Colors.error } : null]}
-                    activeOpacity={routeOpen ? 0.7 : 1}
-                    onPress={() => routeOpen && setStopPicker(st.key)}
+                    style={[s.stopBox, !editable(i) && s.off, errors.route && !st.name.trim() ? { borderColor: Colors.error } : null]}
+                    activeOpacity={editable(i) ? 0.7 : 1}
+                    onPress={() => editable(i) && setStopPicker(st.key)}
                   >
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={s.stopCap}>{stopLabel(i)}</Text>
@@ -363,7 +432,7 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
                         </TouchableOpacity>
                       ) : null}
                     </View>
-                    {!routeOpen ? null : edge || !oneWay ? <MapPin size={16} color={Colors.gray400} /> : (
+                    {st.reached ? <Lock size={15} color={Colors.gray400} /> : !editable(i) ? null : legEdge(i) ? <MapPin size={16} color={Colors.gray400} /> : (
                       <TouchableOpacity onPress={() => removeStop(st.key)} hitSlop={10} accessibilityLabel={`Remove ${stopLabel(i)}`}>
                         <X size={17} color={Colors.gray500} />
                       </TouchableOpacity>
@@ -374,12 +443,12 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
             })}
           </View>
           {errors.route ? <Text style={s.error}>{errors.route}</Text> : null}
-          {routeOpen && oneWay ? (
-            <TouchableOpacity style={s.addStop} activeOpacity={0.75} onPress={() => { tap(); addStop(); }}>
+          {stopsOpen ? legs.filter((leg) => !legClosed(leg)).map((leg) => (
+            <TouchableOpacity key={leg} style={s.addStop} activeOpacity={0.75} onPress={() => { tap(); addStop(leg); }}>
               <Plus size={15} color={Colors.charcoal} strokeWidth={2.4} />
-              <Text style={s.addStopText}>Add a stop on the way</Text>
+              <Text style={s.addStopText}>{oneWay ? 'Add a stop on the way' : leg === 0 ? 'Add a stop on the way out' : 'Add a stop on the way back'}</Text>
             </TouchableOpacity>
-          ) : null}
+          )) : null}
         </Section>
 
         <Section title="Price" Icon={Wallet}>
@@ -423,6 +492,25 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
 
       <SaveBar label="Save changes" onPress={handleSave} saving={saving} disabled={!dirty} />
 
+      <MovePlanSheet
+        visible={!!movePick}
+        others={movePick?.others ?? []}
+        editedStart={trip.planned_start ?? null}
+        shiftText={movePick ? deltaText(movePick.delta) : ''}
+        tz={tz}
+        onMove={(ids) => { movePick?.resolve(ids); setMovePick(null); }}
+        onOnlyThis={() => { movePick?.resolve([]); setMovePick(null); }}
+      />
+      <ExtraStopSheet
+        visible={!!extra}
+        added={extra?.added ?? 0}
+        defaultRate={extra?.rate ?? null}
+        chargeType={extra?.chargeType ?? 'Additional Stop'}
+        hasDriver={!!trip.driver && !trip.is_third_party}
+        saving={extraSaving}
+        onSkip={() => { setExtra(null); onDone(); }}
+        onSave={saveExtra}
+      />
       <WhenSheet
         visible={!!stopWhen}
         title={stopWhen ? `Time at ${stopLabel(stops.findIndex((x) => x.key === stopWhen))}` : ''}
@@ -464,6 +552,24 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
         tz={tz}
         onDone={(v) => { setEnd(v); setEndTouched(true); clear('schedule'); setWhen(null); }}
         onClose={() => setWhen(null)}
+      />
+      <PickerSheet
+        visible={transitPicker}
+        title="Transit time"
+        options={TRANSIT_CHOICES.map((m) => ({
+          value: String(m),
+          label: transitText(m),
+          sub: startMs != null ? `Delivery ${whenText(wallOf(new Date(startMs + m * 60000).toISOString(), tz))}` : undefined,
+        }))}
+        value={transitMin != null ? String(Math.round(transitMin / 30) * 30) : null}
+        onSelect={(value) => {
+          if (startMs == null) return;
+          setEnd(wallOf(new Date(startMs + Number(value) * 60000).toISOString(), tz));
+          setEndTouched(true);
+          clear('schedule');
+        }}
+        onClose={() => setTransitPicker(false)}
+        searchPlaceholder="Hours, e.g. 8"
       />
       <PickerSheet
         visible={!!stopPicker}

@@ -5,8 +5,8 @@
  * time, rolls the hour / minute / second wheels to the screenshot's value and
  * hits "Next" to move on. An untouched time keeps the driver's tapped time.
  */
-import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, Alert, ScrollView } from 'react-native';
+import React, { useMemo, useRef, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Image, Alert, ScrollView, FlatList } from 'react-native';
 import { isoToWall, resolveStopTimes, type StopTimeRow } from '@mercon/shared-types';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
@@ -15,6 +15,10 @@ import { operatorService, type OperatorTripDetail, type OperatorTripDocument } f
 import { sortedStops, stopName } from '../tripDetailsModel';
 import { ACTION, INK, MUTED } from './parts';
 import { TimeWheel } from './TimeWheel';
+import { ZoomableImage } from '../../../../components/ZoomableImage';
+
+/** Drop-offs show planned and arrived only — when the truck left doesn't matter there. */
+export const isDropoff = (st: { stop_type?: string | null }) => /drop|deliver/i.test(st.stop_type ?? '');
 
 /** A screenshot from the customer's app (EXTERNAL_APP trips). */
 export const isAppScreenshot = (d: OperatorTripDocument) => d.ai_extracted_json?.source === 'external_app_screenshot';
@@ -25,6 +29,8 @@ interface Props {
   visible: boolean;
   trip: OperatorTripDetail;
   tz: string;
+  /** Opened from one stop's "check" link: show only that stop's screenshots at first. */
+  stopId?: string | null;
   onClose: () => void;
   onDone: () => void;
 }
@@ -33,17 +39,25 @@ type Field = 'arrival' | 'departure';
 const FIELDS: Field[] = ['arrival', 'departure'];
 const FIELD_LABEL: Record<Field, string> = { arrival: 'Arrived', departure: 'Left' };
 
-export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
+export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: Props) {
   const stops = useMemo(() => sortedStops(trip), [trip]);
-  const shots = useMemo(
+  const allShots = useMemo(
     () => (trip.documents ?? []).filter(isAppScreenshot).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
     [trip.documents],
   );
-  const pending = shots.filter(pendingTimeCheck).length;
+  const pending = allShots.filter(pendingTimeCheck).length;
+  const shotsOf = (id: string) => allShots.filter((d) => d.ai_extracted_json?.stop_id === id);
+  /** Editing one stop shows only its screenshots; "See all" shows every one. */
+  const [onlyStop, setOnlyStop] = useState<string | null>(null);
+  const focused = onlyStop ? shotsOf(onlyStop) : [];
+  const shots = focused.length ? focused : allShots;
 
   const [typed, setTyped] = useState<Record<string, Record<Field, string>>>({});
   const [shotIdx, setShotIdx] = useState(0);
   const [tall, setTall] = useState(false);
+  /** Width of the screenshot strip — one screenshot per page, swiped sideways. */
+  const [shotW, setShotW] = useState(0);
+  const shotList = useRef<FlatList<OperatorTripDocument>>(null);
   const [saving, setSaving] = useState(false);
   /** Which time the wheels are editing: index into stops × FIELDS. */
   const [active, setActive] = useState<number | null>(null);
@@ -52,7 +66,7 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
   const [shownFor, setShownFor] = useState(false);
   if (visible !== shownFor) {
     setShownFor(visible);
-    if (visible) { setTyped({}); setShotIdx(0); setTall(false); setActive(null); }
+    if (visible) { setTyped({}); setShotIdx(0); setTall(false); setActive(null); setOnlyStop(stopId ?? null); }
   }
 
   const rows: StopTimeRow[] = stops.map((s) => ({
@@ -86,7 +100,20 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
     }
     return clock(fallback) ?? '00:00:00';
   };
-  const lastIdx = stops.length * 2 - 1;
+  /** A drop-off's "Left" box isn't shown, so "Next" skips it. */
+  const hidden = (idx: number) => FIELDS[idx % 2] === 'departure' && isDropoff(stops[Math.floor(idx / 2)]);
+  const nextAfter = (idx: number) => {
+    for (let i = idx + 1; i < stops.length * 2; i++) if (!hidden(i)) return i;
+    return null;
+  };
+
+  /** Start editing a time; the strip switches to that stop's own screenshots when it has any. */
+  const edit = (idx: number | null) => {
+    setActive(idx);
+    if (idx === null) return;
+    const id = stops[Math.floor(idx / 2)]?.id;
+    if (id && id !== onlyStop && shotsOf(id).length) { setOnlyStop(id); setShotIdx(0); }
+  };
 
   const confirm = async () => {
     if (hasError) return;
@@ -114,21 +141,49 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
     <AppModal visible={visible} onClose={onClose} type="bottom-sheet" title={`Check times · ${trip.ref_id}`} maxHeight="94%">
       {shotUrl ? (
         <View style={{ gap: 6 }}>
-          <TouchableOpacity activeOpacity={0.9} onPress={() => { if (active !== null) { setActive(null); setTall(true); } else setTall((t) => !t); }}>
-            <Image source={{ uri: shotUrl }} style={[s.shot, tall && active === null && s.shotTall]} resizeMode="contain" />
-          </TouchableOpacity>
+          {/* Swipe sideways between the screenshots; tap one to enlarge it, then pinch to zoom. */}
+          <View onLayout={(e) => setShotW(e.nativeEvent.layout.width)}>
+            {shotW > 0 ? (
+              <FlatList
+                ref={shotList}
+                key={focused.length ? onlyStop ?? 'all' : 'all'}
+                data={shots}
+                keyExtractor={(d) => d.id}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                initialScrollIndex={Math.min(shotIdx, shots.length - 1)}
+                getItemLayout={(_, i) => ({ length: shotW, offset: shotW * i, index: i })}
+                onMomentumScrollEnd={(e) => setShotIdx(Math.round(e.nativeEvent.contentOffset.x / shotW))}
+                renderItem={({ item }) => (
+                  <TouchableOpacity style={{ width: shotW }} activeOpacity={0.9} onPress={() => { if (active !== null) { setActive(null); setTall(true); } else setTall((t) => !t); }}>
+                    {tall && active === null ? (
+                      <ZoomableImage uri={resolveMediaUrl(item.file_url)} style={[s.shot, s.shotTall]} />
+                    ) : (
+                      <Image source={{ uri: resolveMediaUrl(item.file_url) ?? undefined }} style={s.shot} resizeMode="contain" />
+                    )}
+                  </TouchableOpacity>
+                )}
+              />
+            ) : null}
+          </View>
           <View style={s.shotBar}>
-            <Text style={s.hint} numberOfLines={1}>
-              {shotStop >= 0 ? stopName(stops[shotStop], shotStop) : 'Trip'} · tap to {tall && active === null ? 'shrink' : 'enlarge'}
+            <Text style={[s.hint, { flex: 1 }]} numberOfLines={1}>
+              {shotStop >= 0 ? stopName(stops[shotStop], shotStop) : 'Trip'}{focused.length ? ' only' : ''} · {shots.length > 1 ? 'swipe for the next · ' : ''}{tall && active === null ? 'pinch to zoom · tap to shrink' : 'tap to enlarge'}
             </Text>
             {shots.length > 1 ? (
               <View style={s.pager}>
                 {shots.map((d, i) => (
-                  <TouchableOpacity key={d.id} onPress={() => setShotIdx(i)} hitSlop={6}>
+                  <TouchableOpacity key={d.id} onPress={() => { setShotIdx(i); shotList.current?.scrollToIndex({ index: i, animated: true }); }} hitSlop={6}>
                     <View style={[s.dot, i === shotIdx && s.dotOn, pendingTimeCheck(d) && i !== shotIdx && s.dotPending]} />
                   </TouchableOpacity>
                 ))}
               </View>
+            ) : null}
+            {focused.length && focused.length < allShots.length ? (
+              <TouchableOpacity onPress={() => { setOnlyStop(null); setShotIdx(0); }} hitSlop={8} accessibilityRole="button">
+                <Text style={s.link}>See all {allShots.length}</Text>
+              </TouchableOpacity>
             ) : null}
           </View>
         </View>
@@ -151,6 +206,7 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
                 </Text>
               </View>
               {FIELDS.map((field, f) => {
+                if (hidden(i * 2 + f)) return <View key={field} style={s.col} />;
                 const t = r[field];
                 const recorded = field === 'arrival' ? st.actual_arrival : st.actual_departure;
                 const idx = i * 2 + f;
@@ -159,7 +215,7 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
                   <View key={field} style={s.col}>
                     <TouchableOpacity
                       activeOpacity={0.7}
-                      onPress={() => setActive(active === idx ? null : idx)}
+                      onPress={() => edit(active === idx ? null : idx)}
                       accessibilityLabel={`${stopName(st, i)} ${FIELD_LABEL[field]}`}
                       style={[s.input, t.changed && s.inputChanged, !!t.error && s.inputError, active === idx && s.inputActive]}
                     >
@@ -182,7 +238,7 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
         const field = FIELDS[active % 2];
         const recorded = field === 'arrival' ? st.actual_arrival : st.actual_departure;
         const picked = !!typed[st.id]?.[field];
-        const next = active < lastIdx ? active + 1 : null;
+        const next = nextAfter(active);
         return (
           <View style={s.panel}>
             <View style={s.panelHead}>
@@ -199,7 +255,7 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
                 <Text style={s.ghostText}>Done</Text>
               </TouchableOpacity>
               {next !== null ? (
-                <TouchableOpacity style={[s.ghostBtn, { flex: 2 }]} onPress={() => setActive(next)}>
+                <TouchableOpacity style={[s.ghostBtn, { flex: 2 }]} onPress={() => edit(next)}>
                   <Text style={s.ghostText} numberOfLines={1}>
                     Next: {stopName(stops[Math.floor(next / 2)], Math.floor(next / 2))} · {FIELD_LABEL[FIELDS[next % 2]]} ›
                   </Text>
@@ -210,7 +266,7 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
         );
       })() : (
         <Text style={[s.hint, { marginTop: 8 }]}>
-          {pending > 0 ? `${pending} screenshot${pending === 1 ? '' : 's'} to check` : 'All screenshots checked'} · tap a time to change it · untouched times stay as tapped
+          {shots.length === 0 ? 'Times the driver tapped' : pending > 0 ? `${pending} screenshot${pending === 1 ? '' : 's'} to check` : 'All screenshots checked'} · tap a time to change it · untouched times stay as tapped
         </Text>
       )}
       <TouchableOpacity style={[s.btn, (saving || hasError) && { opacity: 0.5 }]} onPress={confirm} disabled={saving || hasError}>

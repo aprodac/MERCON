@@ -54,7 +54,8 @@ export default function DashboardHomeScreen() {
 
   const emergencies = useMemo(() => inbox.items.filter((i) => i.kind === 'emergency'), [inbox.items]);
   const needs = useMemo(() => needTiles(inbox.items), [inbox.items]);
-  const toStart = useMemo(() => toStartToday(inbox.scheduled, inbox.tz, now).length, [inbox.scheduled, inbox.tz, now]);
+  // Late trips that never started still count as to start, not on the road.
+  const toStart = useMemo(() => toStartToday(inbox.scheduled, inbox.tz, now).length + inbox.counts.lateToStart, [inbox.scheduled, inbox.tz, now, inbox.counts.lateToStart]);
 
   const first = (me?.name || me?.username || '').trim().split(/\s+/)[0];
   const hello = `${greeting(inbox.tz, now)}${first ? `, ${first[0].toUpperCase()}${first.slice(1)}` : ''}`;

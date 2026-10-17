@@ -55,6 +55,12 @@ export function parseHealth(body: any) {
 
 const INSTALL_ID_RE = /^[A-Za-z0-9-]{8,64}$/;
 
+/** The app's language from a device report (en | ur | ur-en); null when not sent. */
+export const parseLanguage = (body: unknown): string | null => {
+  const v = (body as { language?: unknown } | null)?.language;
+  return v === 'en' || v === 'ur' || v === 'ur-en' ? v : null;
+};
+
 /**
  * Finds or creates the device row for this install (and/or push token),
  * merging a row an older build registered by token alone. Returns the row
@@ -62,9 +68,9 @@ const INSTALL_ID_RE = /^[A-Za-z0-9-]{8,64}$/;
  */
 export async function upsertDriverDevice(
   driverId: string,
-  input: { installId: string | null; token: string | null; platform: string | null; health: ReturnType<typeof parseHealth> },
+  input: { installId: string | null; token: string | null; platform: string | null; health: ReturnType<typeof parseHealth>; language?: string | null },
 ) {
-  const { installId, token, platform, health } = input;
+  const { installId, token, platform, health, language } = input;
   const byInstall = installId ? await prisma.driverDevice.findUnique({ where: { install_id: installId } }) : null;
   const byToken = token ? await prisma.driverDevice.findUnique({ where: { token } }) : null;
 
@@ -82,6 +88,7 @@ export async function upsertDriverDevice(
     ...(installId ? { install_id: installId } : {}),
     ...(token ? { token } : {}),
     ...(platform ? { platform } : {}),
+    ...(language ? { language } : {}),
     ...(health ? { ...health, health_reported_at: now } : {}),
   };
 
@@ -134,7 +141,7 @@ export const reportHealth = async (req: Request, res: Response) => {
     const health = parseHealth(req.body);
     const token = str(req.body?.token, 255);
     const platform = str(req.body?.platform, 16);
-    const { before, after } = await upsertDriverDevice(driverId, { installId, token, platform, health });
+    const { before, after } = await upsertDriverDevice(driverId, { installId, token, platform, health, language: parseLanguage(req.body) });
 
     // Permission changes are what break things silently — log each one.
     if (before && health) {

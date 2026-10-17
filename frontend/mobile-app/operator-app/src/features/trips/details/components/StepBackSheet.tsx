@@ -1,13 +1,15 @@
 /**
- * "Undo driver's step" — take the trip back to an earlier step when the driver
+ * "Driver's steps" — take the trip back to an earlier step when the driver
  * tapped ahead by mistake (e.g. went through delivery and took the POD photos
- * while still loading). Same rules and wording as the web dialog; the server
- * does the work (GET /trips/:id/progress-steps, POST /trips/:id/step-back).
+ * while still loading), or mark the next step done for the driver (TestFlight
+ * feedback). Same rules and wording as the web dialog; the server does the
+ * work (GET /trips/:id/progress-steps, POST /trips/:id/step-back, /step-forward).
+ * The step that finishes the trip stays with Confirm delivery (it makes the invoice).
  */
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet, Alert } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { CheckCircle2, Circle, Images, TriangleAlert, Undo2 } from 'lucide-react-native';
+import { CheckCircle2, Circle, Images, Redo2, TriangleAlert, Undo2 } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
@@ -41,6 +43,34 @@ export function StepBackSheet({ visible, tripId, f, onClose, onDone }: {
   const photoCount = target === null ? 0 : data?.photos_after[target] ?? 0;
   const targetLabel = target === null ? '' : target === -1 ? 'Not started' : steps[target]?.label;
   const nextForDriver = target === null ? '' : target === -1 ? 'Start the trip' : steps[target]?.next;
+
+  // The next step the office can mark done for the driver — never the one that finishes the trip.
+  const nextStep = steps[current + 1] && current + 1 < steps.length - 1 ? steps[current + 1] : null;
+  const forward = () => {
+    if (!nextStep) return;
+    Alert.alert(
+      'Mark the next step done?',
+      `"${nextStep.label}" is recorded now. The driver's app moves on to "${nextStep.next}", and the driver gets a notification.`,
+      [
+        { text: 'Not now', style: 'cancel' },
+        {
+          text: 'Mark done', onPress: async () => {
+            setSaving(true);
+            try {
+              const r = await operatorService.stepForwardTrip(tripId);
+              Alert.alert('Trip moved on', `Now at: ${r.to.label}.`);
+              onDone();
+              onClose();
+            } catch (e) {
+              Alert.alert('Could not move the trip on', getApiErrorMessage(e));
+            } finally {
+              setSaving(false);
+            }
+          },
+        },
+      ],
+    );
+  };
 
   const confirm = () => {
     if (target === null) return;
@@ -97,9 +127,9 @@ export function StepBackSheet({ visible, tripId, f, onClose, onDone }: {
   };
 
   return (
-    <AppModal visible={visible} onClose={onClose} type="bottom-sheet" title="Undo driver's step">
+    <AppModal visible={visible} onClose={onClose} type="bottom-sheet" title="Driver's steps">
       <View style={{ gap: 12, paddingBottom: 8 }}>
-        <Text style={s.intro}>For when the driver tapped ahead by mistake. Pick the last step that really happened — everything after it is undone.</Text>
+        <Text style={s.intro}>Driver tapped ahead by mistake? Pick the last step that really happened — everything after it is undone. Or mark the next step done for them.</Text>
         {isLoading ? (
           <ActivityIndicator color={Colors.primary} style={{ marginVertical: 20 }} />
         ) : isError || !data ? (
@@ -155,6 +185,12 @@ export function StepBackSheet({ visible, tripId, f, onClose, onDone }: {
               {saving ? <ActivityIndicator color="#fff" /> : <Undo2 size={18} color="#fff" />}
               <Text style={s.ctaText}>Go back {undoCount > 0 ? `${undoCount} step${undoCount === 1 ? '' : 's'}` : ''}</Text>
             </TouchableOpacity>
+            {nextStep ? (
+              <TouchableOpacity style={[s.ctaQuiet, saving && { opacity: 0.5 }]} disabled={saving} onPress={forward} accessibilityRole="button">
+                <Redo2 size={18} color={INK} />
+                <Text style={s.ctaQuietText} numberOfLines={1}>Mark next step done: {nextStep.label}</Text>
+              </TouchableOpacity>
+            ) : null}
           </>
         )}
       </View>
@@ -186,4 +222,6 @@ const s = StyleSheet.create({
   choiceHint: { fontSize: 12, color: MUTED, marginTop: 1 },
   cta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#FA634E', borderRadius: 14, paddingVertical: 14 },
   ctaText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  ctaQuiet: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#F1F3F7', borderRadius: 14, paddingVertical: 14, paddingHorizontal: 12 },
+  ctaQuietText: { flexShrink: 1, color: INK, fontSize: 15, fontWeight: '700' },
 });

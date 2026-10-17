@@ -52,7 +52,7 @@ export function MoreSheet({
           </>
         ) : null}
         {onStepBack ? (
-          <SheetRow icon={Undo2} tint="#F1F3F7" fg={INK} label="Undo driver's step" sub="Driver tapped ahead? Take the trip back" onPress={go(onStepBack)} />
+          <SheetRow icon={Undo2} tint="#F1F3F7" fg={INK} label="Driver's steps" sub="Undo a step, or mark the next one done" onPress={go(onStepBack)} />
         ) : null}
         {canCancel(trip) ? (
           <>

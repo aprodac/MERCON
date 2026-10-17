@@ -16,7 +16,7 @@ import { useTripHistory } from '../hooks/use-trip-history';
 import { statusLabel, stopLabel, getTripChargeValue, getMonthlyDriverPayout, type MobileTrip, type TripStatus } from '@mercon/mobile-shared/lib/trips';
 import { useLanguage, formatCurrency, LanguageMode } from '@mercon/mobile-shared/lib/language-context';
 import { API_URL } from '@mercon/mobile-shared/lib/api';
-import { formatDay, formatDayTime } from '@mercon/mobile-shared/lib/dates';
+import { formatDay, formatDayTime, formatTime } from '@mercon/mobile-shared/lib/dates';
 import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
 
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');
@@ -31,7 +31,7 @@ function formatRelativeDate(iso?: string | null, lang: LanguageMode = 'en'): str
   const diffDays = Math.round((d.getTime() - now.getTime()) / (1000 * 3600 * 24));
   if (diffDays === 0) return lang === 'ur' ? 'آج' : 'Today';
   // The trip's real time (this used to say "09:00 AM" whatever the time was).
-  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const time = formatTime(d);
   if (diffDays === 1) return lang === 'ur' ? `کل، ${time}` : `Tomorrow, ${time}`;
   if (diffDays > 1 && diffDays <= 7) return lang === 'ur' ? `${diffDays} دنوں میں` : `In ${diffDays} days`;
   return formatDay(d);

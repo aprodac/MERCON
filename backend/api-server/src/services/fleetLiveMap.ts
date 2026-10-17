@@ -17,6 +17,7 @@
  * pin on a city centre.
  */
 import { Prisma, type PrismaClient } from '@prisma/client';
+import { isDelayedNotStarted } from '@mercon/shared-types';
 
 interface LatestTripFix {
   tripId: string;
@@ -95,6 +96,11 @@ export interface LiveUnit {
     ref_id: string | null;
     status: string;
     phase: LiveTripPhase;
+    /**
+     * False for a trip that is late but never started (Delayed, nothing
+     * reached): it is waiting to start, not on the road.
+     */
+    started: boolean;
     customer_id: string | null;
     customer_name: string | null;
     /** The customer's logo (uploads path or URL), for the map's cards. */
@@ -156,6 +162,8 @@ export interface LiveTripRow {
   ref_id: string | null;
   status: string;
   vehicleId: string | null;
+  actual_start?: Date | null;
+  driver_workflow_state?: string | null;
   planned_start: Date | null;
   planned_end: Date | null;
   updatedAt: Date;
@@ -285,6 +293,7 @@ export function tripOut(t: LiveTripRow | undefined): LiveUnit['trip'] {
     ref_id: t.ref_id,
     status: t.status,
     phase: t.status === 'Delayed' ? 'delayed' : t.status === 'Scheduled' ? 'upcoming' : 'active',
+    started: t.status !== 'Scheduled' && !isDelayedNotStarted(t),
     customer_id: t.customerId ?? null,
     customer_name: t.customer?.name ?? null,
     customer_logo_url: t.customer?.logo_url ?? null,
@@ -470,6 +479,8 @@ export async function loadLiveUnits(db: PrismaClient): Promise<LiveUnit[]> {
         status: true,
         vehicleId: true,
         customerId: true,
+        actual_start: true,
+        driver_workflow_state: true,
         planned_start: true,
         planned_end: true,
         updatedAt: true,

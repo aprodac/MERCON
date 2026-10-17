@@ -24,6 +24,8 @@ export function useTripDetails(id: string | undefined) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The trip was deleted (not a network hiccup): no Retry.
+  const [deleted, setDeleted] = useState(false);
   const inFlight = useRef(false);
 
   const load = useCallback(async (mode: 'initial' | 'pull' | 'silent') => {
@@ -50,6 +52,7 @@ export function useTripDetails(id: string | undefined) {
       }
     } catch (e) {
       if (mode !== 'silent') setError(getApiErrorMessage(e));
+      if ((e as { response?: { data?: { error?: { code?: string } } } })?.response?.data?.error?.code === 'TRIP_DELETED') setDeleted(true);
     } finally {
       inFlight.current = false;
       setLoading(false);
@@ -153,6 +156,7 @@ export function useTripDetails(id: string | undefined) {
     loading,
     refreshing,
     error,
+    deleted,
     refresh: () => { setTrackingTick((n) => n + 1); return load('pull'); },
     reload: () => load('silent'),
   };
