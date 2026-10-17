@@ -9,7 +9,7 @@ import { ON_TIME_GRACE_MIN, TONE, delayText, mapsLink, minutesLate, minutesText,
 import { extraStopNote } from '@mercon/shared-types';
 import { liveLegOf } from '../../tripLegs';
 import { Card, Chip, INK, MUTED, WA, WA_INK, WA_LIGHT, tap } from './parts';
-import { isAppScreenshot, pendingTimeCheck } from './TripTimesSheet';
+import { isAppScreenshot, isDropoff, pendingTimeCheck } from './TripTimesSheet';
 
 interface Props {
   trip: OperatorTripDetail;
@@ -102,6 +102,14 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
           </Text>
         </View>
       ) : null}
+      {shots.length === 0 && stops.some((st) => st.actual_arrival) ? (
+        // Any trip's times can be corrected, not only customer-app trips with screenshots.
+        <TouchableOpacity style={[s.timesBar, s.timesBarDone]} activeOpacity={0.8} onPress={onCheckTimes} accessibilityRole="button">
+          <Clock3 size={14} color={MUTED} />
+          <Text style={[s.timesText, { color: MUTED }]}>Driver tapped a time wrong? Correct the stop times</Text>
+          <Text style={[s.timesCta, { color: MUTED }]}>Edit</Text>
+        </TouchableOpacity>
+      ) : null}
       {shots.length > 0 ? (
         <TouchableOpacity style={[s.timesBar, pendingShots === 0 && s.timesBarDone]} activeOpacity={0.8} onPress={onCheckTimes}>
           <Clock3 size={14} color={pendingShots > 0 ? '#8A5200' : MUTED} />
@@ -167,11 +175,11 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
                     <View style={s.timeGrid}>
                       <TimeCell label="PLANNED" f={f} iso={st.planned_arrival} />
                       <TimeCell label="ARRIVED" f={f} iso={st.actual_arrival} tone={lateMin != null && lateMin > ON_TIME_GRACE_MIN ? 'red' : lateMin != null ? 'green' : undefined} />
-                      <TimeCell label="LEFT" f={f} iso={st.actual_departure} empty={phase === 'active' ? 'Still there' : '—'} />
+                      {isDropoff(st) ? null : <TimeCell label="LEFT" f={f} iso={st.actual_departure} empty={phase === 'active' ? 'Still there' : '—'} />}
                     </View>
                     <Text style={s.timeNote}>
                       {lateMin == null ? 'No planned time' : lateMin > ON_TIME_GRACE_MIN ? `${minutesText(lateMin)} late` : lateMin < -ON_TIME_GRACE_MIN ? `${minutesText(lateMin)} early` : 'On time'}
-                      {dwell != null ? ` · ${minutesText(dwell)} at the stop` : ''}
+                      {dwell != null && !isDropoff(st) ? ` · ${minutesText(dwell)} at the stop` : ''}
                     </Text>
                   </>
                 );

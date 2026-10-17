@@ -17,6 +17,9 @@ import { ACTION, INK, MUTED } from './parts';
 import { TimeWheel } from './TimeWheel';
 import { ZoomableImage } from '../../../../components/ZoomableImage';
 
+/** Drop-offs show planned and arrived only — when the truck left doesn't matter there. */
+export const isDropoff = (st: { stop_type?: string | null }) => /drop|deliver/i.test(st.stop_type ?? '');
+
 /** A screenshot from the customer's app (EXTERNAL_APP trips). */
 export const isAppScreenshot = (d: OperatorTripDocument) => d.ai_extracted_json?.source === 'external_app_screenshot';
 /** …whose times the operator still has to check. */
@@ -90,7 +93,12 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
     }
     return clock(fallback) ?? '00:00:00';
   };
-  const lastIdx = stops.length * 2 - 1;
+  /** A drop-off's "Left" box isn't shown, so "Next" skips it. */
+  const hidden = (idx: number) => FIELDS[idx % 2] === 'departure' && isDropoff(stops[Math.floor(idx / 2)]);
+  const nextAfter = (idx: number) => {
+    for (let i = idx + 1; i < stops.length * 2; i++) if (!hidden(i)) return i;
+    return null;
+  };
 
   const confirm = async () => {
     if (hasError) return;
@@ -177,6 +185,7 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
                 </Text>
               </View>
               {FIELDS.map((field, f) => {
+                if (hidden(i * 2 + f)) return <View key={field} style={s.col} />;
                 const t = r[field];
                 const recorded = field === 'arrival' ? st.actual_arrival : st.actual_departure;
                 const idx = i * 2 + f;
@@ -208,7 +217,7 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
         const field = FIELDS[active % 2];
         const recorded = field === 'arrival' ? st.actual_arrival : st.actual_departure;
         const picked = !!typed[st.id]?.[field];
-        const next = active < lastIdx ? active + 1 : null;
+        const next = nextAfter(active);
         return (
           <View style={s.panel}>
             <View style={s.panelHead}>
@@ -236,7 +245,7 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
         );
       })() : (
         <Text style={[s.hint, { marginTop: 8 }]}>
-          {pending > 0 ? `${pending} screenshot${pending === 1 ? '' : 's'} to check` : 'All screenshots checked'} · tap a time to change it · untouched times stay as tapped
+          {shots.length === 0 ? 'Times the driver tapped' : pending > 0 ? `${pending} screenshot${pending === 1 ? '' : 's'} to check` : 'All screenshots checked'} · tap a time to change it · untouched times stay as tapped
         </Text>
       )}
       <TouchableOpacity style={[s.btn, (saving || hasError) && { opacity: 0.5 }]} onPress={confirm} disabled={saving || hasError}>

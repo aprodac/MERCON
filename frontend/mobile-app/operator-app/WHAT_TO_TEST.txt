@@ -29,6 +29,10 @@ LATE TO START
 19. A trip past its start that the driver never started: shows "Starting late" (a started trip that is late shows "Late arriving"). On Trips > Now it sits under "Not started - past start time", not "On the road". Home and the menu no longer count it as on the road; it counts as to start.
 20. New alert "Trip not started" for it, separate from "Trip Delayed".
 
+STOP TIMES
+22. Trip > Stops: pickups show Planned / Arrived / Left; drop-offs show Planned / Arrived only.
+23. Any trip (not only iMile / JD) can have its stop times corrected: Stops > "Correct the stop times" > Edit.
+
 ZOOM
 21. Check times: tap a screenshot to enlarge, then pinch to zoom. Photos opened full screen also pinch-zoom.
 
