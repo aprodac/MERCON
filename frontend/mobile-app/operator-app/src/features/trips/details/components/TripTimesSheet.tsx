@@ -29,6 +29,8 @@ interface Props {
   visible: boolean;
   trip: OperatorTripDetail;
   tz: string;
+  /** Opened from one stop's "check" link: show only that stop's screenshots at first. */
+  stopId?: string | null;
   onClose: () => void;
   onDone: () => void;
 }
@@ -37,13 +39,18 @@ type Field = 'arrival' | 'departure';
 const FIELDS: Field[] = ['arrival', 'departure'];
 const FIELD_LABEL: Record<Field, string> = { arrival: 'Arrived', departure: 'Left' };
 
-export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
+export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: Props) {
   const stops = useMemo(() => sortedStops(trip), [trip]);
-  const shots = useMemo(
+  const allShots = useMemo(
     () => (trip.documents ?? []).filter(isAppScreenshot).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
     [trip.documents],
   );
-  const pending = shots.filter(pendingTimeCheck).length;
+  const pending = allShots.filter(pendingTimeCheck).length;
+  const shotsOf = (id: string) => allShots.filter((d) => d.ai_extracted_json?.stop_id === id);
+  /** Editing one stop shows only its screenshots; "See all" shows every one. */
+  const [onlyStop, setOnlyStop] = useState<string | null>(null);
+  const focused = onlyStop ? shotsOf(onlyStop) : [];
+  const shots = focused.length ? focused : allShots;
 
   const [typed, setTyped] = useState<Record<string, Record<Field, string>>>({});
   const [shotIdx, setShotIdx] = useState(0);
@@ -59,7 +66,7 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
   const [shownFor, setShownFor] = useState(false);
   if (visible !== shownFor) {
     setShownFor(visible);
-    if (visible) { setTyped({}); setShotIdx(0); setTall(false); setActive(null); }
+    if (visible) { setTyped({}); setShotIdx(0); setTall(false); setActive(null); setOnlyStop(stopId ?? null); }
   }
 
   const rows: StopTimeRow[] = stops.map((s) => ({
@@ -100,6 +107,14 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
     return null;
   };
 
+  /** Start editing a time; the strip switches to that stop's own screenshots when it has any. */
+  const edit = (idx: number | null) => {
+    setActive(idx);
+    if (idx === null) return;
+    const id = stops[Math.floor(idx / 2)]?.id;
+    if (id && id !== onlyStop && shotsOf(id).length) { setOnlyStop(id); setShotIdx(0); }
+  };
+
   const confirm = async () => {
     if (hasError) return;
     setSaving(true);
@@ -131,6 +146,7 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
             {shotW > 0 ? (
               <FlatList
                 ref={shotList}
+                key={focused.length ? onlyStop ?? 'all' : 'all'}
                 data={shots}
                 keyExtractor={(d) => d.id}
                 horizontal
@@ -152,8 +168,8 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
             ) : null}
           </View>
           <View style={s.shotBar}>
-            <Text style={s.hint} numberOfLines={1}>
-              {shotStop >= 0 ? stopName(stops[shotStop], shotStop) : 'Trip'} · {shots.length > 1 ? 'swipe for the next · ' : ''}{tall && active === null ? 'pinch to zoom · tap to shrink' : 'tap to enlarge'}
+            <Text style={[s.hint, { flex: 1 }]} numberOfLines={1}>
+              {shotStop >= 0 ? stopName(stops[shotStop], shotStop) : 'Trip'}{focused.length ? ' only' : ''} · {shots.length > 1 ? 'swipe for the next · ' : ''}{tall && active === null ? 'pinch to zoom · tap to shrink' : 'tap to enlarge'}
             </Text>
             {shots.length > 1 ? (
               <View style={s.pager}>
@@ -163,6 +179,11 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
                   </TouchableOpacity>
                 ))}
               </View>
+            ) : null}
+            {focused.length && focused.length < allShots.length ? (
+              <TouchableOpacity onPress={() => { setOnlyStop(null); setShotIdx(0); }} hitSlop={8} accessibilityRole="button">
+                <Text style={s.link}>See all {allShots.length}</Text>
+              </TouchableOpacity>
             ) : null}
           </View>
         </View>
@@ -194,7 +215,7 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
                   <View key={field} style={s.col}>
                     <TouchableOpacity
                       activeOpacity={0.7}
-                      onPress={() => setActive(active === idx ? null : idx)}
+                      onPress={() => edit(active === idx ? null : idx)}
                       accessibilityLabel={`${stopName(st, i)} ${FIELD_LABEL[field]}`}
                       style={[s.input, t.changed && s.inputChanged, !!t.error && s.inputError, active === idx && s.inputActive]}
                     >
@@ -234,7 +255,7 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
                 <Text style={s.ghostText}>Done</Text>
               </TouchableOpacity>
               {next !== null ? (
-                <TouchableOpacity style={[s.ghostBtn, { flex: 2 }]} onPress={() => setActive(next)}>
+                <TouchableOpacity style={[s.ghostBtn, { flex: 2 }]} onPress={() => edit(next)}>
                   <Text style={s.ghostText} numberOfLines={1}>
                     Next: {stopName(stops[Math.floor(next / 2)], Math.floor(next / 2))} · {FIELD_LABEL[FIELDS[next % 2]]} ›
                   </Text>
