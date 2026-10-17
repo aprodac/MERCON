@@ -370,7 +370,7 @@ const LiveNavigationScreen = () => {
               <View style={styles.headerTitleCenter}>
                 <View style={styles.currentStepTagRow}>
                   <View style={styles.coralIndicatorDot} />
-                  <Text style={styles.currentStepTag}>{t('label_current_step', 'CURRENT STEP')}</Text>
+                  <Text style={styles.currentStepTag}>{t('label_current_step', 'CURRENT STEP')}{trip?.ref_id ? ` · ${trip.ref_id}` : ''}</Text>
                 </View>
                 <Text style={styles.headerStateTitle} numberOfLines={1}>
                   {isHeadingToPickup ? t('msg_en_route_pickup', 'On the way to pickup') : t('msg_en_route_delivery', 'On the way to delivery')}

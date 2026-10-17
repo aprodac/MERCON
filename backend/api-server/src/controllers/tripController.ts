@@ -600,6 +600,15 @@ export const getTripById = async (req: Request, res: Response) => {
     }
 
     if (!trip) {
+      // Deleted (not just mistyped): say so, so screens don't offer a pointless Retry
+      // (TestFlight feedback: opening a deleted trip's alert showed Retry).
+      const deleted = await prisma.trip.findFirst({
+        where: { ...whereClause, deletedAt: { not: null } },
+        select: { ref_id: true, deletedAt: true },
+      });
+      if (deleted) {
+        return res.status(404).json({ success: false, error: { code: 'TRIP_DELETED', message: `${deleted.ref_id ?? 'This trip'} was deleted on ${deleted.deletedAt!.toISOString().slice(0, 10)}.` } });
+      }
       return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Trip not found' } });
     }
 
