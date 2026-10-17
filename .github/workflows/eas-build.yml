@@ -5,7 +5,8 @@ name: Mobile Build (EAS)
 #   or: gh workflow run eas-build.yml -f app=driver -f platform=android -f profile=preview
 #
 # Profiles (frontend/mobile-app/<app>/eas.json):
-#   preview    → installable APK (Android) / internal build (iOS) for testers
+#   preview    → installable APK (Android) / internal build (iOS) for testers (DEV server)
+#   live-apk   → installable APK on the LIVE server (mercon.tech), handed straight to staff
 #   production → store builds (Android AAB, iOS App Store), build number auto-incremented
 #
 # Builds run on Expo's servers; this job only queues them (--no-wait) and
@@ -42,7 +43,7 @@ on:
       profile:
         description: 'EAS build profile'
         type: choice
-        options: [preview, production]
+        options: [preview, live-apk, production]
         default: preview
       builder:
         description: 'Where to build (github = free, Android only, file attached to the run)'
