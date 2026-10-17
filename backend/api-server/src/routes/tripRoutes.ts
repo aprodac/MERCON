@@ -7,7 +7,8 @@ import {
 } from '../controllers/tripController';
 import { exportTrips } from '../controllers/tripExportController';
 import { getTripTrackingLink, getTripTrackingLinks, trackingLinkBody, trackingLinksBody } from '../controllers/trackingController';
-import { idParam } from '../schemas';
+import { idParam, logEntryToStopBody } from '../schemas';
+import { logEntryToStop } from '../controllers/tripLogController';
 import { getTripDriverTrail } from '../controllers/driverPhoneController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles, requireModuleEnabled } from '../middlewares/rbac';
@@ -51,6 +52,8 @@ router.post('/:id/step-back', validate({ params: idParam, body: tripStepBackBody
 router.post('/:id/step-back/restore-photos', validate({ params: idParam }), restoreStepBackPhotosHandler);
 // The reverse: move the trip on one step for the driver.
 router.post('/:id/step-forward', validate({ params: idParam }), stepForward);
+// Trip log (customer-app trips): make a driver's log entry a stop, or add it to one.
+router.post('/:id/log/:entry/stop', validate({ body: logEntryToStopBody }), logEntryToStop);
 router.patch('/:id/financials', updateTripFinancials);
 router.post('/:id/charge-review', validate({ body: reviewTripChargesBody }), reviewTripCharges);
 

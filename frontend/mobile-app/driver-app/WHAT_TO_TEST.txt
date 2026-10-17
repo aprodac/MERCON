@@ -1,3 +1,10 @@
+NEW: TRIP LOG for customer-app trips (iMile, JD, Shipa app trips)
+A. Start the trip on Home. You now get one "Trip log" screen instead of the step screens.
+B. At every stop, tap "Send screenshots" and pick one or many screenshots. Each send shows with its time and place.
+C. "Add more" adds forgotten screenshots to the last send; "Take back" removes a send made by mistake (within 15 minutes).
+D. Finish trip when done. Report Delay still works from the top.
+E. Normal trips keep the old step-by-step screens.
+
 Fixes from your feedback. Please check:
 
 1. All dates and times are company (Riyadh) time, whatever your phone's time zone: Home, trips, trip details, charges, photos, map ETA, geotag stamp.

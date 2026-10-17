@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getCurrentTrip, getTripHistory, getScheduledTrips, updateTripStatus, uploadTripPhoto, getTripRoute, getMobileTripDetails, recordDriverLocation } from '../controllers/mobileTripController';
+import { getCurrentTrip, getTripHistory, getScheduledTrips, updateTripStatus, uploadTripPhoto, getTripRoute, getMobileTripDetails, recordDriverLocation, startTripLog, undoTripLogEntry } from '../controllers/mobileTripController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles } from '../middlewares/rbac';
 import { upload } from '../middlewares/upload';
@@ -23,5 +23,8 @@ router.post('/:id/status', updateTripStatus);
 router.post('/:id/photo', upload.single('file'), uploadTripPhoto);
 router.post('/:id/location', recordDriverLocation);
 router.post('/:id/acknowledge', acknowledgeTrip);
+// Customer-app trips run as a trip log: start, then screenshots only (POST /:id/photo with operation=log).
+router.post('/:id/log/start', startTripLog);
+router.delete('/:id/log/:entry', undoTripLogEntry);
 
 export default router;

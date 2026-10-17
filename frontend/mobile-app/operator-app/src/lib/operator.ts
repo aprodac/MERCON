@@ -184,7 +184,7 @@ export interface OperatorTripCharge {
 
 /** Same shape as the web's `fleetLiveService` types (backend services/fleetLiveMap.ts). */
 export type TripPhase = 'planned' | 'active' | 'done' | 'cancelled';
-export type LiveMediaStage = 'loaded' | 'arrived' | 'stop' | 'delivered' | 'delay' | 'other';
+export type LiveMediaStage = 'loaded' | 'arrived' | 'stop' | 'delivered' | 'delay' | 'log' | 'other';
 
 /** Mirrors `LiveGpsFix` in backend services/fleetLiveMap.ts (field names as the API sends them). */
 export interface LiveGpsFix {
@@ -288,6 +288,8 @@ export interface DriverUpdate {
   vehicle_plate: string | null;
   driver: { name: string; phone: string | null } | null;
   stop: { id: string; name: string; type: string; sequence: number } | null;
+  /** Trip log send (customer-app trip): where the phone was — no stop yet. */
+  place?: string | null;
   stage: LiveMediaStage;
   items: LiveMediaItem[];
   delay_note: string | null;
@@ -1259,6 +1261,16 @@ export const operatorService = {
   },
 
   /** Move the trip on one step for the driver (POST /trips/:id/step-forward); not the step that finishes it. */
+  /** Trip log (customer-app trip): make a driver's send a stop, or add it to one. */
+  async logEntryToStop(
+    tripId: string,
+    entry: string,
+    body: { action: 'new'; name: string; stop_type: 'Pickup' | 'Dropoff' } | { action: 'attach'; stop_id: string },
+  ): Promise<{ stop_id: string }> {
+    const { data } = await api.post(`/trips/${tripId}/log/${encodeURIComponent(entry)}/stop`, body);
+    return data.data;
+  },
+
   async stepForwardTrip(id: string): Promise<{ to: { index: number; label: string; next: string } }> {
     const { data } = await api.post(`/trips/${id}/step-forward`);
     return data.data;

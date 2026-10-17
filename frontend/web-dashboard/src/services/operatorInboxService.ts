@@ -21,6 +21,8 @@ export interface DriverUpdate {
   vehicle_plate: string | null;
   driver: { name: string; phone: string | null } | null;
   stop: { id: string; name: string; type: string; sequence: number } | null;
+  /** Trip log send (customer-app trip): where the phone was — no stop yet. */
+  place?: string | null;
   stage: LiveMediaStage;
   items: LiveMediaItem[];
   delay_note: string | null;

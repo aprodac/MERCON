@@ -34,6 +34,7 @@ import { StopsTab } from './components/StopsTab';
 import { DetailsTab } from './components/DetailsTab';
 import { ShareSheet, type ShareTarget } from './components/ShareSheet';
 import { MediaViewer, type ViewerItem } from './components/MediaViewer';
+import { DriverLog, LogStopSheet, type LogEntry } from './components/DriverLog';
 import { TripTimesSheet } from './components/TripTimesSheet';
 import { PinSheet } from './components/PinSheet';
 import { ActivitySheet, ChargesSheet, MoreSheet, UploadSheet } from './components/Sheets';
@@ -67,6 +68,7 @@ export default function TripDetailsScreen() {
   const [viewer, setViewer] = useState<{ items: ViewerItem[]; index: number; title: string; update?: DriverUpdate } | null>(null);
   const [checkingTimes, setCheckingTimes] = useState(false);
   const [timesStop, setTimesStop] = useState<string | null>(null);
+  const [logEntry, setLogEntry] = useState<LogEntry | null>(null);
   const [pinTarget, setPinTarget] = useState<{ stop: Stop; label: string; photoPins?: PhotoPin[]; preselect?: string | null } | null>(null);
   const [sheet, setSheet] = useState<'more' | 'upload' | 'activity' | 'charges' | 'stepback' | null>(null);
   const [fullMap, setFullMap] = useState(false);
@@ -460,6 +462,17 @@ export default function TripDetailsScreen() {
         {/* 2 · tab body */}
         <View style={{ paddingHorizontal: 16 }} onLayout={(e) => { tabBodyY.current = e.nativeEvent.layout.y; }}>
           {tab === 'stops' ? (
+            <>
+            <DriverLog
+              trip={trip}
+              f={f}
+              onOpen={(e, index) => setViewer({
+                title: `Driver's log · ${f.smart(e.at)}`,
+                index,
+                items: e.docs.map((d) => ({ id: d.id, url: d.file_url, kind: 'photo' as const, caption: [f.smart(e.at), e.place ? `near ${e.place}` : null].filter(Boolean).join(' · ') })),
+              })}
+              onPick={setLogEntry}
+            />
             <StopsTab
               trip={trip}
               phase={phase}
@@ -474,6 +487,7 @@ export default function TripDetailsScreen() {
               onStepBack={canStepBack ? () => setSheet('stepback') : undefined}
               onRestorePhotos={restorePhotos}
             />
+            </>
           ) : (
             <DetailsTab
               trip={trip}
@@ -551,6 +565,7 @@ export default function TripDetailsScreen() {
         onSend={viewer?.update ? () => { const u = viewer.update!; setViewer(null); setTimeout(() => setShare({ type: 'update', update: u }), 250); } : undefined}
       />
       <PinSheet target={pinTarget} tripId={trip.id} timeOf={f.time} onClose={() => setPinTarget(null)} onSaved={reload} />
+      <LogStopSheet trip={trip} entry={logEntry} f={f} onClose={() => setLogEntry(null)} onDone={reload} />
       <TripTimesSheet visible={checkingTimes} trip={trip} tz={tz} stopId={timesStop} onClose={() => setCheckingTimes(false)} onDone={reload} />
       <MoreSheet
         visible={sheet === 'more'}

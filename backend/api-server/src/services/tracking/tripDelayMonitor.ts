@@ -3,6 +3,7 @@ import { prisma } from '../../db';
 import { logger } from '../../utils/logger';
 import { DELAY_THRESHOLD_MINUTES } from '../tripLifecycle';
 import { notifyOperatorsOfDelay, createNotification, createDriverNotification } from '../../controllers/notificationController';
+import { TRIP_LOG_STATE } from '@mercon/shared-types';
 
 let monitorInterval: NodeJS.Timeout | null = null;
 /** Trips already marked Delayed still get the driver prompt only this long after the stop was due. */
@@ -193,6 +194,8 @@ export async function checkTripsForDelay(now: Date = new Date()): Promise<number
     });
 
     for (const trip of activeTrips) {
+      // A trip log has no stop times to judge (the office builds the stops afterwards).
+      if (trip.driver_workflow_state === TRIP_LOG_STATE) continue;
       const alreadyDelayed = trip.status === TripStatus.Delayed;
       // A Delayed trip is judged like the stage it is really at.
       const firstPickup = trip.stops.find((s) => s.stop_type === StopType.Pickup) || trip.stops[0];

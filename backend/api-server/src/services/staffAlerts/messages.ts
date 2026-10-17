@@ -89,6 +89,8 @@ export function describeTripStatusChange(change: TripStatusChange, ctx: DriverUp
   }
 
   switch (toWorkflow) {
+    case 'TRIP_LOG':
+      return alert(ctx, 'Trip started', 'started the trip. Screenshots will come in as the trip goes.', out.loading);
     case 'GOING_TO_PICKUP':
       return alert(ctx, 'Trip started', `started the trip and is driving to ${pickup}.`, out.loading);
     case 'ARRIVED_AT_PICKUP':
@@ -136,6 +138,8 @@ export interface TripPhotoUpload {
   stopId?: string | null;
   /** The uploaded document, so a tap opens the photos it belongs to. */
   documentId?: string | null;
+  /** Trip log entry: where the phone was ("Taif"). */
+  place?: string | null;
 }
 
 /**
@@ -145,6 +149,7 @@ export interface TripPhotoUpload {
  */
 export function describeTripPhoto(upload: TripPhotoUpload, ctx: DriverUpdateContext): StaffAlert {
   if (upload.operation === 'delay') return alert(ctx, 'Delay video', 'sent a video of the delay.');
+  if (upload.operation === 'log') return alert(ctx, 'Trip update', `sent screenshots${upload.place ? ` near ${upload.place}` : ''}.`);
 
   // The app names the stop; older builds only say which step, so fall back to that leg's end.
   const leg = (n: 0 | 1) => getLegEndpoints({ stops: ctx.stops }, n);

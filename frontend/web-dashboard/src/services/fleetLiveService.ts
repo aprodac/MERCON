@@ -71,7 +71,7 @@ export interface LiveUnit {
 
 export type LiveMediaKind = 'pod' | 'photo' | 'video';
 /** The step the driver took it at — from the app's upload tag. */
-export type LiveMediaStage = 'loaded' | 'arrived' | 'stop' | 'delivered' | 'delay' | 'other';
+export type LiveMediaStage = 'loaded' | 'arrived' | 'stop' | 'delivered' | 'delay' | 'log' | 'other';
 
 export interface LiveMediaItem {
   id: string;
