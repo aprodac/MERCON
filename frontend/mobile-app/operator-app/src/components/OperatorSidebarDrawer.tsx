@@ -25,7 +25,7 @@ import {
 } from 'lucide-react-native';
 import { useNotifications } from '@/features/notifications/hooks/useNotifications';
 import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
-import { operatorService } from '@/lib/operator';
+import { isOnRoad, operatorService } from '@/lib/operator';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { TONE, type Tone } from '@/features/trips/details/tripDetailsModel';
 
@@ -134,7 +134,7 @@ function useMenuBadges(enabled: boolean): { badges: Record<BadgeKey, Badge | nul
   return useMemo(() => {
     const unread = (notifications.data ?? []).filter((n) => !n.is_read).length;
     const units = live.data ?? [];
-    const running = units.filter((u) => u.trip && u.trip.phase !== 'upcoming').length;
+    const running = units.filter(isOnRoad).length;
     const delayed = units.filter((u) => u.trip?.phase === 'delayed').length;
     const upcoming = units.filter((u) => u.trip?.phase === 'upcoming').length;
     const moving = units.filter((u) => u.motion === 'moving').length;

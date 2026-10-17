@@ -38,6 +38,8 @@ export interface OperatorTrip {
   updatedAt?: string;
   is_third_party?: boolean;
   driver_workflow?: string | null;
+  /** Where the driver's app is in the trip (ASSIGNED until the driver starts). */
+  driver_workflow_state?: string | null;
   customer?: { id?: string; name: string; logo_url?: string | null } | null;
   driver?: { id?: string; first_name: string; last_name: string; avatar_url?: string | null; phone_primary?: string | null } | null;
   vehicle?: { id?: string; plate_number: string; ref_id?: string | null; asset_type?: string } | null;
@@ -324,6 +326,8 @@ export interface LiveUnit {
     ref_id: string | null;
     status: string;
     phase: 'upcoming' | 'active' | 'delayed';
+    /** False for a late trip that never started; absent from servers older than 2026-10-17. */
+    started?: boolean;
     /** Absent from servers older than the live map's customer link (2026-10). */
     customer_id?: string | null;
     customer_name: string | null;
@@ -344,6 +348,15 @@ export interface LiveUnit {
   /** Since when a running trip's truck has stood within ~300 m of where it is (driver app GPS); null while moving. */
   stopped_since?: string | null;
 }
+
+/**
+ * Late but never started (Delayed, nothing reached): waiting to start, not on
+ * the road. Servers older than 2026-10-17 don't send `started`.
+ */
+export const isLateToStart = (u: LiveUnit) => !!u.trip && u.trip.phase === 'delayed' && u.trip.started === false;
+
+/** The trip is under way: started, or Loading / In transit. */
+export const isOnRoad = (u: LiveUnit) => !!u.trip && u.trip.phase !== 'upcoming' && !isLateToStart(u);
 
 /** What a driver sent from a trip's stops (backend services/fleetLiveMap.ts `LiveTripMedia`). */
 export interface TripMediaItem {

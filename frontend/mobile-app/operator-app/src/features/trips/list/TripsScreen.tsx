@@ -3,7 +3,9 @@
  *
  *   Delayed  — every delayed trip, the longest-delayed first.
  *   Now      — trips under way only: needs attention, on the road. Trips
- *              that haven't started (draft / scheduled) live in Schedule.
+ *              that haven't started (draft / scheduled) live in Schedule;
+ *              ones past their start that the driver never started sit in
+ *              their own section on top, not under "On the road".
  *   Schedule — a date strip (with a count per day) and the trips still to
  *              run that day. Delivered and cancelled trips are in History.
  *   History  — the same date strip, for the day trips finished: delivered
@@ -31,7 +33,7 @@ import { AppTopBar } from '@/components/AppTopBar';
 import { useNow, useTripList, HISTORY_DAYS, SCHEDULE_AFTER, type View as ListView } from './useTripList';
 import { askDeleteTrip, canDeleteTrip } from '../edit/movePlan';
 import {
-  clashesOf, dayLabel, dayRange, daysBetween, driverNameOf, driverPhoneOf, finishedDayIso, needsAttention, phaseOf, tripDayIso, type TimeFmt,
+  clashesOf, dayLabel, isLateToStart, dayRange, daysBetween, driverNameOf, driverPhoneOf, finishedDayIso, needsAttention, phaseOf, tripDayIso, type TimeFmt,
 } from './tripListModel';
 
 const INK = '#3E3C3D';
@@ -98,16 +100,20 @@ export default function TripsScreen() {
   const board = useMemo(() => {
     const attention: OperatorTrip[] = [];
     const road: OperatorTrip[] = [];
+    const lateStart: OperatorTrip[] = [];
     for (const t of data.open) {
       const p = phaseOf(t.status);
       if (p !== 'running' && p !== 'delayed') continue;
-      if (needsAttention(t, now)) attention.push(t);
+      // Past its start but the driver never started: not on the road yet.
+      if (isLateToStart(t)) lateStart.push(t);
+      else if (needsAttention(t, now)) attention.push(t);
       else road.push(t);
     }
     const byStart = (a: OperatorTrip, b: OperatorTrip) => new Date(tripDayIso(a) ?? 0).getTime() - new Date(tripDayIso(b) ?? 0).getTime();
     return {
       attention: attention.sort(byStart),
       road: road.sort(byStart),
+      lateStart: lateStart.sort(byStart),
     };
   }, [data.open, now]);
 
@@ -121,6 +127,7 @@ export default function TripsScreen() {
 
   // The sections are the grouping — no filter chips on top of them.
   const nowSections = useMemo(() => [
+    { key: 'lateStart', title: 'Not started — past start time', tone: '#B54708', data: board.lateStart },
     { key: 'attention', title: 'Needs attention', tone: '#D92D20', data: board.attention },
     { key: 'road', title: 'On the road', tone: '#2F5FD0', data: board.road },
   ].filter((sct) => sct.data.length > 0), [board]);
@@ -525,7 +532,8 @@ const s = StyleSheet.create({
   todayLink: { fontSize: 13, fontWeight: '700', color: '#C4432F' },
   dayMonth: { fontSize: 9, lineHeight: 11, fontWeight: '800', letterSpacing: 0.4, color: '#C4432F', textTransform: 'uppercase' },
   dayTitle: { fontSize: 18, fontWeight: '800', color: INK },
-  dayCount: { fontSize: 13, fontWeight: '700', color: MUTED },
+  // Wraps rather than cutting off "· 2 need attention" on narrow phones.
+  dayCount: { fontSize: 13, fontWeight: '700', color: MUTED, flexShrink: 1, textAlign: 'right' },
   day: { width: 52, height: 80, borderRadius: 16, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', gap: 1, borderWidth: 1, borderColor: '#EEF0F4' },
   dayOn: { backgroundColor: INK, borderColor: INK },
   dayToday: { borderColor: '#C4432F', borderWidth: 1.5 },

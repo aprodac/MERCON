@@ -3,7 +3,7 @@
  * Each photo says whether the customer has it yet, and the footer says who sent the set and when.
  */
 import React, { useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, FlatList, Image, Linking, useWindowDimensions, StatusBar } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, FlatList, Linking, useWindowDimensions, StatusBar } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CheckCheck, Clock3, Crosshair, ExternalLink, Info, MessageCircle, Play, Route, X } from 'lucide-react-native';
 import { GoogleMapsGeotagPreview } from '@mercon/mobile-shared/components/GoogleMapsGeotagPreview';
@@ -11,6 +11,7 @@ import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import type { SendState } from '../tripDetailsModel';
 import { WA } from './parts';
+import { ZoomableImage } from '../../../../components/ZoomableImage';
 
 export interface ViewerItem {
   id: string;
@@ -97,7 +98,7 @@ export function MediaViewer({ items, startIndex, title, context, onClose, onSend
                     </TouchableOpacity>
                   ) : uri ? (
                     <View style={{ flex: 1 }}>
-                      <Image source={{ uri }} style={{ width: '100%', flex: 1 }} resizeMode="contain" />
+                      <ZoomableImage uri={uri} style={{ width: '100%', flex: 1 }} />
                       {item.geo ? (
                         <View style={s.geo}>
                           <GoogleMapsGeotagPreview

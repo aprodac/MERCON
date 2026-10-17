@@ -15,6 +15,7 @@ import { operatorService, type OperatorTripDetail, type OperatorTripDocument } f
 import { sortedStops, stopName } from '../tripDetailsModel';
 import { ACTION, INK, MUTED } from './parts';
 import { TimeWheel } from './TimeWheel';
+import { ZoomableImage } from '../../../../components/ZoomableImage';
 
 /** A screenshot from the customer's app (EXTERNAL_APP trips). */
 export const isAppScreenshot = (d: OperatorTripDocument) => d.ai_extracted_json?.source === 'external_app_screenshot';
@@ -117,7 +118,7 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
     <AppModal visible={visible} onClose={onClose} type="bottom-sheet" title={`Check times · ${trip.ref_id}`} maxHeight="94%">
       {shotUrl ? (
         <View style={{ gap: 6 }}>
-          {/* Swipe sideways between the screenshots; tap one to enlarge it. */}
+          {/* Swipe sideways between the screenshots; tap one to enlarge it, then pinch to zoom. */}
           <View onLayout={(e) => setShotW(e.nativeEvent.layout.width)}>
             {shotW > 0 ? (
               <FlatList
@@ -132,7 +133,11 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
                 onMomentumScrollEnd={(e) => setShotIdx(Math.round(e.nativeEvent.contentOffset.x / shotW))}
                 renderItem={({ item }) => (
                   <TouchableOpacity style={{ width: shotW }} activeOpacity={0.9} onPress={() => { if (active !== null) { setActive(null); setTall(true); } else setTall((t) => !t); }}>
-                    <Image source={{ uri: resolveMediaUrl(item.file_url) ?? undefined }} style={[s.shot, tall && active === null && s.shotTall]} resizeMode="contain" />
+                    {tall && active === null ? (
+                      <ZoomableImage uri={resolveMediaUrl(item.file_url)} style={[s.shot, s.shotTall]} />
+                    ) : (
+                      <Image source={{ uri: resolveMediaUrl(item.file_url) ?? undefined }} style={s.shot} resizeMode="contain" />
+                    )}
                   </TouchableOpacity>
                 )}
               />
@@ -140,7 +145,7 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
           </View>
           <View style={s.shotBar}>
             <Text style={s.hint} numberOfLines={1}>
-              {shotStop >= 0 ? stopName(stops[shotStop], shotStop) : 'Trip'} · {shots.length > 1 ? 'swipe for the next · ' : ''}tap to {tall && active === null ? 'shrink' : 'enlarge'}
+              {shotStop >= 0 ? stopName(stops[shotStop], shotStop) : 'Trip'} · {shots.length > 1 ? 'swipe for the next · ' : ''}{tall && active === null ? 'pinch to zoom · tap to shrink' : 'tap to enlarge'}
             </Text>
             {shots.length > 1 ? (
               <View style={s.pager}>
