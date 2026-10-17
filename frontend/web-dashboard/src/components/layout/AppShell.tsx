@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, Suspense } from 'react';
+import { canFullscreen, enterFullscreen, fullscreenElement, isTouchDevice } from '@/utils/fullscreen';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
@@ -51,16 +52,15 @@ function ShellInner() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Auto-enter full screen on initial app load (fresh page load across all pages)
+  // Auto-enter full screen on initial app load (fresh page load across all pages).
+  // Desktop only, and only where the browser supports it: iPhone Safari has no
+  // page full screen and the unguarded call crashed the app there.
   useEffect(() => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
-    }
+    if (!canFullscreen() || isTouchDevice()) return;
+    if (!fullscreenElement()) enterFullscreen();
 
     const handleFirstInteraction = () => {
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(() => {});
-      }
+      if (!fullscreenElement()) enterFullscreen();
     };
 
     window.addEventListener('click', handleFirstInteraction, { once: true, capture: true });
