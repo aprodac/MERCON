@@ -93,6 +93,8 @@ export const DRIVER_WORKFLOW_STATES = [
   'RETURN_DELIVERY_COMPLETED',
   'REVIEW_COMPLETE',
   'COMPLETED',
+  // Customer-app trip run as a trip log (tripLog.ts): started, screenshots only.
+  'TRIP_LOG',
 ] as const;
 
 export type DriverWorkflowState = (typeof DRIVER_WORKFLOW_STATES)[number];

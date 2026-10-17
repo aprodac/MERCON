@@ -12,6 +12,7 @@ const STAGE_LABEL: Record<LiveMediaItem['stage'], string> = {
   stop: 'Stop',
   delivered: 'Delivered',
   delay: 'Delay',
+  log: 'Trip update',
   other: 'Photo',
 };
 

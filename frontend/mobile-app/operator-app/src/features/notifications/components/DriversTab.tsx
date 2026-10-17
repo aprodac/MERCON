@@ -123,7 +123,7 @@ function UpdateCard({ u, when, onSend, onView, onMarkRead }: {
   const shown = unsent.slice(0, THUMBS);
   const extra = unsent.length - shown.length;
   const title = STAGE_TITLE[u.stage] ?? 'Photos';
-  const where = u.stop?.name ? niceName(u.stop.name) : null;
+  const where = u.stop?.name ? niceName(u.stop.name) : u.place ? `near ${u.place}` : null;
   const crew = [u.vehicle_plate, u.driver ? niceName(u.driver.name) : null].filter(Boolean).join(' · ');
   const to = u.customer?.group_name || niceName(u.customer?.name) || 'customer';
   const partSent = u.sent_ids.length > 0;

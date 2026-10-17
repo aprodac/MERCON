@@ -1,6 +1,7 @@
 /** Route: /trip/stop — intermediate stop verification + photo uploads */
 import StopVerificationScreen from '@/screens/StopVerificationScreen';
+import { TripLogRedirect } from '@/components/TripLogRedirect';
 
 export default function StopRoute() {
-  return <StopVerificationScreen />;
+  return <TripLogRedirect><StopVerificationScreen /></TripLogRedirect>;
 }

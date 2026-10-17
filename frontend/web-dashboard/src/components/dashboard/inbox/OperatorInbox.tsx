@@ -36,6 +36,7 @@ const STAGE_STYLE: Record<LiveMediaStage, { icon: typeof Truck; tile: string }> 
   stop: { icon: MapPin, tile: 'bg-slate-500/10 text-slate-600 dark:text-slate-300' },
   delivered: { icon: PackageCheck, tile: 'bg-emerald-600/10 text-emerald-700 dark:text-emerald-300' },
   delay: { icon: Video, tile: 'bg-rose-600/10 text-rose-700 dark:text-rose-300' },
+  log: { icon: MapPin, tile: 'bg-amber-500/10 text-amber-700 dark:text-amber-300' },
   other: { icon: PackageOpen, tile: 'bg-slate-500/10 text-slate-600 dark:text-slate-300' },
 };
 

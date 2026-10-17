@@ -47,7 +47,7 @@ export interface DriverUpdateShare {
 }
 
 export interface DriverUpdate {
-  /** `<stop id | trip>:<stage>` — stable across refreshes. */
+  /** `<stop id | trip>:<stage>`, or `log:<entry>` for a trip log send — stable across refreshes. */
   key: string;
   trip: { id: string; ref_id: string | null; status: string; route: string };
   customer: InboxCustomer | null;
@@ -65,6 +65,8 @@ export interface DriverUpdate {
   unsent_count: number;
   /** Marked as read without sending — every item in the set at the time (new photos bring it back). */
   marked_read: { by: string | null; at: string } | null;
+  /** Trip log send: where the phone was (no stop yet). */
+  place?: string | null;
 }
 
 interface TripRowForUpdates {
@@ -165,10 +167,16 @@ export function buildDriverUpdates(
     ];
 
     for (const b of batches) {
-      const byStage = new Map<LiveMediaStage, LiveMediaItem[]>();
-      for (const it of b.items) byStage.set(it.stage, [...(byStage.get(it.stage) ?? []), it]);
-      for (const [stage, items] of byStage) {
-        const key = `${b.stopId ?? 'trip'}:${stage}`;
+      // One row per step; a trip log's sends are one row each, keyed by the send
+      // (not the stop) so a row the office already sent stays sent once it becomes a stop.
+      const byStage = new Map<string, LiveMediaItem[]>();
+      for (const it of b.items) {
+        const g = it.stage === 'log' && it.log_entry ? `log:${it.log_entry}` : it.stage;
+        byStage.set(g, [...(byStage.get(g) ?? []), it]);
+      }
+      for (const [group, items] of byStage) {
+        const stage: LiveMediaStage = items[0].stage;
+        const key = group.startsWith('log:') ? group : `${b.stopId ?? 'trip'}:${stage}`;
         const all = sharesByKey.get(`${t.id}|${key}`) ?? [];
         const rows = all.filter((r) => r.channel !== MARKED_READ_CHANNEL);
         const sent = new Set(rows.flatMap((r) => r.media_ids));
@@ -199,6 +207,7 @@ export function buildDriverUpdates(
           marked_read: readMark
             ? { by: readMark.sharedBy?.name || readMark.sharedBy?.username || null, at: new Date(readMark.createdAt).toISOString() }
             : null,
+          ...(stage === 'log' ? { place: items.find((i) => i.place)?.place ?? null } : {}),
         });
       }
     }
@@ -219,10 +228,12 @@ const STAGE_PHRASE: Record<LiveMediaStage, string> = {
   stop: 'Stop at',
   delivered: 'Delivered at',
   delay: 'Delay on the way to',
+  log: 'Trip update at',
   other: 'Photos from',
 };
 
-export function updateHeadline(u: Pick<DriverUpdate, 'stage' | 'stop'>): string {
+export function updateHeadline(u: Pick<DriverUpdate, 'stage' | 'stop' | 'place'>): string {
+  if (u.stage === 'log' && !u.stop) return u.place ? `Trip update near ${u.place}` : 'Trip update';
   return u.stop ? `${STAGE_PHRASE[u.stage]} ${u.stop.name}` : u.stage === 'delay' ? 'Delay reported' : 'Trip photos';
 }
 
