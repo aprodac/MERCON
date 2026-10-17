@@ -21,7 +21,8 @@ interface Props {
   /** Open the share sheet on one photo set. */
   onSendUpdate: (u: DriverUpdate) => void;
   /** Open "Check times" — every stop's real time, copied off the customer-app screenshots. */
-  onCheckTimes: () => void;
+  /** Open "Check times"; from one stop's link, with only that stop's screenshots. */
+  onCheckTimes: (stopId?: string) => void;
   /** Open "Set pin" for a stop still on a guessed location. */
   onSetPin: (stop: Stop) => void;
   /** A stop to highlight — the one a tapped notification is about. */
@@ -104,14 +105,14 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
       ) : null}
       {shots.length === 0 && stops.some((st) => st.actual_arrival) ? (
         // Any trip's times can be corrected, not only customer-app trips with screenshots.
-        <TouchableOpacity style={[s.timesBar, s.timesBarDone]} activeOpacity={0.8} onPress={onCheckTimes} accessibilityRole="button">
+        <TouchableOpacity style={[s.timesBar, s.timesBarDone]} activeOpacity={0.8} onPress={() => onCheckTimes()} accessibilityRole="button">
           <Clock3 size={14} color={MUTED} />
           <Text style={[s.timesText, { color: MUTED }]}>Driver tapped a time wrong? Correct the stop times</Text>
           <Text style={[s.timesCta, { color: MUTED }]}>Edit</Text>
         </TouchableOpacity>
       ) : null}
       {shots.length > 0 ? (
-        <TouchableOpacity style={[s.timesBar, pendingShots === 0 && s.timesBarDone]} activeOpacity={0.8} onPress={onCheckTimes}>
+        <TouchableOpacity style={[s.timesBar, pendingShots === 0 && s.timesBarDone]} activeOpacity={0.8} onPress={() => onCheckTimes()}>
           <Clock3 size={14} color={pendingShots > 0 ? '#8A5200' : MUTED} />
           <Text style={[s.timesText, pendingShots === 0 && { color: MUTED }]}>
             {pendingShots > 0 ? `${pendingShots} screenshot${pendingShots === 1 ? '' : 's'} · check the stop times` : 'Stop times checked against screenshots'}
@@ -204,7 +205,7 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
               ) : null}
 
               {check ? (
-                <TouchableOpacity style={s.check} activeOpacity={0.8} onPress={onCheckTimes}>
+                <TouchableOpacity style={s.check} activeOpacity={0.8} onPress={() => onCheckTimes(st.id)}>
                   <Clock3 size={13} color="#8A5200" />
                   <Text style={s.checkText}>Screenshot time needs checking</Text>
                 </TouchableOpacity>

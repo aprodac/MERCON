@@ -66,6 +66,7 @@ export default function TripDetailsScreen() {
   const [share, setShare] = useState<ShareTarget | null>(null);
   const [viewer, setViewer] = useState<{ items: ViewerItem[]; index: number; title: string; update?: DriverUpdate } | null>(null);
   const [checkingTimes, setCheckingTimes] = useState(false);
+  const [timesStop, setTimesStop] = useState<string | null>(null);
   const [pinTarget, setPinTarget] = useState<{ stop: Stop; label: string; photoPins?: PhotoPin[]; preselect?: string | null } | null>(null);
   const [sheet, setSheet] = useState<'more' | 'upload' | 'activity' | 'charges' | 'stepback' | null>(null);
   const [fullMap, setFullMap] = useState(false);
@@ -466,7 +467,7 @@ export default function TripDetailsScreen() {
               f={f}
               onOpenPhotos={openPhotos}
               onSendUpdate={(u) => setShare({ type: 'update', update: u })}
-              onCheckTimes={() => setCheckingTimes(true)}
+              onCheckTimes={(stopId) => { setTimesStop(stopId ?? null); setCheckingTimes(true); }}
               onSetPin={(st) => openPin(st)}
               focusStopId={focusStop}
               onStopLayout={params.stop ? onStopLayout : undefined}
@@ -550,7 +551,7 @@ export default function TripDetailsScreen() {
         onSend={viewer?.update ? () => { const u = viewer.update!; setViewer(null); setTimeout(() => setShare({ type: 'update', update: u }), 250); } : undefined}
       />
       <PinSheet target={pinTarget} tripId={trip.id} timeOf={f.time} onClose={() => setPinTarget(null)} onSaved={reload} />
-      <TripTimesSheet visible={checkingTimes} trip={trip} tz={tz} onClose={() => setCheckingTimes(false)} onDone={reload} />
+      <TripTimesSheet visible={checkingTimes} trip={trip} tz={tz} stopId={timesStop} onClose={() => setCheckingTimes(false)} onDone={reload} />
       <MoreSheet
         visible={sheet === 'more'}
         trip={trip}

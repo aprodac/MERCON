@@ -32,6 +32,7 @@ LATE TO START
 STOP TIMES
 22. Trip > Stops: pickups show Planned / Arrived / Left; drop-offs show Planned / Arrived only.
 23. Any trip (not only iMile / JD) can have its stop times corrected: Stops > "Correct the stop times" > Edit.
+24. Tap one stop's "Screenshot time needs checking": Check times shows only that stop's screenshots ("See all" for the rest). Tapping a stop's time also switches to its screenshots.
 
 ZOOM
 21. Check times: tap a screenshot to enlarge, then pinch to zoom. Photos opened full screen also pinch-zoom.
