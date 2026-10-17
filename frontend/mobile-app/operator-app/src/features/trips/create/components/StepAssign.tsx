@@ -87,6 +87,8 @@ export function StepAssign({ form, showErrors }: { form: CreateTripForm; showErr
       usualTruckId: form.driverId && form.driverId !== UNASSIGNED ? form.driverTruckId(form.driverId) : null,
       driverName: form.selectedDriver?.first_name ? niceName(form.selectedDriver.first_name) : undefined,
       selectedId: form.vehicleId,
+      clashes: form.truckClashes,
+      tz: form.tz,
     }).map((t) => ({
       value: t.vehicle.id,
       label: t.vehicle.plate_number,

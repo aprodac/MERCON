@@ -947,6 +947,31 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     [slot.origin, slot.destination, vehicleType, slot.originLocationId, slot.destinationLocationId, customerId, recWindow.start, recWindow.end],
   );
   const recKey = JSON.stringify(recRequest);
+
+  // Trucks already on another open trip in this window: shown "Booked" on step 3
+  // before Create (the server refuses a double booking; TestFlight feedback).
+  const [truckClashes, setTruckClashes] = useState<Map<string, { ref: string | null; start: string }>>(new Map());
+  useEffect(() => {
+    if (step !== 3 || assignmentType !== 'own' || isMonthly || !recWindow.start) return;
+    const HOUR = 3_600_000;
+    const start = Date.parse(recWindow.start);
+    const end = recWindow.end ? Date.parse(recWindow.end) : start + 4 * HOUR;
+    let alive = true;
+    operatorService.openTripsBetween(new Date(start - 3 * 24 * HOUR).toISOString(), new Date(end).toISOString())
+      .then((trips) => {
+        if (!alive) return;
+        const m = new Map<string, { ref: string | null; start: string }>();
+        for (const t of trips) {
+          if (!t.vehicle?.id || !t.planned_start || t.is_third_party) continue;
+          const ts = Date.parse(t.planned_start);
+          const te = t.planned_end ? Date.parse(t.planned_end) : ts + 4 * HOUR;
+          if (ts < end && te > start && !m.has(t.vehicle.id)) m.set(t.vehicle.id, { ref: t.ref_id, start: t.planned_start });
+        }
+        setTruckClashes(m);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [step, assignmentType, isMonthly, recWindow.start, recWindow.end]);
   useEffect(() => {
     if (step !== 3 || assignmentType !== 'own') return;
     let alive = true;
@@ -1281,6 +1306,7 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     quotations,
     quotationsLoading,
     recommended,
+    truckClashes,
     recommendedLoading,
     compatRules,
     lineTypeOptions,

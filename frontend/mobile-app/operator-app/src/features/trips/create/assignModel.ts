@@ -107,7 +107,12 @@ const GROUP_ORDER = ['Recommended', 'Preferred', 'Allowed alternatives', 'Other 
 
 export function truckChoices(
   vehicles: OperatorVehicleOption[],
-  opts: { tripClass: string; rules: VehicleCompatibilityRule[]; usualTruckId?: string | null; driverName?: string; selectedId?: string },
+  opts: {
+    tripClass: string; rules: VehicleCompatibilityRule[]; usualTruckId?: string | null; driverName?: string; selectedId?: string;
+    /** Trucks booked on another open trip in this trip's window, with that trip. */
+    clashes?: Map<string, { ref: string | null; start: string }>;
+    tz?: string;
+  },
 ): TruckChoice[] {
   const want = normalizeTruckClass(opts.tripClass);
   const rule = opts.rules.find((r) => r.isActive !== false && normalizeTruckClass(r.serviceVehicleClassCode) === want && r.allowedVehicleClassCodes?.length);
@@ -136,11 +141,14 @@ export function truckChoices(
     const onTrip = status === 'OnTrip';
     const isSelected = v.id === opts.selectedId;
     const chips: FactChip[] = [];
-    if (onTrip && !isSelected) chips.push({ label: 'On another trip', tone: 'warning' });
+    // Booked over the same hours: Create would be refused, so it can't be picked.
+    const clash = opts.clashes?.get(v.id);
+    if (clash) chips.push({ label: `Booked on ${clash.ref ?? 'another trip'} · ${opts.tz ? fmtClash(clash.start, opts.tz) : ''}`.replace(/ · $/, ''), tone: 'warning' });
+    else if (onTrip && !isSelected) chips.push({ label: 'On another trip', tone: 'warning' });
     if (!free && !onTrip) chips.push({ label: status === 'Maintenance' ? 'In the workshop' : status === 'Inactive' ? 'Out of service' : status, tone: 'neutral' });
     if (isUsual) chips.push({ label: `Usual truck${opts.driverName ? ` for ${opts.driverName}` : ''}`, tone: 'success' });
     else if (group === 'Allowed alternatives') chips.push({ label: 'Allowed alternative', tone: 'neutral' });
-    return { vehicle: v, cls, group, blocked: !free && !onTrip && !isSelected, chips };
+    return { vehicle: v, cls, group, blocked: (!free && !onTrip && !isSelected) || (!!clash && !isSelected), chips };
   });
   return out.sort((a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group) || (a.vehicle.plate_number || '').localeCompare(b.vehicle.plate_number || ''));
 }

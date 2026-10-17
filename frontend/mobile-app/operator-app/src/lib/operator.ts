@@ -853,6 +853,12 @@ export const operatorService = {
     return (data.data ?? []) as OperatorDriver[];
   },
 
+  /** Open (not finished) trips planned to start between two instants — for clash checks. */
+  async openTripsBetween(fromIso: string, toIso: string): Promise<OperatorTrip[]> {
+    const { data } = await api.get('/trips', { params: { status: 'Draft,Scheduled,Loading,InTransit,Delayed', start_date: fromIso, end_date: toIso, per_page: 500 } });
+    return (data.data ?? []) as OperatorTrip[];
+  },
+
   async availableVehicles(): Promise<OperatorVehicle[]> {
     const { data } = await api.get('/vehicles', { params: { mode: 'lookup', per_page: 100, status: 'Available' } });
     return (data.data ?? []) as OperatorVehicle[];
