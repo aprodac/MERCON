@@ -21,6 +21,7 @@ import {
   Map as MapIcon,
   Bell, BellRing, Building2, CreditCard, FileText, FolderOpen, House, Link2, Plus, Route, Search, SquareUserRound, Tag, Truck, UserCog, Users, Wrench, X,
   type LucideIcon,
+  Trash2,
 } from 'lucide-react-native';
 import { useNotifications } from '@/features/notifications/hooks/useNotifications';
 import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
@@ -108,6 +109,7 @@ const GROUPS: MenuGroup[] = [
     items: [
       { Icon: UserCog, label: 'User management', route: '/user-management', keywords: 'users accounts drivers passwords logins admin operator' },
       { Icon: BellRing, label: 'Push log', route: '/push-log', adminOnly: true, keywords: 'notifications alerts delivered failed delay phones audit' },
+      { Icon: Trash2, label: 'Recycle bin', route: '/recycle-bin', keywords: 'deleted trash restore undo remove permanently' },
     ],
   },
 ];
