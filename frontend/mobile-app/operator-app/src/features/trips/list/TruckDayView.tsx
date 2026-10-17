@@ -12,6 +12,7 @@ import { PHASE_STYLE, phaseOf, plateOf, type TimeFmt } from './tripListModel';
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
+const LANE = 26;
 
 export function TruckDayView({ trips, dayKey, f, clashes, onOpen }: {
   trips: OperatorTrip[];
@@ -37,15 +38,19 @@ export function TruckDayView({ trips, dayKey, f, clashes, onOpen }: {
     }
     return [...m.entries()]
       .sort(([x], [y]) => (x === 'No truck yet' ? 1 : y === 'No truck yet' ? -1 : x.localeCompare(y)))
-      .map(([plate, list]) => ({
-        plate,
-        bars: list.map((t) => {
+      .map(([plate, list]) => {
+        // Overlapping trips of one truck go on separate lines, so neither hides the other.
+        const laneEnds: number[] = [];
+        const bars = [...list].sort((x, y) => span(x)[0] - span(y)[0]).map((t) => {
           const [a, b] = span(t);
+          let lane = laneEnds.findIndex((end) => end <= a);
+          if (lane < 0) { lane = laneEnds.length; laneEnds.push(b); } else laneEnds[lane] = b;
           const from = Math.max(0, (a - dayStart) / DAY);
           const to = Math.min(1, (b - dayStart) / DAY);
-          return { t, left: from, width: Math.max(0.03, to - from), startsBefore: a < dayStart, endsAfter: b > dayStart + DAY };
-        }),
-      }));
+          return { t, lane, left: from, width: Math.max(0.03, to - from), startsBefore: a < dayStart, endsAfter: b > dayStart + DAY };
+        });
+        return { plate, bars, lanes: Math.max(1, laneEnds.length) };
+      });
   }, [trips, dayStart]);
 
   if (rows.length === 0) return <Text style={s.empty}>No trucks booked this day.</Text>;
@@ -58,11 +63,11 @@ export function TruckDayView({ trips, dayKey, f, clashes, onOpen }: {
         </View>
       </View>
       {rows.map((r) => (
-        <View key={r.plate} style={s.row}>
+        <View key={r.plate} style={[s.row, { height: 8 + r.lanes * LANE }]}>
           <Text style={s.plate} numberOfLines={1}>{r.plate}</Text>
-          <View style={s.track}>
+          <View style={[s.track, { height: 2 + r.lanes * LANE }]}>
             {[6, 12, 18].map((h) => <View key={h} style={[s.grid, { left: `${(h / 24) * 100}%` }]} />)}
-            {r.bars.map(({ t, left, width, startsBefore, endsAfter }) => {
+            {r.bars.map(({ t, lane, left, width, startsBefore, endsAfter }) => {
               const clash = clashes.has(t.id);
               const ph = PHASE_STYLE[phaseOf(t.status)];
               return (
@@ -71,7 +76,7 @@ export function TruckDayView({ trips, dayKey, f, clashes, onOpen }: {
                   onPress={() => onOpen(t)}
                   activeOpacity={0.8}
                   accessibilityLabel={`${t.ref_id ?? 'Trip'} ${f.time(t.planned_start)}${clash ? `, ${clashes.get(t.id)}` : ''}`}
-                  style={[s.bar, { left: `${left * 100}%`, width: `${width * 100}%`, backgroundColor: clash ? '#FDE2DF' : ph.bg, borderColor: clash ? '#D92D20' : ph.dot },
+                  style={[s.bar, { top: 3 + lane * LANE, height: LANE - 4, left: `${left * 100}%`, width: `${width * 100}%`, backgroundColor: clash ? '#FDE2DF' : ph.bg, borderColor: clash ? '#D92D20' : ph.dot },
                     startsBefore && { borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }, endsAfter && { borderTopRightRadius: 0, borderBottomRightRadius: 0 }]}
                 >
                   <Text style={[s.barText, { color: clash ? '#912018' : ph.fg }]} numberOfLines={1}>{t.ref_id?.replace('TRP-', '') ?? ''} {f.time(t.planned_start)}</Text>
@@ -94,11 +99,11 @@ const s = StyleSheet.create({
   plateCol: { width: 76 },
   axis: { flex: 1, height: 16 },
   tick: { position: 'absolute', fontSize: 10, color: '#9898A4', fontVariant: ['tabular-nums'] },
-  row: { flexDirection: 'row', alignItems: 'center', height: 36 },
+  row: { flexDirection: 'row', alignItems: 'center' },
   plate: { width: 76, fontSize: 12, fontWeight: '700', color: '#3E3C3D' },
-  track: { flex: 1, height: 30, backgroundColor: '#F4F5F8', borderRadius: 8, overflow: 'hidden' },
+  track: { flex: 1, backgroundColor: '#F4F5F8', borderRadius: 8, overflow: 'hidden' },
   grid: { position: 'absolute', top: 0, bottom: 0, width: 1, backgroundColor: '#E4E7EE' },
-  bar: { position: 'absolute', top: 3, bottom: 3, borderRadius: 6, borderWidth: 1, paddingHorizontal: 4, justifyContent: 'center' },
+  bar: { position: 'absolute', borderRadius: 6, borderWidth: 1, paddingHorizontal: 4, justifyContent: 'center' },
   barText: { fontSize: 10, fontWeight: '700' },
   legend: { fontSize: 11, color: '#6E6E80', marginTop: 4 },
   empty: { fontSize: 13, color: '#6E6E80', textAlign: 'center', paddingVertical: 20 },
