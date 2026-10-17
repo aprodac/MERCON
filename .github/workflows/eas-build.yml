@@ -49,10 +49,46 @@ on:
         type: choice
         options: [expo, github]
         default: expo
+      publish_run_id:
+        description: 'Instead of building: publish the APK from this earlier run as a plain download link (GitHub pre-release)'
+        type: string
+        default: ''
 
 jobs:
+  # Testers can't always use the run's artifact (needs a GitHub login, and
+  # browsers block zipped apps). This copies a finished build's APK to a
+  # pre-release with a direct link. Test builds only — they talk to the dev server.
+  publish:
+    name: Publish APK from run ${{ inputs.publish_run_id }}
+    if: ${{ inputs.publish_run_id != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Download the run's artifact
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.publish_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: out
+      - name: Create the pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          files=$(find out -name '*.apk')
+          [ -n "$files" ] || { echo "::error::No APK in run ${{ inputs.publish_run_id }} (AABs are never published here)"; exit 1; }
+          for f in $files; do unzip -p "$f" assets/app.config | grep -q 'dev.mercon.tech/api' || { echo "::error::$(basename "$f") is not a dev build — not publishing"; exit 1; }; done
+          tag="test-build-${{ inputs.publish_run_id }}"
+          gh release create "$tag" $files --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "Test build (run ${{ inputs.publish_run_id }}) — DEV server only" \
+            --notes "Test APK for MERCON testers. Talks to https://dev.mercon.tech (test data), not the live system. Not for drivers' daily use."
+          for f in $files; do echo "::notice title=Download link::https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/$(basename "$f")"; done
+
   plan:
     name: Pick apps
+    if: ${{ inputs.publish_run_id == '' }}
     runs-on: ubuntu-latest
     outputs:
       apps: ${{ steps.pick.outputs.apps }}
