@@ -62,7 +62,9 @@ export function driverChoices(
       const openTrips = rec?.openTrips ?? [];
       const chips: FactChip[] = [];
       if (unavailable && rec?.unavailabilityReason) {
-        chips.push({ label: rec.clashStart ? `Booked ${fmtClash(rec.clashStart, opts.tz)}` : rec.unavailabilityReason, tone: 'warning' });
+        // "Only 3 h rest before pickup (needs 6 h)" → "Rested 3 h of 6 h" — short enough to read in the list.
+        const rest = rec.unavailabilityReason.match(/^Only ([\d.]+) h rest .*needs ([\d.]+) h/);
+        chips.push({ label: rec.clashStart ? `Booked ${fmtClash(rec.clashStart, opts.tz)}` : rest ? `Rested ${rest[1]} h of ${rest[2]} h` : rec.unavailabilityReason, tone: 'warning' });
       }
       if (!unavailable && openTrips.length) {
         const first = openTrips[0];
