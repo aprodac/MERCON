@@ -14,6 +14,15 @@
         "buildType": "apk"
       }
     },
+    "live-apk": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://mercon.tech/api"
+      }
+    },
     "production": {
       "autoIncrement": true,
       "env": {
