@@ -3,6 +3,7 @@
  * Home's Needs action list (useActionInbox), all of them here, in three
  * sections by urgency. Several items of one kind fold into one row that opens
  * a sheet, worst first. Chips narrow it to trips, photos, documents or money.
+ * "Mark all read" hides what's shown for a while (hooks/useReadTodo).
  */
 import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
@@ -21,8 +22,12 @@ const SECTIONS: { urgency: Urgency; title: string }[] = [
   { urgency: 'watch', title: 'Can wait' },
 ];
 
-export function TodoTab({ items, initialFilter = 'all', loading, liveError, onRetry, now, refreshing, onRefresh, onIntent, onOpenTrip }: {
+export function TodoTab({ items, hidden = 0, onMarkRead, onShowRead, initialFilter = 'all', loading, liveError, onRetry, now, refreshing, onRefresh, onIntent, onOpenTrip }: {
   items: ActionItem[];
+  /** How many are hidden as read. */
+  hidden?: number;
+  onMarkRead?: (items: ActionItem[]) => void;
+  onShowRead?: () => void;
   /** Chip to start on, e.g. Home's "Photos to send" opens on Photos. */
   initialFilter?: GroupFilter;
   loading: boolean;
@@ -56,6 +61,20 @@ export function TodoTab({ items, initialFilter = 'all', loading, liveError, onRe
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FA634E" />}
       >
         {items.length > 0 ? <Chips options={chips} value={active} onChange={setFilter} /> : null}
+        {(onMarkRead && shown.some((i) => i.kind !== 'emergency')) || (hidden > 0 && onShowRead) ? (
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, marginTop: -8 }}>
+            {hidden > 0 && onShowRead ? (
+              <TouchableOpacity onPress={() => { tap(); onShowRead(); }} hitSlop={8} accessibilityRole="button">
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#5F5F6E' }}>{hidden} read · show again</Text>
+              </TouchableOpacity>
+            ) : <View />}
+            {onMarkRead && shown.some((i) => i.kind !== 'emergency') ? (
+              <TouchableOpacity onPress={() => { tap(); onMarkRead(shown); }} hitSlop={8} accessibilityRole="button">
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#FA634E' }}>Mark all read</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
 
         <View style={{ paddingHorizontal: 16, gap: 20 }}>
           {liveError ? (

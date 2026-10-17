@@ -137,3 +137,24 @@ describe('stop matching', () => {
     assert.equal(r.ok, true);
   });
 });
+
+import { isDelayedNotStarted, isTripRouteEditable } from '@mercon/shared-types';
+
+describe('a trip that is only late to start', () => {
+  const stops = [{ actual_arrival: null, actual_departure: null }, { actual_arrival: null, actual_departure: null }];
+  it('Delayed with nothing reached and no Start is still fully editable', () => {
+    const t = { status: 'Delayed', actual_start: null, driver_workflow_state: null, stops };
+    assert.equal(isDelayedNotStarted(t), true);
+    assert.equal(isTripRouteEditable(t), true);
+  });
+  it('Delayed once the driver started, left or reached a stop is not', () => {
+    assert.equal(isTripRouteEditable({ status: 'Delayed', driver_workflow_state: 'GOING_TO_PICKUP', stops }), false);
+    assert.equal(isTripRouteEditable({ status: 'Delayed', actual_start: new Date(), stops }), false);
+    assert.equal(isTripRouteEditable({ status: 'Delayed', stops: [{ actual_arrival: new Date() }, ...stops] }), false);
+  });
+  it('other statuses keep their rules', () => {
+    assert.equal(isTripRouteEditable({ status: 'Scheduled' }), true);
+    assert.equal(isTripRouteEditable({ status: 'InTransit', stops }), false);
+    assert.equal(isTripRouteEditable({ status: 'Completed', stops }), false);
+  });
+});

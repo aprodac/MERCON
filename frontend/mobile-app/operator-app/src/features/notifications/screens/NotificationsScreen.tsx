@@ -23,6 +23,7 @@ import { useActionInbox } from '../../dashboard/actions/useActionInbox';
 import { useActionIntent } from '../../dashboard/actions/useActionIntent';
 import { useDashboardRefresh } from '../../dashboard/hooks';
 import { useMarkNotificationsRead, useNotifications } from '../hooks/useNotifications';
+import { useReadTodo } from '../hooks/useReadTodo';
 import { targetFor } from '../notificationModel';
 import { TodoTab, type GroupFilter } from '../components/TodoTab';
 import { ActivityTab } from '../components/ActivityTab';
@@ -93,11 +94,12 @@ export default function NotificationsScreen() {
     }
   };
 
-  const urgent = inbox.counts.now;
+  const todo = useReadTodo(inbox.items, now);
+  const urgent = todo.unread.filter((i) => i.urgency === 'now').length;
   const toSend = inbox.updates.filter(needsSending).length;
   const tabs: { value: Tab; label: string; count: number; hot: boolean }[] = [
     { value: 'drivers', label: 'From drivers', count: toSend, hot: false },
-    { value: 'todo', label: 'To do', count: inbox.items.length, hot: urgent > 0 },
+    { value: 'todo', label: 'To do', count: todo.unread.length, hot: urgent > 0 },
     { value: 'activity', label: 'Activity', count: unread, hot: false },
   ];
 
@@ -143,7 +145,10 @@ export default function NotificationsScreen() {
           />
         ) : tab === 'todo' ? (
           <TodoTab
-            items={inbox.items}
+            items={todo.unread}
+            hidden={todo.hidden}
+            onMarkRead={(list) => { todo.markRead(list); setToast({ message: list.length === 1 ? 'Marked as read' : `${list.length} marked as read`, type: 'success' }); }}
+            onShowRead={todo.showAgain}
             initialFilter={initialFilter}
             loading={inbox.loading}
             liveError={inbox.liveError}

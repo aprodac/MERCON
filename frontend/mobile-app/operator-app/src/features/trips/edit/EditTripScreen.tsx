@@ -16,7 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CalendarClock, Clock, Lock, MapPin, Plus, Route, Wallet, X } from 'lucide-react-native';
-import { dateInZone, extraStopNote, findExtraStopRule, isRouteEditable, isStopReached, stopsEditMode, zonedWallTimeToUtcIso } from '@mercon/shared-types';
+import { dateInZone, extraStopNote, findExtraStopRule, isStopReached, isTripRouteEditable, stopsEditMode, zonedWallTimeToUtcIso } from '@mercon/shared-types';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import {
@@ -126,7 +126,8 @@ const TRANSIT_CHOICES = Array.from({ length: 96 }, (_, i) => (i + 1) * 30);
 function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; onDone: () => void }) {
   const queryClient = useQueryClient();
   const status = trip.status as string;
-  const routeOpen = isRouteEditable(status);
+  // Late but never started counts as not started: times and stops stay open.
+  const routeOpen = isTripRouteEditable(trip as never);
   // A running trip still takes stops the driver has not reached yet; finished trips take none.
   const stopsOpen = stopsEditMode(status) !== 'locked';
   const monthly = isMonthly(trip);

@@ -1348,6 +1348,12 @@ export const operatorService = {
     const { data } = await api.post(`/trips/${id}/dispatch`, body);
     return data.data as OperatorTripDetail;
   },
+  /** Give a trip that has none a driver (and optionally the truck too) — `/dispatch`, the web's assign path. */
+  async assignTrip(id: string, body: { driver_id?: string; vehicle_id?: string }): Promise<OperatorTripDetail> {
+    const { data } = await api.post(`/trips/${id}/dispatch`, body);
+    return data.data as OperatorTripDetail;
+  },
+
   async replaceVehicle(id: string, newVehicleId: string): Promise<OperatorTripDetail> {
     const { data } = await api.post(`/trips/${id}/dispatch`, { vehicle_id: newVehicleId });
     return data.data as OperatorTripDetail;
