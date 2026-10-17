@@ -364,7 +364,7 @@ export type OpenMedia = (items: ViewerItem[], index: number, title: string) => v
 /** Order under a stop: the sequence a driver works through. */
 const STAGE_ORDER: TripMediaItem['stage'][] = ['arrived', 'loaded', 'stop', 'delivered', 'delay', 'other'];
 const STAGE_LABEL: Record<TripMediaItem['stage'], string> = {
-  arrived: 'Arrived', loaded: 'Loaded', stop: 'At stop', delivered: 'Delivered', delay: 'Delay', other: 'Photo',
+  arrived: 'Arrived', loaded: 'Loaded', stop: 'At stop', delivered: 'Delivered', delay: 'Delay', log: 'Trip update', other: 'Photo',
 };
 /** "VehicleBreakdown" → "Vehicle breakdown". */
 const humanize = (v: string) => v.replace(/[_-]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().replace(/^./, (c) => c.toUpperCase());

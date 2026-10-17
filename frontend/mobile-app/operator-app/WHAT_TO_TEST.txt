@@ -1,3 +1,9 @@
+NEW: DRIVER'S LOG for customer-app trips
+A. When the driver sends screenshots from the new Trip log, each send arrives in From drivers as "Trip update · near <place>".
+B. Trip > Stops > "Driver's log": every send with time, place and screenshots.
+C. "Make a stop or add to one": type the place, pick Loading / Offloading and "Make it a stop" (put in time order), or "Add" it to a stop the trip already has.
+D. Then Check times and the stop's photos work as usual.
+
 Fixes from your feedback + new features. Please check:
 
 TRIPS

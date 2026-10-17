@@ -834,3 +834,11 @@ export const updateTripStopsRouteBody = z.object({
   planned_end: z.string().optional().nullable(),
 });
 
+
+/** Office: turn a trip log entry into a stop, or add it to one (controllers/tripLogController). */
+export const logEntryToStopBody = z.object({
+  action: z.enum(['new', 'attach']),
+  stop_id: z.string().uuid().optional(),
+  stop_type: z.enum(['Pickup', 'Dropoff']).optional(),
+  name: z.string().max(120).optional(),
+}).refine((b) => b.action !== 'attach' || !!b.stop_id, { message: 'stop_id is needed to add to a stop', path: ['stop_id'] });

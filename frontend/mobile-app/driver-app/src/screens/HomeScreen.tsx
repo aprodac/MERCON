@@ -11,7 +11,7 @@ import {
   MapPin, Globe, Clock, ChevronRight, ChevronDown, Building2, Navigation,
   Play, CheckCircle2, Wallet, MoreVertical, ArrowRight, ArrowLeft, Route, House, Camera, Settings, RotateCcw, Check,
 } from 'lucide-react-native';
-import { getTimelineProgress, tripEnds } from '@mercon/shared-types';
+import { getTimelineProgress, tripEnds, tripLogEntries, usesTripLog, TRIP_LOG_STATE } from '@mercon/shared-types';
 import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
 import { Badge } from '@mercon/mobile-shared/components/Badge';
 import { DelayReportModal } from '../components/DelayReportModal';
@@ -22,7 +22,7 @@ import { BilingualText } from '@mercon/mobile-shared/components/BilingualText';
 import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
 import { useCurrentTrip } from '../hooks/use-current-trip';
 import { useScheduledTrips } from '../hooks/use-scheduled-trips';
-import { tripService, statusLabel, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, parseStopWorkflowState, getTripChargeValue, getMonthlyDriverPayout, DRIVER_WORKFLOW_STATES, type TripStatus, type MobileTrip } from '@mercon/mobile-shared/lib/trips';
+import { tripService, plannedRouteText, statusLabel, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, parseStopWorkflowState, getTripChargeValue, getMonthlyDriverPayout, DRIVER_WORKFLOW_STATES, type TripStatus, type MobileTrip } from '@mercon/mobile-shared/lib/trips';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useLanguage, getLocalizedStatus, bilingual, translate } from '@mercon/mobile-shared/lib/language-context';
 import { parseTripRouteNodes, getIntermediateStops, getOutboundIntermediateStops, getReturnIntermediateStops, targetFromWorkflowState, type TimelineStop } from '../utils/routeParser';
@@ -239,10 +239,34 @@ const HomeScreen = () => {
   interface WorkflowStateInfo {
     badgeLabel: string;
     btnLabel: string;
+    /** Urdu button text when it isn't the workflow state's own label. */
+    urLabel?: string;
     onPress: () => void;
   }
 
   const getWorkflowStateInfo = (t: MobileTrip): WorkflowStateInfo => {
+    // Customer-app trips with stops not known up front: Start, then one Trip log screen.
+    if (usesTripLog(t)) {
+      if (t.driver_workflow_state === TRIP_LOG_STATE) {
+        return { badgeLabel: 'Trip log', btnLabel: 'Send screenshots', urLabel: 'اسکرین شاٹس بھیجیں', onPress: () => router.push('/trip/external-app') };
+      }
+      return {
+        badgeLabel: 'Assigned',
+        btnLabel: 'Start Trip',
+        urLabel: 'ٹرپ شروع کریں',
+        onPress: async () => {
+          setAdvancing(true);
+          try {
+            setTrip(await tripService.startTripLog(t.id));
+            router.push('/trip/external-app');
+          } catch (err) {
+            showToast(getApiErrorMessage(err), 'error');
+          } finally {
+            setAdvancing(false);
+          }
+        },
+      };
+    }
     const ws = getEffectiveWorkflowState(t);
     const isRound = isRoundTrip(t);
     const outboundStops = getOutboundIntermediateStops(t);
@@ -490,7 +514,8 @@ const HomeScreen = () => {
                   {(() => {
                     const stops = displayTrip.stops || [];
                     const stopsCount = stops.length;
-                    if (stopsCount > 2) {
+                    // A trip log isn't followed stop by stop.
+                    if (stopsCount > 2 && displayTrip.driver_workflow_state !== TRIP_LOG_STATE) {
                       const isRound = isRoundTrip(displayTrip);
                       const returnStops = stops.filter((s) => (s.leg_index ?? 0) === 1);
                       const outboundStops = stops.filter((s) => (s.leg_index ?? 0) === 0);
@@ -560,12 +585,41 @@ const HomeScreen = () => {
                 const timelineStops = parseTripRouteNodes(displayTrip);
 
                 const handleStopPress = (st: TimelineStop) => {
-                  if (st.isIntermediate) {
+                  if (displayTrip.driver_workflow_state === TRIP_LOG_STATE) {
+                    router.push('/trip/external-app');
+                  } else if (st.isIntermediate) {
                     router.push({ pathname: '/trip/stop', params: { legIndex: String(st.legIndex ?? 0) } } as any);
                   } else {
                     router.push('/trip/navigate');
                   }
                 };
+
+                // A trip log has no next stop: show what was sent, and open the log.
+                if (displayTrip.driver_workflow_state === TRIP_LOG_STATE) {
+                  const log = tripLogEntries(displayTrip.documents ?? []);
+                  const last = log[log.length - 1];
+                  return (
+                    <View style={styles.routeContainer}>
+                      <TouchableOpacity style={styles.nextStopBox} activeOpacity={0.85} onPress={() => router.push('/trip/external-app')}>
+                        <View style={styles.nextStopHeader}>
+                          <Text style={styles.nextStopLabel}>{L('TRIP LOG', 'ٹرپ لاگ')}</Text>
+                          <Text style={styles.nextStopMeta}>{L(`${log.length} sent`, `${log.length} بھیجے گئے`)}</Text>
+                        </View>
+                        <View style={styles.nextStopRow}>
+                          <View style={styles.nextStopIcon}>
+                            <Camera size={20} color="#FFFFFF" strokeWidth={2.2} />
+                          </View>
+                          <View style={styles.routeTextCol}>
+                            <Text style={styles.nextStopType} numberOfLines={1}>
+                              {last ? L(`Last sent ${fmtTime(last.at)}`, `آخری بار ${fmtTime(last.at)}`) : L('Nothing sent yet', 'ابھی کچھ نہیں بھیجا گیا')}
+                            </Text>
+                            <Text style={styles.routePlaceName} numberOfLines={1}>{last?.place ?? plannedRouteText(displayTrip)}</Text>
+                          </View>
+                        </View>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                }
 
                 if (timelineStops.length === 0) {
                   const fallbackOrigin = (displayTrip as any).quotation?.name?.split(/→|->|–|-/)[0]?.trim() || displayTrip.origin;
@@ -675,7 +729,8 @@ const HomeScreen = () => {
               {/* Primary Action CTA & Secondary Delay Button Below */}
               {(() => {
                 const info = getWorkflowStateInfo(displayTrip);
-                const late = minutesLate(displayTrip);
+                // A trip log has no pickup arrival to wait for once started.
+                const late = displayTrip.driver_workflow_state === TRIP_LOG_STATE ? 0 : minutesLate(displayTrip);
                 const lateText = late >= 60 ? `${Math.floor(late / 60)} h ${late % 60} min` : `${late} min`;
                 const officeChange = notes.find((n) => n.type === 'TripSteppedBack' && !n.is_read && n.entity_id === displayTrip.id);
                 return (
@@ -711,7 +766,7 @@ const HomeScreen = () => {
                           <BilingualText
                             // Same state as the button's action: after the office undoes a step the stored
                             // state and the stop times can differ, and the label said "Start" while the tap did more.
-                            ur={WORKFLOW_URDU_LABEL[getEffectiveWorkflowState(displayTrip)] || 'ٹرپ شروع کریں'}
+                            ur={info.urLabel || WORKFLOW_URDU_LABEL[getEffectiveWorkflowState(displayTrip)] || 'ٹرپ شروع کریں'}
                             en={info.btnLabel || 'Start Trip'}
                             align="center"
                             primaryStyle={styles.ctaUrduPrimary}

@@ -8,6 +8,7 @@ export const STAGE_LABEL: Record<LiveMediaStage, string> = {
   stop: 'Stop',
   delivered: 'Delivered',
   delay: 'Delay',
+  log: 'Trip update',
   other: 'Photos',
 };
 

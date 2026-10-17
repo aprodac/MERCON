@@ -7,12 +7,15 @@ const STAGE_PHRASE: Record<LiveMediaStage, string> = {
   stop: 'Stop at',
   delivered: 'Delivered at',
   delay: 'Delay on the way to',
+  log: 'Trip update at',
   other: 'Photos from',
 };
 
 /** "TRP-0259 · Delivered at Medina" — the same wording the WhatsApp message uses. */
-export function updateTitle(u: Pick<DriverUpdate, 'trip' | 'stop' | 'stage'>): string {
-  const what = u.stop ? `${STAGE_PHRASE[u.stage]} ${u.stop.name}` : u.stage === 'delay' ? 'Delay reported' : 'Trip photos';
+export function updateTitle(u: Pick<DriverUpdate, 'trip' | 'stop' | 'stage'> & { place?: string | null }): string {
+  const what = u.stage === 'log' && !u.stop
+    ? (u.place ? `Trip update near ${u.place}` : 'Trip update')
+    : u.stop ? `${STAGE_PHRASE[u.stage]} ${u.stop.name}` : u.stage === 'delay' ? 'Delay reported' : 'Trip photos';
   return [u.trip.ref_id, what].filter(Boolean).join(' · ');
 }
 

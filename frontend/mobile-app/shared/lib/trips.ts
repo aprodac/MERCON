@@ -286,6 +286,15 @@ export function getEvidencePolicy(trip: MobileTrip | null | undefined, stage: Ev
   return { count: 3, screenshot: false };
 }
 
+/** "Riyadh → Jeddah → Riyadh": every planned place in order, a repeat in a row shown once. */
+export function plannedRouteText(trip: Pick<MobileTrip, 'stops'> | null | undefined): string {
+  const names = [...(trip?.stops ?? [])]
+    .sort((a, b) => a.stop_sequence - b.stop_sequence)
+    .map((s) => stopLabel(s) ?? '')
+    .filter(Boolean);
+  return names.filter((n, i) => n !== names[i - 1]).join(' → ') || '—';
+}
+
 /** A road route to the trip's next stop, as MERCON returns it. */
 export interface TripRoute {
   /** [lng, lat] pairs, GeoJSON order. */
@@ -450,6 +459,18 @@ export const tripService = {
     return tripService.updateStatus(id, payload, driver_workflow_state, reason);
   },
 
+  /** Start a customer-app trip as a trip log (screenshots only from here on). */
+  async startTripLog(id: string): Promise<MobileTrip> {
+    const { data } = await api.post(`/mobile/trips/${id}/log/start`);
+    await workflowStateStore.saveState(id, 'TRIP_LOG');
+    return data.data as MobileTrip;
+  },
+
+  /** Take back a trip log send made by mistake (only shortly after sending). */
+  async undoTripLogEntry(id: string, entry: string): Promise<void> {
+    await api.delete(`/mobile/trips/${id}/log/${encodeURIComponent(entry)}`);
+  },
+
   /** Upload a cargo (pickup) or POD (delivery) photo and attach it to the trip. */
   async uploadPhoto(
     id: string,
@@ -460,9 +481,15 @@ export const tripService = {
     stopId?: string,
     /** Called with 0..1 as the file uploads (drives the upload bar). */
     onProgress?: (fraction: number) => void,
+    /** Trip log screenshots: which send they belong to, and where the phone was. */
+    log?: { entry: string; place?: string | null },
   ): Promise<void> {
     const form = new FormData();
     form.append('kind', kind);
+    if (log) {
+      form.append('log_entry', log.entry);
+      if (log.place) form.append('place', log.place);
+    }
     if (operation) {
       form.append('operation', operation);
     }
