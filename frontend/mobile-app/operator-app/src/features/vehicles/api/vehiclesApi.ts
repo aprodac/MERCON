@@ -16,10 +16,11 @@ export interface RawVehicleAssignedDriver {
 
 export interface RawVehicleActiveTrip {
   id: string;
+  ref_id?: string | null;
   status: string;
   customer?: { name: string } | null;
   driver?: { id: string; first_name: string; last_name: string; phone_primary: string | null; avatar_url: string | null } | null;
-  stops?: Array<{ stop_type: string; location_name: string | null; location_address: string | null; stop_sequence: number }>;
+  stops?: { stop_type: string; location_name: string | null; location_address: string | null; stop_sequence: number; actual_arrival?: string | null; actual_departure?: string | null }[];
 }
 
 export interface RawVehicleActiveMaintenance {
@@ -48,6 +49,10 @@ export interface RawVehicle {
   trips: RawVehicleActiveTrip[];
   active_maintenance: RawVehicleActiveMaintenance | null;
   resolved_location: any | null;
+  last_trip?: {
+    id: string; ref_id: string | null; actual_end: string | null; planned_start: string | null;
+    stops: { location_name: string | null; stop_sequence: number; actual_arrival: string | null }[];
+  } | null;
 }
 
 export interface RawVehicleListResponse {

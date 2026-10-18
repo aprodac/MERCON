@@ -1,49 +1,27 @@
+FROM YOUR LATEST FEEDBACK (18 Oct morning)
+1. Check times: Najran-type trip (offload then load at the same place) — your times in order now save. Any problem is written in full under the stop.
+2. Check times: wheels go round — from 00:47 roll the hour back to 23. Tap the screenshot to enlarge it while a time is open; pinch to zoom.
+3. Trip > Stops: "X h on the road to <next stop>" between stops; "Time confirmed" / "Time to confirm" next to each stop's photos.
+4. Send to WhatsApp: message has one fact per line (Customer / Route / Truck / Driver / Next).
+5. Notifications > Activity: "Mark read" on each unread one. Bell turns red only for unread notifications.
+6. Extra charges: press None — the next trip shows straight away.
+7. Vehicles: free trucks show where they are and when the last trip ended. On-trip trucks and Home > Live now show the route with one bar per step (green = done).
+8. Vehicle page: "Send to workshop" → truck shows In maintenance; "Back in service" brings it back.
+9. Drivers / Vehicles: download button (top) → spreadsheet through the share sheet.
+10. To do > expiring document: "Add new" opens that folder to upload the new copy.
+11. Date picker: tap "May 2027" for months, tap again for years.
+12. Documents: folder shows all its documents under any filter. Names show first two words ("Muhammed Rizwan").
+
+EARLIER FEEDBACK (18 Oct)
+1. To do: Delayed / Not started / No GPS rows show route and driver. Each row (each document too) has its own Read.
+2. Check times: shows the date ("17 Oct · was 00:00") instead of "+1d"; each screenshot shows its number (1 / 6); swiping while editing moves to that stop's time.
+3. Trip photo viewer: "Edit <stop>'s arrived / left time".
+4. Trips > Schedule: only trips still to start. History: filters All / Delivered / Cancelled / Deleted.
+5. Driver's steps: pick any later step to mark every step up to it done.
+6. Create trip: "Same as a recent trip" (last 24 h) fills customer, route, price and truck. When step: Transit time.
+
 NEW: DRIVER'S LOG for customer-app trips
 A. When the driver sends screenshots from the new Trip log, each send arrives in From drivers as "Trip update · near <place>".
 B. Trip > Stops > "Driver's log": every send with time, place and screenshots.
 C. "Make a stop or add to one": type the place, pick Loading / Offloading and "Make it a stop" (put in time order), or "Add" it to a stop the trip already has.
 D. Then Check times and the stop's photos work as usual.
-
-Fixes from your feedback + new features. Please check:
-
-TRIPS
-1. Trips > History: date strip like Schedule; last 60 days, incl. cancelled.
-2. Trips > Schedule: no past or completed trips (they are in History). The day line ("4 trips · 2 need attention") wraps instead of cutting off.
-3. Schedule > "By truck": one row per truck, trips as bars; overlapping trips sit on separate lines in red.
-4. Create a trip with a truck/driver already booked at that time: refused ("already on TRP-x"). On Assign, booked trucks show "Booked on TRP-x" and can't be picked.
-5. Assign a driver to a trip made with "Assign later" - works now. Picking a truck offers its own driver.
-6. Driver short on rest: chip says "Rested 3 h of 6 h"; tapping asks "Assign anyway?".
-7. Pick a quotation, then change the truck class - quotation switches to the matching one. Quotation sheet has From/To.
-
-EDIT TRIP
-8. A trip that is only late to start (Delayed, not started) can be edited.
-9. New "Transit time" tile.
-10. Change the date of a month-plan trip: pick which other trips move (All / From this trip on / some / None).
-11. Open a deleted trip (e.g. from a notification): "This trip was deleted", no Retry.
-
-DRIVER STEPS
-12. Trip > "Driver's steps": undo a step, or "Mark next step done" (not the final delivery).
-13. Trip map shows only the current leg.
-14. Check times: swipe between screenshots.
-
-FROM DRIVERS / TO DO
-15. From drivers: "Mark read" / "Mark all read" without sending to the customer.
-16. Photos show route, driver and truck.
-17. To do: "Mark all read" (emergencies stay).
-
-LATE TO START
-19. A trip past its start that the driver never started: shows "Starting late" (a started trip that is late shows "Late arriving"). On Trips > Now it sits under "Not started - past start time", not "On the road". Home and the menu no longer count it as on the road; it counts as to start.
-20. New alert "Trip not started" for it, separate from "Trip Delayed".
-
-STOP TIMES
-22. Trip > Stops: pickups show Planned / Arrived / Left; drop-offs show Planned / Arrived only.
-23. Any trip (not only iMile / JD) can have its stop times corrected: Stops > "Correct the stop times" > Edit.
-24. Tap one stop's "Screenshot time needs checking": Check times shows only that stop's screenshots ("See all" for the rest). Tapping a stop's time also switches to its screenshots.
-
-ZOOM
-21. Check times: tap a screenshot to enlarge, then pinch to zoom. Photos opened full screen also pinch-zoom.
-
-RECYCLE BIN
-18. Menu > Settings > Recycle bin: deleted trips, drivers, trucks, customers, quotations, places. Restore works; Admins can also delete for good.
-
-Times are company (Riyadh) time.

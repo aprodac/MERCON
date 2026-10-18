@@ -66,6 +66,12 @@ export interface StopTimeRow {
   /** What the operator typed; blank keeps the recorded time. */
   arrival: string;
   departure: string;
+  /**
+   * The "Left" time isn't asked for (a drop-off): it follows "Arrived" — typing
+   * an arrival moves it too, and a tapped leave time never blocks the next
+   * stop's arrival (it's pulled back to the arrival instead).
+   */
+  leftFollowsArrival?: boolean;
 }
 
 export interface ResolvedTime {
@@ -126,9 +132,26 @@ export function resolveStopTimes(rows: StopTimeRow[], tz: string, fallbackIso: s
   const out: ResolvedStop[] = rows.map((r) => {
     const arrival = resolve(r.arrival, r.recordedArrival);
     if (arrival.iso) prevIso = arrival.iso;
+    if (r.leftFollowsArrival) {
+      const departure: ResolvedTime = arrival.changed
+        ? { iso: arrival.iso, changed: !sameSecond(arrival.iso, r.recordedDeparture), dayOffset: 0, error: null }
+        : { iso: r.recordedDeparture, changed: false, dayOffset: 0, error: null };
+      return { stopId: r.stopId, arrival, departure };
+    }
     const departure = resolve(r.departure, r.recordedDeparture);
     if (departure.iso) prevIso = departure.iso;
     return { stopId: r.stopId, arrival, departure };
+  });
+
+  // A hidden "Left" that is after the next stop's arrival (or before its own
+  // arrival) can't be right: it goes back to its own stop's arrival.
+  out.forEach((s, i) => {
+    if (!rows[i].leftFollowsArrival || !s.departure.iso || !s.arrival.iso) return;
+    const next = out.slice(i + 1).find((n) => n.arrival.iso)?.arrival.iso;
+    const dep = Date.parse(s.departure.iso);
+    if (dep < Date.parse(s.arrival.iso) || (next && dep > Date.parse(next))) {
+      s.departure = { iso: s.arrival.iso, changed: !sameSecond(s.arrival.iso, rows[i].recordedDeparture), dayOffset: 0, error: null };
+    }
   });
 
   // Day offsets and impossible orderings, now that every instant is known.

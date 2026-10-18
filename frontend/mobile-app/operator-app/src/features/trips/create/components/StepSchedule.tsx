@@ -5,7 +5,7 @@ import { ArrowUpRight, CalendarDays, ChevronLeft, ChevronRight, Clock, Flag, Rot
 import { Colors, Spacing, Radius } from '@mercon/mobile-shared/theme/tokens';
 import { addDaysToDateStr, dropoffDayOffset, returnLegDayOffsets } from '@mercon/shared-types';
 import type { CreateTripForm } from '../useCreateTrip';
-import { Chip, ErrorText, Section, ValueTile, fmtDay, tap } from './ui';
+import { Chip, ErrorText, PickerSheet, Section, ValueTile, fmtDay, tap } from './ui';
 import { WhenSheet, type WhenValue } from './WhenSheet';
 import { RouteTiming } from './RouteTiming';
 import { runLength } from './StepAssign';
@@ -17,6 +17,15 @@ const toMin = (t: string) => {
   return h * 60 + m;
 };
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** "8 h 30 m" for a transit time in minutes (same as Edit trip). */
+const transitText = (min: number) => {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return h && m ? `${h} h ${m} m` : h ? `${h} h` : `${m} m`;
+};
+/** Transit times offered: every 30 minutes up to two days. */
+const TRANSIT_CHOICES = Array.from({ length: 96 }, (_, i) => (i + 1) * 30);
 
 export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showErrors: boolean }) {
   const [picker, setPicker] = useState<PickerTarget>(null);
@@ -53,6 +62,29 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
   const returnFrom = (slot.returnOrigin || '').trim() || slot.destination;
   /** Minutes after pickup of a planned time, for the route timing. */
   const afterPickup = (v: WhenValue | null) => (slot.pickupTime && v?.time ? (v.day ?? 0) * 1440 + toMin(v.time) - toMin(slot.pickupTime) : null);
+  // Transit time (TestFlight: "transit time option"): pickup + chosen length → planned drop-off.
+  const transitMin = afterPickup(slot.dropoffTime ? outboundArrival : null);
+  const [transitOpen, setTransitOpen] = useState(false);
+  const transitAt = (min: number) => {
+    const total = toMin(slot.pickupTime) + min;
+    const time = `${String(Math.floor((total % 1440) / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+    return { time, days: Math.floor(total / 1440) };
+  };
+  const setTransit = (min: number) => {
+    const { time, days } = transitAt(min);
+    form.setDropoff(form.isMonthly
+      ? { dropoffTime: time, dropoffDay: round ? days : undefined }
+      : { dropoffDate: addDaysToDateStr(slot.date || form.today, days), dropoffTime: time });
+  };
+  const transitTile = (
+    <ValueTile
+      caption="Transit time"
+      value={transitMin != null && transitMin > 0 ? transitText(transitMin) : ''}
+      placeholder={pickupSet ? 'Choose' : 'Set pickup first'}
+      onPress={() => pickupSet && setTransitOpen(true)}
+      style={{ flex: 1 }}
+    />
+  );
   const routeTiming = (
     <RouteTiming
       eta={form.eta}
@@ -131,6 +163,7 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
                 style={{ flex: 1 }}
               />
             </View>
+            <View style={styles.row}>{transitTile}</View>
             <ErrorText>{err('pickup') || err('dropoff')}</ErrorText>
             <Text style={styles.hint}>
               {form.dutyMinutes && !form.dropoffTouched ? `Drop-off set ${form.dutyMinutes / 60} hours after pickup. ` : ''}
@@ -177,6 +210,7 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
               <ValueTile caption="Date" value={slot.dropoffTime ? fmtDay(slot.dropoffDate || slot.date) : ''} placeholder="—" onPress={() => setPicker('dropoff')} error={Boolean(err('dropoff'))} style={{ flex: 1 }} />
               <ValueTile caption="Time" value={slot.dropoffTime} placeholder="--:--" onPress={() => setPicker('dropoff')} error={Boolean(err('dropoff'))} style={{ width: 104 }} />
             </View>
+            <View style={styles.row}>{transitTile}</View>
             <ErrorText>{err('dropoff')}</ErrorText>
             {!pickupSet ? (
               <Text style={styles.hint}>Set the pickup first — the drop-off is then suggested from the {form.dutyMinutes ? 'duty length' : 'drive time'}.</Text>
@@ -190,6 +224,18 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
         </>
       )}
 
+      <PickerSheet
+        visible={transitOpen}
+        title="Transit time"
+        options={TRANSIT_CHOICES.map((m) => {
+          const { time, days } = transitAt(m);
+          return { value: String(m), label: transitText(m), sub: `Drop-off ${time}${days ? ` (+${days} day${days > 1 ? 's' : ''})` : ''}` };
+        })}
+        value={transitMin != null ? String(Math.round(transitMin / 30) * 30) : null}
+        onSelect={(v) => { setTransit(Number(v)); setTransitOpen(false); }}
+        onClose={() => setTransitOpen(false)}
+        searchPlaceholder="Hours, e.g. 8"
+      />
       <WhenSheet
         visible={picker === 'pickup'}
         title="Pickup"

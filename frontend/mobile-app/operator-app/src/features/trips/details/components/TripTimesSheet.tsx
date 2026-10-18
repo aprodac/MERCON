@@ -6,7 +6,7 @@
  * hits "Next" to move on. An untouched time keeps the driver's tapped time.
  */
 import React, { useMemo, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, Alert, ScrollView, FlatList } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView, FlatList } from 'react-native';
 import { isoToWall, resolveStopTimes, type StopTimeRow } from '@mercon/shared-types';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
@@ -75,13 +75,21 @@ export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: P
     recordedDeparture: s.actual_departure,
     arrival: typed[s.id]?.arrival ?? '',
     departure: typed[s.id]?.departure ?? '',
+    leftFollowsArrival: isDropoff(s),
   }));
   const fallback = trip.actual_start || trip.planned_start || stops[0]?.planned_arrival || new Date().toISOString();
   const resolved = resolveStopTimes(rows, tz, fallback);
+  // A drop-off's "Left" isn't shown: it follows "Arrived" (leftFollowsArrival),
+  // so it never blocks saving the stops after it (TestFlight: "all times are in order, then why").
   const hasError = resolved.some((r) => r.arrival.error || r.departure.error);
   const changes = resolved.filter((r) => r.arrival.changed || r.departure.changed);
+  // What the operator actually changed: a drop-off's hidden "Left" pulled back on its own rides
+  // along when saving, but doesn't make an untouched sheet say "Save 1 stop".
+  const edited = resolved.filter((r, i) => r.arrival.changed || (r.departure.changed && !isDropoff(stops[i])));
 
   const clock = (iso: string | null) => (iso ? isoToWall(iso, tz).clock : null);
+  /** "17 Oct" — said instead of "+1d" when a time falls on another day than the trip's first stop (TestFlight: "why +1 day"). */
+  const dayOf = (iso: string) => new Date(`${isoToWall(iso, tz).date}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
 
   const set = (stopId: string, field: Field, value: string) =>
     setTyped((t) => ({ ...t, [stopId]: { ...(t[stopId] ?? { arrival: '', departure: '' }), [field]: value } }));
@@ -107,6 +115,18 @@ export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: P
     return null;
   };
 
+  /**
+   * Swiping to another screenshot while editing moves the time being edited to
+   * that screenshot's stop (TestFlight: "when I swipe to page 2 it should show
+   * page 2's time to adjust").
+   */
+  const onSwiped = (i: number) => {
+    setShotIdx(i);
+    if (active === null) return;
+    const stopIdx = stops.findIndex((st) => st.id === shots[i]?.ai_extracted_json?.stop_id);
+    if (stopIdx >= 0 && Math.floor(active / 2) !== stopIdx) setActive(stopIdx * 2);
+  };
+
   /** Start editing a time; the strip switches to that stop's own screenshots when it has any. */
   const edit = (idx: number | null) => {
     setActive(idx);
@@ -115,11 +135,30 @@ export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: P
     if (id && id !== onlyStop && shotsOf(id).length) { setOnlyStop(id); setShotIdx(0); }
   };
 
+  /**
+   * A problem with stop i's times, said in full on its own line under the row
+   * (TestFlight: "Earlier than … not showing full text").
+   */
+  const problemOf = (i: number): string | null => {
+    const r = resolved[i];
+    const name = stopName(stops[i], i);
+    if (r.arrival.error === 'Earlier than the stop before') {
+      let j = i - 1;
+      while (j >= 0 && !(resolved[j].departure.iso || resolved[j].arrival.iso)) j--;
+      const prev = j >= 0 ? resolved[j].departure.iso ?? resolved[j].arrival.iso : null;
+      const prevWhat = j >= 0 ? (resolved[j].departure.iso && !isDropoff(stops[j]) ? 'left' : 'reached') : '';
+      return `Arrived ${clock(r.arrival.iso)} at ${name} is before ${j >= 0 ? `the truck ${prevWhat} ${stopName(stops[j], j)} (${clock(prev)})` : 'the stop before'}. Fix one of the two.`;
+    }
+    if (r.departure.error === 'Left before arrived') return `Left ${name} at ${clock(r.departure.iso)}, before it arrived (${clock(r.arrival.iso)}).`;
+    const other = r.arrival.error ?? r.departure.error;
+    return other ? `${name}: ${other}` : null;
+  };
+
   const confirm = async () => {
     if (hasError) return;
     setSaving(true);
     try {
-      await operatorService.confirmTripTimes(trip.id, changes.map((c) => ({
+      await operatorService.confirmTripTimes(trip.id, (edited.length ? changes : []).map((c) => ({
         stop_id: c.stopId,
         ...(c.arrival.changed && c.arrival.iso ? { actual_arrival: c.arrival.iso } : {}),
         ...(c.departure.changed && c.departure.iso ? { actual_departure: c.departure.iso } : {}),
@@ -154,14 +193,15 @@ export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: P
                 showsHorizontalScrollIndicator={false}
                 initialScrollIndex={Math.min(shotIdx, shots.length - 1)}
                 getItemLayout={(_, i) => ({ length: shotW, offset: shotW * i, index: i })}
-                onMomentumScrollEnd={(e) => setShotIdx(Math.round(e.nativeEvent.contentOffset.x / shotW))}
-                renderItem={({ item }) => (
-                  <TouchableOpacity style={{ width: shotW }} activeOpacity={0.9} onPress={() => { if (active !== null) { setActive(null); setTall(true); } else setTall((t) => !t); }}>
-                    {tall && active === null ? (
-                      <ZoomableImage uri={resolveMediaUrl(item.file_url)} style={[s.shot, s.shotTall]} />
-                    ) : (
-                      <Image source={{ uri: resolveMediaUrl(item.file_url) ?? undefined }} style={s.shot} resizeMode="contain" />
-                    )}
+                onMomentumScrollEnd={(e) => onSwiped(Math.round(e.nativeEvent.contentOffset.x / shotW))}
+                renderItem={({ item, index }) => (
+                  <TouchableOpacity style={{ width: shotW }} activeOpacity={0.9} onPress={() => setTall((t) => !t)}>
+                    {/* Which picture this is (TestFlight: "show its serial number, 1st picture, 2nd picture"). */}
+                    {shots.length > 1 ? (
+                      <View style={s.shotNo} pointerEvents="none"><Text style={s.shotNoText}>{index + 1} / {shots.length}</Text></View>
+                    ) : null}
+                    {/* Pinch to zoom at either size, also while a time is being edited (TestFlight: "not able to zoom"). */}
+                    <ZoomableImage uri={resolveMediaUrl(item.file_url)} style={[s.shot, tall && (active === null ? s.shotTall : s.shotTallEditing)]} />
                   </TouchableOpacity>
                 )}
               />
@@ -169,7 +209,7 @@ export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: P
           </View>
           <View style={s.shotBar}>
             <Text style={[s.hint, { flex: 1 }]} numberOfLines={1}>
-              {shotStop >= 0 ? stopName(stops[shotStop], shotStop) : 'Trip'}{focused.length ? ' only' : ''} · {shots.length > 1 ? 'swipe for the next · ' : ''}{tall && active === null ? 'pinch to zoom · tap to shrink' : 'tap to enlarge'}
+              {shotStop >= 0 ? stopName(stops[shotStop], shotStop) : 'Trip'}{focused.length ? ' only' : ''} · {shots.length > 1 ? 'swipe for the next · ' : ''}pinch to zoom · {tall ? 'tap to shrink' : 'tap to enlarge'}
             </Text>
             {shots.length > 1 ? (
               <View style={s.pager}>
@@ -197,36 +237,40 @@ export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: P
         </View>
         {stops.map((st, i) => {
           const r = resolved[i];
+          const problem = problemOf(i);
           return (
-            <View key={st.id} style={s.row}>
-              <View style={{ flex: 1, minWidth: 0, paddingTop: 7 }}>
-                <Text style={s.name} numberOfLines={1}>{stopName(st, i)}</Text>
-                <Text style={s.hint} numberOfLines={1}>
-                  {st.actual_arrival ? `tapped ${clock(st.actual_arrival)?.slice(0, 5)}${st.actual_departure ? `–${clock(st.actual_departure)?.slice(0, 5)}` : ''}` : 'not reached'}
-                </Text>
+            <View key={st.id} style={s.rowWrap}>
+              <View style={s.row}>
+                <View style={{ flex: 1, minWidth: 0, paddingTop: 7 }}>
+                  <Text style={s.name} numberOfLines={1}>{stopName(st, i)}</Text>
+                  <Text style={s.hint} numberOfLines={1}>
+                    {st.actual_arrival ? `tapped ${clock(st.actual_arrival)?.slice(0, 5)}${st.actual_departure ? `–${clock(st.actual_departure)?.slice(0, 5)}` : ''}` : 'not reached'}
+                  </Text>
+                </View>
+                {FIELDS.map((field, f) => {
+                  if (hidden(i * 2 + f)) return <View key={field} style={s.col} />;
+                  const t = r[field];
+                  const recorded = field === 'arrival' ? st.actual_arrival : st.actual_departure;
+                  const idx = i * 2 + f;
+                  const value = typed[st.id]?.[field] || clock(recorded);
+                  return (
+                    <View key={field} style={s.col}>
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        onPress={() => edit(active === idx ? null : idx)}
+                        accessibilityLabel={`${stopName(st, i)} ${FIELD_LABEL[field]}`}
+                        style={[s.input, t.changed && s.inputChanged, !!t.error && s.inputError, active === idx && s.inputActive]}
+                      >
+                        <Text style={[s.inputText, !typed[st.id]?.[field] && { color: '#A1A1AA' }]}>{value ?? 'set'}</Text>
+                      </TouchableOpacity>
+                      <Text style={s.note} numberOfLines={2}>
+                        {t.error ? ' ' : t.changed ? [t.dayOffset && t.iso ? dayOf(t.iso) : '', recorded ? `was ${clock(recorded)?.slice(0, 5)}` : 'new'].filter(Boolean).join(' · ') : ' '}
+                      </Text>
+                    </View>
+                  );
+                })}
               </View>
-              {FIELDS.map((field, f) => {
-                if (hidden(i * 2 + f)) return <View key={field} style={s.col} />;
-                const t = r[field];
-                const recorded = field === 'arrival' ? st.actual_arrival : st.actual_departure;
-                const idx = i * 2 + f;
-                const value = typed[st.id]?.[field] || clock(recorded);
-                return (
-                  <View key={field} style={s.col}>
-                    <TouchableOpacity
-                      activeOpacity={0.7}
-                      onPress={() => edit(active === idx ? null : idx)}
-                      accessibilityLabel={`${stopName(st, i)} ${FIELD_LABEL[field]}`}
-                      style={[s.input, t.changed && s.inputChanged, !!t.error && s.inputError, active === idx && s.inputActive]}
-                    >
-                      <Text style={[s.inputText, !typed[st.id]?.[field] && { color: '#A1A1AA' }]}>{value ?? 'set'}</Text>
-                    </TouchableOpacity>
-                    <Text style={[s.note, !!t.error && { color: '#B42318' }]} numberOfLines={1}>
-                      {t.error ?? (t.changed ? [recorded ? `was ${clock(recorded)?.slice(0, 5)}` : 'new', t.dayOffset ? `+${t.dayOffset}d` : ''].filter(Boolean).join(' · ') : ' ')}
-                    </Text>
-                  </View>
-                );
-              })}
+              {problem ? <Text style={s.problem}>{problem}</Text> : null}
             </View>
           );
         })}
@@ -271,7 +315,7 @@ export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: P
       )}
       <TouchableOpacity style={[s.btn, (saving || hasError) && { opacity: 0.5 }]} onPress={confirm} disabled={saving || hasError}>
         <Text style={s.btnText}>
-          {saving ? 'Saving…' : changes.length ? `Save ${changes.length} stop${changes.length === 1 ? '' : 's'}` : 'Times are right'}
+          {saving ? 'Saving…' : edited.length ? `Save ${edited.length} stop${edited.length === 1 ? '' : 's'}` : 'Times are right'}
         </Text>
       </TouchableOpacity>
     </AppModal>
@@ -281,6 +325,9 @@ export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: P
 const s = StyleSheet.create({
   shot: { width: '100%', height: 200, borderRadius: 14, backgroundColor: '#F1F3F7' },
   shotTall: { height: 440 },
+  shotTallEditing: { height: 320 },
+  shotNo: { position: 'absolute', top: 8, left: 8, zIndex: 2, backgroundColor: 'rgba(17,17,17,0.72)', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 },
+  shotNoText: { color: '#fff', fontSize: 12, fontWeight: '800' },
   shotBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   pager: { flexDirection: 'row', gap: 6 },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#D4D4D8' },
@@ -289,7 +336,9 @@ const s = StyleSheet.create({
   hint: { fontSize: 12, color: MUTED },
   cap: { fontSize: 11, fontWeight: '700', color: MUTED },
   headRow: { flexDirection: 'row', gap: 8, paddingBottom: 4, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#D4D4D8' },
-  row: { flexDirection: 'row', gap: 8, paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#ECECEF' },
+  rowWrap: { paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#ECECEF' },
+  row: { flexDirection: 'row', gap: 8 },
+  problem: { fontSize: 12.5, fontWeight: '600', color: '#B42318', backgroundColor: '#FEF3F2', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, marginTop: 2 },
   col: { width: 84 },
   name: { fontSize: 13, fontWeight: '700', color: INK },
   input: { height: 36, borderRadius: 9, borderWidth: 1, borderColor: '#D4D4D8', paddingHorizontal: 8, justifyContent: 'center', backgroundColor: '#FAFAFB' },

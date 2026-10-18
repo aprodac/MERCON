@@ -100,7 +100,7 @@ export function TodoTab({ items, hidden = 0, onMarkRead, onShowRead, initialFilt
                   <View style={p.card}>
                     {rows.map((r, i) =>
                       r.type === 'item' ? (
-                        <ActionRow key={r.item.key} item={r.item} first={i === 0} now={now} onIntent={onIntent} onOpenTrip={onOpenTrip} />
+                        <ActionRow key={r.item.key} item={r.item} first={i === 0} now={now} onIntent={onIntent} onOpenTrip={onOpenTrip} onMarkRead={onMarkRead ? (it) => onMarkRead([it]) : undefined} />
                       ) : (
                         <GroupRow key={r.kind} kind={r.kind} items={r.items} first={i === 0} now={now} onPress={() => { tap(); setSheet({ kind: r.kind, urgency: sec.urgency }); }} />
                       ),
@@ -112,7 +112,7 @@ export function TodoTab({ items, hidden = 0, onMarkRead, onShowRead, initialFilt
           )}
         </View>
       </ScrollView>
-      <KindSheet kind={sheet?.kind ?? null} items={sheet ? shown.filter((i) => i.urgency === sheet.urgency) : []} now={now} onClose={() => setSheet(null)} onIntent={onIntent} onOpenTrip={onOpenTrip} />
+      <KindSheet kind={sheet?.kind ?? null} items={sheet ? shown.filter((i) => i.urgency === sheet.urgency) : []} now={now} onClose={() => setSheet(null)} onIntent={onIntent} onOpenTrip={onOpenTrip} onMarkRead={onMarkRead ? (it) => onMarkRead([it]) : undefined} />
     </>
   );
 }

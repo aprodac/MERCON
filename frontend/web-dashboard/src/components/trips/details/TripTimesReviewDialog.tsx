@@ -92,6 +92,8 @@ export default function TripTimesReviewDialog({ open, onOpenChange, trip, docume
   };
 
   const clock = (iso: string | null) => (iso ? isoToWall(iso, tz).clock : null);
+  /** "17 Oct" instead of "+1 day" when a time is on another day than the trip's first stop. */
+  const dayOf = (iso: string) => new Date(`${isoToWall(iso, tz).date}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
 
   return (
     <Dialog open={open} onOpenChange={close}>
@@ -189,7 +191,7 @@ export default function TripTimesReviewDialog({ open, onOpenChange, trip, docume
                             )}
                           />
                           <p className={cn('mt-0.5 h-4 text-[10.5px]', t.error ? 'text-rose-600 dark:text-rose-400' : 'text-amber-700 dark:text-amber-400')}>
-                            {t.error ?? (t.changed ? [recorded ? `was ${clock(recorded)?.slice(0, 5)}` : 'new', t.dayOffset ? `+${t.dayOffset} day` : ''].filter(Boolean).join(' · ') : '')}
+                            {t.error ?? (t.changed ? [recorded ? `was ${clock(recorded)?.slice(0, 5)}` : 'new', t.dayOffset && t.iso ? dayOf(t.iso) : ''].filter(Boolean).join(' · ') : '')}
                           </p>
                         </div>
                       );

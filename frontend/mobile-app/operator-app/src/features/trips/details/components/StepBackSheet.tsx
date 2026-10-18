@@ -39,25 +39,29 @@ export function StepBackSheet({ visible, tripId, f, onClose, onDone }: {
 
   const steps = data?.steps ?? [];
   const current = data?.current ?? -1;
-  const undoCount = target === null ? 0 : current - target;
-  const photoCount = target === null ? 0 : data?.photos_after[target] ?? 0;
+  // A pick above "now" moves the trip on to it; below, takes it back.
+  const forwardTo = target !== null && target > current ? target : null;
+  const undoCount = target === null || forwardTo !== null ? 0 : current - target;
+  const doneCount = forwardTo === null ? 0 : forwardTo - current;
+  const photoCount = target === null || forwardTo !== null ? 0 : data?.photos_after[target] ?? 0;
   const targetLabel = target === null ? '' : target === -1 ? 'Not started' : steps[target]?.label;
   const nextForDriver = target === null ? '' : target === -1 ? 'Start the trip' : steps[target]?.next;
 
-  // The next step the office can mark done for the driver — never the one that finishes the trip.
-  const nextStep = steps[current + 1] && current + 1 < steps.length - 1 ? steps[current + 1] : null;
+  // Steps the office can mark done for the driver — never the one that finishes the trip (Confirm delivery).
+  const lastMarkable = steps.length - 2;
   const forward = () => {
-    if (!nextStep) return;
+    if (forwardTo === null) return;
+    const to = steps[forwardTo];
     Alert.alert(
-      'Mark the next step done?',
-      `"${nextStep.label}" is recorded now. The driver's app moves on to "${nextStep.next}", and the driver gets a notification.`,
+      doneCount === 1 ? 'Mark this step done?' : `Mark ${doneCount} steps done?`,
+      `${doneCount === 1 ? `"${to.label}" is` : `Every step up to "${to.label}" is`} recorded now. The driver's app moves on to "${to.next}", and the driver gets a notification.`,
       [
         { text: 'Not now', style: 'cancel' },
         {
           text: 'Mark done', onPress: async () => {
             setSaving(true);
             try {
-              const r = await operatorService.stepForwardTrip(tripId);
+              const r = await operatorService.stepForwardTrip(tripId, forwardTo);
               Alert.alert('Trip moved on', `Now at: ${r.to.label}.`);
               onDone();
               onClose();
@@ -103,9 +107,10 @@ export function StepBackSheet({ visible, tripId, f, onClose, onDone }: {
   };
 
   const row = (index: number, label: string, sub: string, done: boolean, isCurrent: boolean) => {
-    const canPick = done && !isCurrent;
+    const canPick = done ? !isCurrent : index > current && index <= lastMarkable;
     const picked = target === index;
     const undone = target !== null && index > target && done;
+    const toBeDone = forwardTo !== null && !done && index <= forwardTo;
     return (
       <TouchableOpacity
         key={index}
@@ -116,12 +121,12 @@ export function StepBackSheet({ visible, tripId, f, onClose, onDone }: {
         accessibilityRole="radio"
         accessibilityState={{ selected: picked, disabled: !canPick }}
       >
-        {done ? <CheckCircle2 size={18} color={undone ? '#C9CBD3' : '#15803D'} /> : <Circle size={18} color="#C9CBD3" />}
+        {done || toBeDone ? <CheckCircle2 size={18} color={undone ? '#C9CBD3' : toBeDone ? '#2563EB' : '#15803D'} /> : <Circle size={18} color="#C9CBD3" />}
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={[s.stepLabel, !done && { color: '#A1A1AA' }, undone && s.struck, isCurrent && { fontWeight: '800' }]} numberOfLines={2}>{label}</Text>
+          <Text style={[s.stepLabel, !done && !toBeDone && { color: '#A1A1AA' }, undone && s.struck, isCurrent && { fontWeight: '800' }]} numberOfLines={2}>{label}</Text>
           {sub ? <Text style={s.stepSub} numberOfLines={1}>{sub}</Text> : null}
         </View>
-        {picked ? <View style={s.badge}><Text style={s.badgeText}>Back to here</Text></View> : null}
+        {picked ? <View style={[s.badge, forwardTo !== null && { backgroundColor: '#2563EB' }]}><Text style={s.badgeText}>{forwardTo !== null ? 'Done up to here' : 'Back to here'}</Text></View> : null}
       </TouchableOpacity>
     );
   };
@@ -129,7 +134,7 @@ export function StepBackSheet({ visible, tripId, f, onClose, onDone }: {
   return (
     <AppModal visible={visible} onClose={onClose} type="bottom-sheet" title="Driver's steps">
       <View style={{ gap: 12, paddingBottom: 8 }}>
-        <Text style={s.intro}>Driver tapped ahead by mistake? Pick the last step that really happened — everything after it is undone. Or mark the next step done for them.</Text>
+        <Text style={s.intro}>Pick the step the trip is really at. An earlier step undoes everything after it; a later step marks every step up to it done for the driver.</Text>
         {isLoading ? (
           <ActivityIndicator color={Colors.primary} style={{ marginVertical: 20 }} />
         ) : isError || !data ? (
@@ -152,7 +157,13 @@ export function StepBackSheet({ visible, tripId, f, onClose, onDone }: {
               ))}
             </ScrollView>
 
-            {target !== null ? (
+            {forwardTo !== null ? (
+              <View style={s.summary}>
+                <Text style={s.summaryText}>
+                  <Text style={{ fontWeight: '800' }}>{doneCount} step{doneCount === 1 ? '' : 's'}</Text> marked done. The driver app moves on to <Text style={{ fontWeight: '800' }}>{steps[forwardTo]?.next}</Text>.
+                </Text>
+              </View>
+            ) : target !== null ? (
               <View style={s.summary}>
                 <Text style={s.summaryText}>
                   <Text style={{ fontWeight: '800' }}>{undoCount} step{undoCount === 1 ? '' : 's'}</Text> undone. The driver's app opens on <Text style={{ fontWeight: '800' }}>{nextForDriver}</Text>.
@@ -181,16 +192,17 @@ export function StepBackSheet({ visible, tripId, f, onClose, onDone }: {
               </View>
             ) : null}
 
-            <TouchableOpacity style={[s.cta, (target === null || saving) && { opacity: 0.5 }]} disabled={target === null || saving} onPress={confirm} accessibilityRole="button">
-              {saving ? <ActivityIndicator color="#fff" /> : <Undo2 size={18} color="#fff" />}
-              <Text style={s.ctaText}>Go back {undoCount > 0 ? `${undoCount} step${undoCount === 1 ? '' : 's'}` : ''}</Text>
-            </TouchableOpacity>
-            {nextStep ? (
-              <TouchableOpacity style={[s.ctaQuiet, saving && { opacity: 0.5 }]} disabled={saving} onPress={forward} accessibilityRole="button">
-                <Redo2 size={18} color={INK} />
-                <Text style={s.ctaQuietText} numberOfLines={1}>Mark next step done: {nextStep.label}</Text>
+            {forwardTo !== null ? (
+              <TouchableOpacity style={[s.cta, { backgroundColor: '#2563EB' }, saving && { opacity: 0.5 }]} disabled={saving} onPress={forward} accessibilityRole="button">
+                {saving ? <ActivityIndicator color="#fff" /> : <Redo2 size={18} color="#fff" />}
+                <Text style={s.ctaText}>Mark {doneCount} step{doneCount === 1 ? '' : 's'} done</Text>
               </TouchableOpacity>
-            ) : null}
+            ) : (
+              <TouchableOpacity style={[s.cta, (target === null || saving) && { opacity: 0.5 }]} disabled={target === null || saving} onPress={confirm} accessibilityRole="button">
+                {saving ? <ActivityIndicator color="#fff" /> : <Undo2 size={18} color="#fff" />}
+                <Text style={s.ctaText}>Go back {undoCount > 0 ? `${undoCount} step${undoCount === 1 ? '' : 's'}` : ''}</Text>
+              </TouchableOpacity>
+            )}
           </>
         )}
       </View>

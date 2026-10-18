@@ -1,7 +1,9 @@
 /**
  * Hour / minute / second scroll wheels (iOS-style), pure JS so it ships without
  * a native build. Value in and out is "HH:MM:SS"; each wheel snaps to one row,
- * and tapping a row jumps to it.
+ * and tapping a row jumps to it. The wheels go round: 00 follows 59 (and 23),
+ * so a time just past midnight rolls back to 23:59 (TestFlight: "editing time
+ * to back is not possible").
  */
 import React, { useEffect, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
@@ -11,22 +13,33 @@ import { INK, MUTED } from './parts';
 const ROW = 36;
 const VISIBLE = 5; // odd, so one row sits in the middle
 const PAD = ROW * ((VISIBLE - 1) / 2);
+/** The rows repeat this many times; the wheel sits in the middle copy and hops back to it after each turn. */
+const COPIES = 5;
+const MID = Math.floor(COPIES / 2);
 
 const p2 = (n: number) => String(n).padStart(2, '0');
 
 function Wheel({ count, value, onChange, label }: { count: number; value: number; onChange: (v: number) => void; label: string }) {
   const ref = useRef<ScrollView>(null);
   const last = useRef(value);
+  const home = (v: number) => (MID * count + v) * ROW;
 
   // Follow a value set from outside (e.g. "Undo" back to the tapped time).
   useEffect(() => {
     if (value === last.current) return;
     last.current = value;
-    ref.current?.scrollTo({ y: value * ROW, animated: true });
+    ref.current?.scrollTo({ y: home(value), animated: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
   const settle = (y: number) => {
-    const i = Math.max(0, Math.min(count - 1, Math.round(y / ROW)));
+    const row = Math.max(0, Math.min(count * COPIES - 1, Math.round(y / ROW)));
+    const i = row % count;
+    // Off the middle copy: hop back to the same number there, so it can keep turning.
+    if (Math.floor(row / count) !== MID) ref.current?.scrollTo({ y: home(i), animated: false });
+    pick(i);
+  };
+  const pick = (i: number) => {
     if (i === last.current) return;
     last.current = i;
     Haptics.selectionAsync().catch(() => {});
@@ -46,21 +59,23 @@ function Wheel({ count, value, onChange, label }: { count: number; value: number
         showsVerticalScrollIndicator={false}
         snapToInterval={ROW}
         decelerationRate="fast"
-        contentOffset={{ x: 0, y: value * ROW }}
-        onLayout={() => ref.current?.scrollTo({ y: value * ROW, animated: false })}
+        contentOffset={{ x: 0, y: home(value) }}
+        onLayout={() => ref.current?.scrollTo({ y: home(value), animated: false })}
         onScrollEndDrag={onDragEnd}
         onMomentumScrollEnd={(e) => settle(e.nativeEvent.contentOffset.y)}
         contentContainerStyle={{ paddingVertical: PAD }}
         accessibilityLabel={label}
       >
-        {Array.from({ length: count }, (_, i) => {
-          const d = Math.abs(i - value);
+        {Array.from({ length: count * COPIES }, (_, row) => {
+          const i = row % count;
+          const raw = Math.abs(i - value);
+          const d = Math.min(raw, count - raw);
           return (
             <TouchableOpacity
-              key={i}
+              key={row}
               activeOpacity={0.6}
               style={s.item}
-              onPress={() => { ref.current?.scrollTo({ y: i * ROW, animated: true }); settle(i * ROW); }}
+              onPress={() => { ref.current?.scrollTo({ y: row * ROW, animated: true }); pick(i); }}
             >
               <Text style={[s.itemText, d === 0 ? s.itemOn : d === 1 ? s.itemNear : s.itemFar]}>{p2(i)}</Text>
             </TouchableOpacity>

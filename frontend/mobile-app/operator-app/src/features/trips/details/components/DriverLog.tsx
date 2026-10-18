@@ -36,38 +36,41 @@ export function DriverLog({ trip, f, onOpen, onPick }: {
         title={`Driver's log · ${entries.length} ${entries.length === 1 ? 'send' : 'sends'}`}
         right={open ? <Text style={s.open}>{open} not on a stop yet</Text> : <Text style={s.done}>All on stops</Text>}
       />
-      <Text style={s.lead}>Stops were not known when this trip was booked. Make each send a stop, or add it to one.</Text>
+      <Text style={s.lead}>Stops weren{"'"}t known at booking. Turn each send into a stop, or add it to one.</Text>
       {entries.map((e, i) => {
         const stopIdx = e.stop_id ? stops.findIndex((st) => st.id === e.stop_id) : -1;
         return (
           <View key={e.id} style={[s.row, i > 0 && s.rowLine]}>
+            {/* Time and place on the left, what happened to it on the right. */}
             <View style={s.head}>
-              <Text style={s.time}>{f.smart(e.at)}</Text>
-              {e.place ? (
-                <View style={s.placeRow}>
-                  <MapPin size={12} color={MUTED} />
-                  <Text style={s.place} numberOfLines={1}>near {e.place}</Text>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={s.time}>{f.smart(e.at)}</Text>
+                {e.place ? (
+                  <View style={s.placeRow}>
+                    <MapPin size={12} color={MUTED} />
+                    <Text style={s.place} numberOfLines={1}>near {e.place} · {e.docs.length} screenshot{e.docs.length === 1 ? '' : 's'}</Text>
+                  </View>
+                ) : <Text style={s.place}>{e.docs.length} screenshot{e.docs.length === 1 ? '' : 's'}</Text>}
+              </View>
+              {stopIdx >= 0 ? (
+                <View style={s.onStop}>
+                  <CircleCheck size={13} color="#15803D" />
+                  <Text style={s.onStopText} numberOfLines={1}>Stop {stopIdx + 1} · {stopName(stops[stopIdx], stopIdx)}</Text>
                 </View>
-              ) : null}
+              ) : (
+                <TouchableOpacity style={s.btn} onPress={() => { tap(); onPick(e); }} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Make a stop or add to one">
+                  <Plus size={14} color={INK} />
+                  <Text style={s.btnText}>Make stop</Text>
+                </TouchableOpacity>
+              )}
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 8 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingTop: 8 }}>
               {e.docs.map((d, k) => (
                 <TouchableOpacity key={d.id} onPress={() => { tap(); onOpen(e, k); }} activeOpacity={0.85}>
                   <Image source={{ uri: resolveMediaUrl(d.file_url) ?? undefined }} style={s.thumb} />
                 </TouchableOpacity>
               ))}
             </ScrollView>
-            {stopIdx >= 0 ? (
-              <View style={s.onStop}>
-                <CircleCheck size={14} color="#15803D" />
-                <Text style={s.onStopText}>On stop {stopIdx + 1} · {stopName(stops[stopIdx], stopIdx)}</Text>
-              </View>
-            ) : (
-              <TouchableOpacity style={s.btn} onPress={() => { tap(); onPick(e); }} activeOpacity={0.8} accessibilityRole="button">
-                <Plus size={14} color="#fff" />
-                <Text style={s.btnText}>Make a stop or add to one</Text>
-              </TouchableOpacity>
-            )}
           </View>
         );
       })}
@@ -125,7 +128,7 @@ export function LogStopSheet({ trip, entry, f, onClose, onDone }: {
           onPress={() => save({ action: 'new', name: name.trim(), stop_type: type })}
         >
           <ListPlus size={16} color="#fff" />
-          <Text style={s.btnText}>Make it a stop (arrived {f.smart(entry?.at)})</Text>
+          <Text style={[s.btnText, { color: '#fff' }]}>Make it a stop (arrived {f.smart(entry?.at)})</Text>
         </TouchableOpacity>
 
         <Text style={[s.cap, { marginTop: 18 }]}>Or add to a stop on the trip</Text>
@@ -148,18 +151,18 @@ const s = StyleSheet.create({
   open: { fontSize: 12, fontWeight: '800', color: '#B54708' },
   done: { fontSize: 12, fontWeight: '800', color: '#15803D' },
   lead: { fontSize: 12.5, color: MUTED, marginTop: 4, marginBottom: 6 },
-  row: { paddingVertical: 8 },
+  row: { paddingVertical: 10 },
   rowLine: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E4E4E7' },
-  head: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   time: { fontSize: 14, fontWeight: '800', color: INK },
   placeRow: { flexDirection: 'row', alignItems: 'center', gap: 3, flexShrink: 1 },
   place: { fontSize: 12.5, color: MUTED, fontWeight: '600' },
-  thumb: { width: 54, height: 80, borderRadius: 8, backgroundColor: '#F1F3F7' },
-  onStop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  thumb: { width: 48, height: 72, borderRadius: 8, backgroundColor: '#F1F3F7', borderWidth: StyleSheet.hairlineWidth, borderColor: '#E4E4E7' },
+  onStop: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#ECFDF3', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, maxWidth: '55%' },
   onStopText: { fontSize: 12.5, fontWeight: '700', color: '#15803D' },
-  btn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: INK, borderRadius: 12, paddingVertical: 9, paddingHorizontal: 12, alignSelf: 'flex-start' },
-  bigBtn: { alignSelf: 'stretch', paddingVertical: 13, marginTop: 10 },
-  btnText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  btn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, borderWidth: 1, borderColor: '#D4D4D8', borderRadius: 999, paddingVertical: 7, paddingHorizontal: 12 },
+  bigBtn: { alignSelf: 'stretch', paddingVertical: 13, marginTop: 10, backgroundColor: INK, borderWidth: 0, borderRadius: 12 },
+  btnText: { color: INK, fontSize: 13, fontWeight: '800' },
   cap: { fontSize: 12, fontWeight: '800', color: MUTED, textTransform: 'uppercase', marginBottom: 8 },
   input: { borderWidth: 1, borderColor: '#E4E4E7', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 11, fontSize: 15, color: INK },
   seg: { flexDirection: 'row', backgroundColor: '#F1F1F3', borderRadius: 12, padding: 3, marginTop: 10 },

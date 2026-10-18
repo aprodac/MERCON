@@ -30,6 +30,7 @@ import type { OperatorTrip } from '../../../lib/operator';
 import { TripCard } from './TripCard';
 import { TruckDayView } from './TruckDayView';
 import { AppTopBar } from '@/components/AppTopBar';
+import { Chips } from '@/features/notifications/components/parts';
 import { useNow, useTripList, HISTORY_DAYS, SCHEDULE_AFTER, type View as ListView } from './useTripList';
 import { askDeleteTrip, canDeleteTrip } from '../edit/movePlan';
 import {
@@ -64,6 +65,7 @@ export default function TripsScreen() {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [day, setDay] = useState<string | null>(null);
   const [historyDay, setHistoryDay] = useState<string | null>(null);
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'done' | 'cancelled' | 'deleted'>('all');
   // Schedule as a list of cards, or one row per truck across the day.
   const [byTruck, setByTruck] = useState(false);
   const [actionsFor, setActionsFor] = useState<OperatorTrip | null>(null);
@@ -133,13 +135,15 @@ export default function TripsScreen() {
   ].filter((sct) => sct.data.length > 0), [board]);
 
   // ── Schedule: open trips only — counts per day and the chosen day's trips ─
-  const perDay = useMemo(() => countByDay(data.window, f, tripDayIso, now), [data.window, f, now]);
+  // Only trips still to start: once a trip is on the road it's in Now (TestFlight: "Schedule shows on the road").
+  const toRun = useMemo(() => data.window.filter((t) => t.status === 'Draft' || t.status === 'Scheduled' || isLateToStart(t)), [data.window]);
+  const perDay = useMemo(() => countByDay(toRun, f, tripDayIso, now), [toRun, f, now]);
   // From today on; earlier days only while a trip planned then still hasn't run.
   const days = useMemo(() => {
     const earliest = [...perDay.keys()].sort()[0];
     return dayRange(todayKey, earliest && earliest < todayKey ? -daysBetween(todayKey, earliest) : 0, SCHEDULE_AFTER);
   }, [perDay, todayKey]);
-  const dayTrips = useMemo(() => tripsOn(data.window, f, tripDayIso, selectedDay, false), [data.window, f, selectedDay]);
+  const dayTrips = useMemo(() => tripsOn(toRun, f, tripDayIso, selectedDay, false), [toRun, f, selectedDay]);
   const selectedCount = perDay.get(selectedDay);
 
   // ── History: the same strip, by the day each trip finished ─────────────────
@@ -152,7 +156,18 @@ export default function TripsScreen() {
     const last = historyLatest[0] && historyLatest[0] > todayKey ? historyLatest[0] : todayKey;
     return dayRange(todayKey, HISTORY_DAYS, daysBetween(todayKey, last));
   }, [historyLatest, todayKey]);
-  const historyTrips = useMemo(() => tripsOn(data.history, f, finishedDayIso, historySelected, true), [data.history, f, historySelected]);
+  const historyAll = useMemo(() => tripsOn(data.history, f, finishedDayIso, historySelected, true), [data.history, f, historySelected]);
+  // Filter (TestFlight: "add filter, deleted and completed"): delivered / cancelled / deleted that day.
+  const deletedOnDay = useMemo(
+    () => data.deleted.filter((d) => f.dayKey(d.deletedAt) === historySelected).sort((a, b) => b.deletedAt.localeCompare(a.deletedAt)),
+    [data.deleted, f, historySelected],
+  );
+  const historyTrips = useMemo(
+    () => historyFilter === 'deleted' ? []
+      : historyFilter === 'all' ? historyAll
+      : historyAll.filter((t) => (historyFilter === 'cancelled') === (t.status === 'Cancelled')),
+    [historyAll, historyFilter],
+  );
   const historyCount = historyPerDay.get(historySelected);
 
   // Trips that double-book a driver or truck, across everything loaded.
@@ -337,9 +352,27 @@ export default function TripsScreen() {
                       {historyCount?.cancelled ? <Text> · {historyCount.cancelled} cancelled</Text> : null}
                     </Text>
                   </View>
+                  <Chips
+                    value={historyFilter}
+                    onChange={setHistoryFilter}
+                    options={[
+                      { value: 'all', label: 'All', count: historyAll.length },
+                      { value: 'done', label: 'Delivered', count: historyCount?.done ?? 0 },
+                      { value: 'cancelled', label: 'Cancelled', count: historyCount?.cancelled ?? 0 },
+                      { value: 'deleted', label: 'Deleted', count: deletedOnDay.length },
+                    ]}
+                  />
+                  {historyFilter === 'deleted' ? deletedOnDay.map((d) => (
+                    <TouchableOpacity key={d.id} style={s.deletedRow} onPress={() => { tap(); router.push('/recycle-bin'); }} activeOpacity={0.7} accessibilityRole="button">
+                      <Text style={s.deletedRef}>{d.name}</Text>
+                      <Text style={s.deletedWhen}>deleted {f.time(d.deletedAt)} · in the Recycle bin</Text>
+                    </TouchableOpacity>
+                  )) : null}
                 </View>
               )}
-              ListEmptyComponent={data.historyLoading ? <Loading /> : (
+              ListEmptyComponent={historyFilter === 'deleted' ? (deletedOnDay.length ? null : (
+                <Empty icon={History} title="Nothing deleted this day" text="Deleted trips stay in the Recycle bin, where they can be restored." />
+              )) : data.historyLoading ? <Loading /> : (
                 <Empty
                   icon={History}
                   title="Nothing finished this day"
@@ -533,6 +566,9 @@ const s = StyleSheet.create({
   dayMonth: { fontSize: 9, lineHeight: 11, fontWeight: '800', letterSpacing: 0.4, color: '#C4432F', textTransform: 'uppercase' },
   dayTitle: { fontSize: 18, fontWeight: '800', color: INK },
   // Wraps rather than cutting off "· 2 need attention" on narrow phones.
+  deletedRow: { backgroundColor: Colors.white, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, gap: 2 },
+  deletedRef: { fontSize: 15, fontWeight: '800', color: INK },
+  deletedWhen: { fontSize: 13, color: MUTED },
   dayCount: { fontSize: 13, fontWeight: '700', color: MUTED, flexShrink: 1, textAlign: 'right' },
   day: { width: 52, height: 80, borderRadius: 16, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', gap: 1, borderWidth: 1, borderColor: '#EEF0F4' },
   dayOn: { backgroundColor: INK, borderColor: INK },

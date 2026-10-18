@@ -51,13 +51,15 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
   }, [selectedDate]);
 
   const [currentMonth, setCurrentMonth] = useState<Date>(initialDateObj);
-  // Tapping the month title switches to a year grid, so an expiry years away is two taps.
-  const [pickYear, setPickYear] = useState(false);
+  // Tapping the title shows the year with its 12 months (pick one, back to the days); tapping it
+  // again shows a grid of years. An expiry years away is a few taps, not a slide per month (TestFlight).
+  const [mode, setMode] = useState<'days' | 'months' | 'years'>('days');
+  const pickYear = mode === 'years';
   const [yearPage, setYearPage] = useState(() => initialDateObj.getFullYear() - 5);
   useEffect(() => {
     if (!visible) return;
     setCurrentMonth(initialDateObj);
-    setPickYear(false);
+    setMode('days');
     setYearPage(initialDateObj.getFullYear() - 5);
   }, [visible, initialDateObj]);
 
@@ -141,15 +143,32 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
 
       {/* Month Header Navigation */}
       <View style={styles.monthNavRow}>
-        <TouchableOpacity style={styles.navBtn} onPress={pickYear ? () => setYearPage((y) => y - 12) : handlePrevMonth} accessibilityLabel={pickYear ? 'Earlier years' : 'Previous month'}>
+        <TouchableOpacity
+          style={styles.navBtn}
+          onPress={pickYear ? () => setYearPage((y) => y - 12) : mode === 'months' ? () => setCurrentMonth(new Date(year - 1, month, 1)) : handlePrevMonth}
+          accessibilityLabel={pickYear ? 'Earlier years' : mode === 'months' ? 'Previous year' : 'Previous month'}
+        >
           <ChevronLeft size={20} color={Colors.gray700} style={flipInRTL} />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.monthTitleContainer} onPress={() => setPickYear((v) => !v)} accessibilityLabel="Change year" hitSlop={8}>
+        <TouchableOpacity
+          style={styles.monthTitleContainer}
+          onPress={() => {
+            if (mode === 'days') setMode('months');
+            else if (mode === 'months') { setYearPage(year - 5); setMode('years'); }
+            else setMode('days');
+          }}
+          accessibilityLabel={mode === 'days' ? 'Change month' : mode === 'months' ? 'Change year' : 'Back to days'}
+          hitSlop={8}
+        >
           <CalendarIcon size={16} color={Colors.primary} />
-          <Text style={styles.monthTitleText}>{pickYear ? `${yearPage} – ${yearPage + 11}` : monthLabel}</Text>
-          <ChevronDown size={16} color={Colors.gray600} style={pickYear ? { transform: [{ rotate: '180deg' }] } : undefined} />
+          <Text style={styles.monthTitleText}>{pickYear ? `${yearPage} – ${yearPage + 11}` : mode === 'months' ? String(year) : monthLabel}</Text>
+          <ChevronDown size={16} color={Colors.gray600} style={mode !== 'days' ? { transform: [{ rotate: '180deg' }] } : undefined} />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.navBtn} onPress={pickYear ? () => setYearPage((y) => y + 12) : handleNextMonth} accessibilityLabel={pickYear ? 'Later years' : 'Next month'}>
+        <TouchableOpacity
+          style={styles.navBtn}
+          onPress={pickYear ? () => setYearPage((y) => y + 12) : mode === 'months' ? () => setCurrentMonth(new Date(year + 1, month, 1)) : handleNextMonth}
+          accessibilityLabel={pickYear ? 'Later years' : mode === 'months' ? 'Next year' : 'Next month'}
+        >
           <ChevronRight size={20} color={Colors.gray700} style={flipInRTL} />
         </TouchableOpacity>
       </View>
@@ -162,10 +181,28 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
               style={[styles.yearCell, y === year && styles.selectedGridCell]}
               onPress={() => {
                 setCurrentMonth(new Date(y, month, 1));
-                setPickYear(false);
+                setMode('months');
               }}
             >
               <Text style={[styles.dayText, y === year && styles.selectedDayText]}>{y}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : mode === 'months' ? (
+        <View style={styles.yearGrid}>
+          {Array.from({ length: 12 }, (_, i) => i).map((m) => (
+            <TouchableOpacity
+              key={m}
+              style={[styles.yearCell, m === month && styles.selectedGridCell]}
+              onPress={() => {
+                setCurrentMonth(new Date(year, m, 1));
+                setMode('days');
+              }}
+              accessibilityLabel={new Date(year, m, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+            >
+              <Text style={[styles.dayText, m === month && styles.selectedDayText]}>
+                {new Date(2000, m, 1).toLocaleDateString('en-US', { month: 'short' })}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>

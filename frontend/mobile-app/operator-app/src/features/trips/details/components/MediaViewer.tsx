@@ -26,6 +26,8 @@ export interface ViewerItem {
   info?: string | null;
   /** E.g. "Use as Jeddah's pin" when the stop's pin is a guess and this photo has GPS. */
   pinAction?: { label: string; onPress: () => void } | null;
+  /** "Edit Najran's time": opens Check times on this photo's stop (TestFlight: edit a POD's time from the photo). */
+  timeAction?: { label: string; onPress: () => void } | null;
 }
 
 interface Props {
@@ -126,7 +128,7 @@ export function MediaViewer({ items, startIndex, title, context, onClose, onSend
           />
         ) : null}
 
-        {current?.info || current?.pinAction ? (
+        {current?.info || current?.pinAction || current?.timeAction ? (
           <View style={s.facts}>
             {current.info ? (
               <View style={s.factRow}>
@@ -134,11 +136,22 @@ export function MediaViewer({ items, startIndex, title, context, onClose, onSend
                 <Text style={s.factText} numberOfLines={2}>{current.info}</Text>
               </View>
             ) : null}
-            {current.pinAction ? (
-              <TouchableOpacity style={s.pinBtn} activeOpacity={0.85} onPress={current.pinAction.onPress} accessibilityRole="button">
-                <Crosshair size={15} color="#1E3A8A" />
-                <Text style={s.pinBtnText}>{current.pinAction.label}</Text>
-              </TouchableOpacity>
+            {/* Side by side, not stacked: the photo stays the biggest thing on screen. */}
+            {current.timeAction || current.pinAction ? (
+              <View style={s.factBtns}>
+                {current.timeAction ? (
+                  <TouchableOpacity style={[s.pinBtn, s.timeBtn]} activeOpacity={0.85} onPress={current.timeAction.onPress} accessibilityRole="button">
+                    <Clock3 size={15} color="#7C2D12" />
+                    <Text style={[s.pinBtnText, { color: '#7C2D12' }]} numberOfLines={2}>{current.timeAction.label}</Text>
+                  </TouchableOpacity>
+                ) : null}
+                {current.pinAction ? (
+                  <TouchableOpacity style={s.pinBtn} activeOpacity={0.85} onPress={current.pinAction.onPress} accessibilityRole="button">
+                    <Crosshair size={15} color="#1E3A8A" />
+                    <Text style={s.pinBtnText} numberOfLines={2}>{current.pinAction.label}</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
             ) : null}
           </View>
         ) : null}
@@ -182,8 +195,10 @@ const s = StyleSheet.create({
   facts: { marginHorizontal: 16, marginBottom: 10, gap: 8 },
   factRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   factText: { flex: 1, color: '#E4E4E9', fontSize: 13 },
-  pinBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 44, borderRadius: 12, backgroundColor: '#DBEAFE' },
-  pinBtnText: { color: '#1E3A8A', fontSize: 14, fontWeight: '800' },
+  factBtns: { flexDirection: 'row', gap: 8 },
+  pinBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 44, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: '#DBEAFE' },
+  pinBtnText: { flexShrink: 1, color: '#1E3A8A', fontSize: 13, fontWeight: '800', textAlign: 'center' },
+  timeBtn: { backgroundColor: '#FFEDD5' },
   root: { flex: 1, backgroundColor: '#3E3C3D' },
   top: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16 },
   title: { color: Colors.white, fontSize: 15, fontWeight: '800' },

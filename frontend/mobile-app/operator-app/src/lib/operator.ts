@@ -40,6 +40,9 @@ export interface OperatorTrip {
   driver_workflow?: string | null;
   /** Where the driver's app is in the trip (ASSIGNED until the driver starts). */
   driver_workflow_state?: string | null;
+  /** The quotation it was priced from (create "same as a recent trip" copies it). */
+  quotationId?: string | null;
+  quotation?: { id: string; name?: string | null } | null;
   customer?: { id?: string; name: string; logo_url?: string | null } | null;
   driver?: { id?: string; first_name: string; last_name: string; avatar_url?: string | null; phone_primary?: string | null } | null;
   vehicle?: { id?: string; plate_number: string; ref_id?: string | null; asset_type?: string } | null;
@@ -1271,8 +1274,9 @@ export const operatorService = {
     return data.data;
   },
 
-  async stepForwardTrip(id: string): Promise<{ to: { index: number; label: string; next: string } }> {
-    const { data } = await api.post(`/trips/${id}/step-forward`);
+  /** Mark the next step done — or every step up to `toIndex`. */
+  async stepForwardTrip(id: string, toIndex?: number): Promise<{ to: { index: number; label: string; next: string } }> {
+    const { data } = await api.post(`/trips/${id}/step-forward`, toIndex === undefined ? {} : { to_index: toIndex });
     return data.data;
   },
 

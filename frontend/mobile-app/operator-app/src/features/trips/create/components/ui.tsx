@@ -396,13 +396,16 @@ export function niceName(s?: string | null): string {
 export function initialsOf(name?: string | null): string {
   const parts = (name || '').trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return '?';
-  return ((parts[0][0] || '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
+  // Same two words as shortName: "Muhammed Rizwan …" → "MR".
+  return ((parts[0][0] || '') + (parts[1]?.[0] || '')).toUpperCase();
 }
 
-/** First and last name only ("Kashif Ali Muhammed Aslam" → "Kashif Aslam"). */
+/**
+ * The first name as people say it: the first two words ("Muhammed Rizwan Maasood Ahmed" →
+ * "Muhammed Rizwan"). First + last word read as a different person (TestFlight).
+ */
 export function shortName(name?: string | null): string {
-  const parts = niceName(name).split(/\s+/).filter(Boolean);
-  return parts.length > 2 ? `${parts[0]} ${parts[parts.length - 1]}` : parts.join(' ');
+  return niceName(name).split(/\s+/).filter(Boolean).slice(0, 2).join(' ');
 }
 
 /** A customer's logo, or their initials when there's no logo (or it fails to load). */
