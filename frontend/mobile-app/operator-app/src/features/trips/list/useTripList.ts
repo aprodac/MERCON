@@ -22,6 +22,9 @@ export const SCHEDULE_AFTER = 62;
 export const HISTORY_DAYS = 60;
 const OPEN_STATUSES = 'Draft,Scheduled,Loading,InTransit,Delayed';
 
+/** A deleted trip as the Recycle Bin lists it. */
+export interface DeletedTrip { id: string; name: string; deletedAt: string }
+
 async function fetchTrips(params: Record<string, string | number>): Promise<{ trips: OperatorTrip[]; total: number }> {
   const { data } = await api.get('/trips', { params });
   return { trips: (data.data ?? []) as OperatorTrip[], total: Number(data.meta?.total ?? data.pagination?.total ?? 0) };
@@ -89,6 +92,14 @@ export function useTripList(view: View, search: string, now: number, scope?: Rec
     enabled: view === 'history',
   });
 
+  // Deleted trips (the Recycle Bin's list) for History's "Deleted" filter.
+  const deleted = useQuery({
+    queryKey: ['trips', 'deleted'],
+    queryFn: async () => ((await api.get('/trash')).data?.data ?? [])
+      .filter((it: { type: string }) => it.type === 'Trip') as DeletedTrip[],
+    enabled: view === 'history',
+  });
+
   const term = search.trim();
   const found = useQuery({
     queryKey: ['trips', 'search', term, scopeKey ?? 'all'],
@@ -107,6 +118,7 @@ export function useTripList(view: View, search: string, now: number, scope?: Rec
     windowLoading: schedule.isLoading,
     history: history.data ?? [],
     historyLoading: history.isLoading,
+    deleted: deleted.data ?? [],
     results: found.data?.trips ?? [],
     searching: term.length >= 2,
     searchLoading: found.isFetching,

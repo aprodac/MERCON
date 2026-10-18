@@ -61,7 +61,8 @@ export const stepBack = async (req: Request, res: Response) => {
 export const stepForward = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id ?? null;
-    const result = await stepForwardTrip(req.params.id as string, userId);
+    const toIndex = Number.isInteger(req.body?.to_index) ? Number(req.body.to_index) : undefined;
+    const result = await stepForwardTrip(req.params.id as string, userId, toIndex);
     void logAuditEvent({ req, action: 'TRIP_STEPPED_FORWARD', entityType: 'Trip', entityId: result.trip_id, metadata: { from: result.from, to: result.to } });
     if (result.driver_id) {
       void createDriverNotification(

@@ -107,6 +107,13 @@ export function durationText(min: number): string {
 
 const unitName = (u: LiveUnit) => u.vehicle?.plate_number ?? u.driver?.name ?? '';
 
+/** "Khamis Mushayt → Najran → Khamis Mushayt": the trip's places in order, a repeat in a row once. */
+function routeName(u: LiveUnit): string | null {
+  const names = (u.trip?.stops ?? []).map((s) => s.name?.split(',')[0].trim()).filter((n): n is string => !!n);
+  const route = names.filter((n, i) => n !== names[i - 1]).join(' → ');
+  return route || null;
+}
+
 function nextStopName(u: LiveUnit): string | null {
   const t = u.trip;
   if (!t || t.next_stop_index == null) return null;
@@ -167,7 +174,7 @@ export function buildActions(src: ActionSources): ActionItem[] {
         urgency: 'now',
         group: 'trips',
         title: `${t.ref_id ?? 'Trip'} is delayed`,
-        detail: [name, next ? `heading to ${next}` : null, t.customer_name].filter(Boolean).join(' · '),
+        detail: [routeName(u), [name, u.driver?.name].filter(Boolean).join(' · '), next ? `heading to ${next}` : null, t.customer_name].filter(Boolean).join(' · '),
         at: due,
         tripId: t.id,
         primary: { label: 'Notify', intent: { type: 'trip', tripId: t.id, tab: 'updates', share: 'delay' } },
@@ -183,7 +190,7 @@ export function buildActions(src: ActionSources): ActionItem[] {
         urgency: 'now',
         group: 'trips',
         title: `${t.ref_id ?? 'Trip'} hasn't started`,
-        detail: [`${durationText(minutesSince(t.planned_start, now))} past its start`, name, t.customer_name].filter(Boolean).join(' · '),
+        detail: [`${durationText(minutesSince(t.planned_start, now))} past its start`, routeName(u), name, u.driver?.name, t.customer_name].filter(Boolean).join(' · '),
         at: t.planned_start,
         tripId: t.id,
         primary: phone ? { label: 'Call', intent: { type: 'call', phone } } : { label: 'Open', intent: { type: 'trip', tripId: t.id } },
@@ -199,7 +206,7 @@ export function buildActions(src: ActionSources): ActionItem[] {
         urgency: 'now',
         group: 'trips',
         title: `${name || t.ref_id} has no GPS${Number.isFinite(quiet) ? '' : ' at all'}`,
-        detail: [who, u.driver?.name ? `driver ${u.driver.name}` : null].filter(Boolean).join(' · '),
+        detail: [routeName(u), who, u.driver?.name ? `driver ${u.driver.name}` : null].filter(Boolean).join(' · '),
         at: u.position?.recorded_at ?? null,
         tripId: t.id,
         primary: phone ? { label: 'Call', intent: { type: 'call', phone } } : { label: 'Open', intent: { type: 'trip', tripId: t.id } },
