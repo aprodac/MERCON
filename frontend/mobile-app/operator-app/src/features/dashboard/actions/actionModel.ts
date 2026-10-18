@@ -128,7 +128,7 @@ export const STAGE_TITLE: Record<string, string> = {
   stop: 'Stop photos',
   delivered: 'Proof of delivery',
   delay: 'Delay photos',
-  log: 'Trip update',
+  log: 'Customer-app screenshots',
   other: 'Photos',
 };
 

@@ -647,5 +647,5 @@ export const TRANSLATIONS: Record<string, TranslationItem> = {
   tlog_finish_confirm: { en: 'Finish this trip? Send the last screenshot first.', ur: 'کیا ٹرپ ختم کریں؟ پہلے آخری اسکرین شاٹ بھیجیں۔' },
   tlog_finish_empty: { en: 'Send at least one screenshot before finishing.', ur: 'ختم کرنے سے پہلے کم از کم ایک اسکرین شاٹ بھیجیں۔' },
   tlog_wait_uploads: { en: 'Wait until all screenshots are sent.', ur: 'تمام اسکرین شاٹس بھیجے جانے تک انتظار کریں۔' },
-  tlog_planned: { en: 'Planned', ur: 'منصوبہ' },
+  tlog_next: { en: 'Next', ur: 'اگلا' },
 };

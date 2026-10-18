@@ -9,10 +9,10 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Camera, CircleCheckBig, ImagePlus, MapPin, RotateCcw, Undo2, Flag, Check } from 'lucide-react-native';
+import { ArrowLeft, Camera, CircleCheckBig, ImagePlus, MapPin, RotateCcw, Undo2, Flag, Check, ChevronRight } from 'lucide-react-native';
 import { canUndoTripLogEntry, tripLogEntries, TRIP_LOG_OPERATION, type TripLogEntry } from '@mercon/shared-types';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
-import { tripService, plannedRouteText, type MobileTrip } from '@mercon/mobile-shared/lib/trips';
+import { tripService, stopLabel, type MobileTrip } from '@mercon/mobile-shared/lib/trips';
 import { pickManyFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import { formatTime, formatDayTime } from '@mercon/mobile-shared/lib/dates';
@@ -144,6 +144,17 @@ export default function TripLogScreen() {
   }
 
   const latest = entries[entries.length - 1];
+  // The planned route as places in order, done ones ticked and the next one marked — so the
+  // driver sees what is left, not only what was sent. The same place twice in a row is one stop.
+  const route: { name: string; done: boolean }[] = [];
+  for (const st of [...(trip.stops ?? [])].sort((a, b) => a.stop_sequence - b.stop_sequence)) {
+    const name = stopLabel(st) ?? '';
+    const done = !!st.actual_arrival;
+    const prev = route[route.length - 1];
+    if (prev && prev.name === name) prev.done = prev.done && done;
+    else if (name) route.push({ name, done });
+  }
+  const nextStop = route.findIndex((r) => !r.done);
   const newSends = pending.filter((p) => !p.addTo);
 
   return (
@@ -159,10 +170,18 @@ export default function TripLogScreen() {
         <Text style={s.sub} numberOfLines={1}>
           {[trip.ref_id, trip.customer?.name].filter(Boolean).join(' · ')}
         </Text>
-        <View style={s.routeChip}>
-          <Text style={s.routeText} numberOfLines={1}>
-            {t('tlog_planned', 'Planned')}: {plannedRouteText(trip)}
-          </Text>
+        <View style={s.route}>
+          {route.map((r, i) => (
+            <React.Fragment key={`${r.name}-${i}`}>
+              {i > 0 ? <ChevronRight size={14} color="rgba(255,255,255,0.7)" style={flipInRTL} /> : null}
+              <View style={[s.stopPill, r.done && s.stopDone, i === nextStop && s.stopNext]}>
+                {r.done ? <Check size={12} color="#fff" strokeWidth={3} /> : null}
+                <Text style={[s.stopText, i === nextStop && s.stopTextNext]} numberOfLines={1}>
+                  {i === nextStop ? `${t('tlog_next', 'Next')}: ${r.name}` : r.name}
+                </Text>
+              </View>
+            </React.Fragment>
+          ))}
         </View>
       </View>
 
@@ -196,14 +215,14 @@ export default function TripLogScreen() {
               <View style={s.card}>
                 <View style={s.cardHead}>
                   <Text style={s.when}>{formatTime(e.at)}</Text>
+                  {e.place ? (
+                    <View style={s.placeRow}>
+                      <MapPin size={13} color={Colors.gray500} />
+                      <Text style={s.place} numberOfLines={1}>{t('tlog_near', 'near')} {e.place}</Text>
+                    </View>
+                  ) : <View style={{ flex: 1 }} />}
                   <Text style={s.count}>{shotsWord(e.docs.length)}</Text>
                 </View>
-                {e.place ? (
-                  <View style={s.placeRow}>
-                    <MapPin size={13} color={Colors.gray500} />
-                    <Text style={s.place}>{t('tlog_near', 'near')} {e.place}</Text>
-                  </View>
-                ) : null}
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingTop: 10 }}>
                   {e.docs.map((d) => (
                     <Image key={d.id} source={{ uri: resolveMediaUrl(d.file_url) ?? undefined }} style={s.thumb} />
@@ -287,8 +306,12 @@ const s = StyleSheet.create({
   backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 26, fontWeight: '800', color: '#fff' },
   sub: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.9)', marginTop: 2 },
-  routeChip: { alignSelf: 'flex-start', marginTop: 10, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6, maxWidth: '100%' },
-  routeText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  route: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 4, marginTop: 10 },
+  stopPill: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: 'rgba(255,255,255,0.18)', maxWidth: 180 },
+  stopDone: { backgroundColor: 'rgba(22,163,74,0.9)' },
+  stopNext: { backgroundColor: '#fff' },
+  stopText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  stopTextNext: { color: Colors.gray900, fontWeight: '800' },
   body: { flex: 1, backgroundColor: Colors.gray100, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
   row: { flexDirection: 'row', gap: 12 },
   rail: { width: 18, alignItems: 'center' },
@@ -297,13 +320,14 @@ const s = StyleSheet.create({
   when: { fontSize: 14, fontWeight: '800', color: Colors.gray900 },
   what: { fontSize: 13, color: Colors.gray500, marginTop: 2 },
   empty: { fontSize: 14, color: Colors.gray500, marginLeft: 30, marginBottom: 12 },
-  card: { flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 12, marginBottom: 14 },
+  card: { flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 12, marginBottom: 10 },
   cardFailed: { borderWidth: 1, borderColor: '#FDA29B', backgroundColor: '#FEF3F2' },
-  cardHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  cardHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   count: { fontSize: 12, fontWeight: '700', color: Colors.gray500 },
-  placeRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  placeRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4, minWidth: 0 },
   place: { fontSize: 13, color: Colors.gray700, fontWeight: '600' },
-  thumb: { width: 64, height: 96, borderRadius: 8, backgroundColor: Colors.gray200 },
+  // Big enough to recognise which screen of the customer's app it is.
+  thumb: { width: 84, height: 150, borderRadius: 10, backgroundColor: Colors.gray200, borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.gray300 },
   actions: { flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.gray100, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
   chipText: { fontSize: 13, fontWeight: '700', color: Colors.gray900 },
