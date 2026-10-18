@@ -188,7 +188,9 @@ export function ActionRow(props: RowProps) {
 function ActionRowBody({ item, first, now, flat, onIntent, onOpenTrip, onMarkRead }: RowProps) {
   const k = KIND[item.kind];
   const Icon = k.icon;
-  const when = whenLabel(item, now);
+  // Expiries and unassigned trips already say when in their detail ("expired 71 days ago",
+  // "starts in 13 h") — the short time under it only repeated it.
+  const when = item.kind === 'expiry' || (item.kind === 'unassigned' && item.detail.includes('starts in')) ? null : whenLabel(item, now);
   const call = item.secondary?.intent.type === 'call' ? item.secondary : null;
   const other = item.secondary && !call ? item.secondary : null;
   const openRow = () => (item.tripId ? onOpenTrip(item.tripId) : onIntent(item.primary.intent));

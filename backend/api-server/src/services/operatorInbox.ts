@@ -244,11 +244,12 @@ export function buildShareMessage(u: DriverUpdate, items: LiveMediaItem[], share
   const what = [photos ? `${photos} photo${photos > 1 ? 's' : ''}` : '', videos ? `${videos} video${videos > 1 ? 's' : ''}` : '']
     .filter(Boolean)
     .join(' + ');
+  // One fact per labelled line — run together, they wrapped into a jumble on a phone (TestFlight).
   const lines = [`*${[u.trip.ref_id, updateHeadline(u)].filter(Boolean).join(' · ')}*`];
-  const sub = [u.customer?.name, u.trip.route].filter(Boolean).join(' · ');
-  if (sub) lines.push(sub);
-  const who = [u.vehicle_plate ? `Truck ${u.vehicle_plate}` : '', u.driver?.name ? `Driver ${u.driver.name}` : ''].filter(Boolean).join(' · ');
-  if (who) lines.push(who);
+  if (u.customer?.name) lines.push(`Customer: ${u.customer.name}`);
+  if (u.trip.route) lines.push(`Route: ${u.trip.route}`);
+  if (u.vehicle_plate) lines.push(`Truck: ${u.vehicle_plate}`);
+  if (u.driver?.name) lines.push(`Driver: ${u.driver.name}`);
   if (u.delay_note) lines.push(`Reason: ${u.delay_note}`);
   lines.push('', `${what || 'Media'}: ${shareUrl}`);
   return lines.join('\n');

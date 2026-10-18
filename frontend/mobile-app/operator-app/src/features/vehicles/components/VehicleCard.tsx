@@ -1,13 +1,15 @@
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Image } from 'expo-image';
-import { ChevronRight, Navigation, Truck, TriangleAlert } from 'lucide-react-native';
+import { ChevronRight, History, MapPin, Truck, TriangleAlert } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import { Chip, INK, MUTED } from '../../trips/details/components/parts';
 import { TONE, type Tone } from '../../trips/details/tripDetailsModel';
 import { formatCapacityKg, formatOdometer } from '../services/vehiclesService';
 import type { AssetStatus, VehicleListItem } from '../types';
+import { placeText } from '../services/place';
+import { TripStepBar } from '@/components/TripStepBar';
 
 interface VehicleCardProps {
   vehicle: VehicleListItem;
@@ -32,7 +34,19 @@ function initials(name: string): string {
   return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
 }
 
-/** One truck in the list: photo, plate and status, its two numbers on one line, then who drives it. */
+/** "3 h ago", "2 days ago". */
+function agoText(iso: string): string {
+  const min = Math.max(0, (Date.now() - Date.parse(iso)) / 60_000);
+  if (min < 60) return `${Math.round(min)} min ago`;
+  if (min < 48 * 60) return `${Math.round(min / 60)} h ago`;
+  return `${Math.round(min / 1440)} days ago`;
+}
+
+/**
+ * One truck in the list: photo, plate and status, its two numbers on one line, then who drives it.
+ * On a trip: the route with one segment per step, green when done. Free: where it is now and
+ * when its last trip ended (TestFlight: "available vehicles current location and last trip time").
+ */
 export function VehicleCard({ vehicle, onView, onTrackTrip }: VehicleCardProps) {
   const status = STATUS[vehicle.status] ?? STATUS.Inactive;
   const onTrip = vehicle.status === 'OnTrip' && !!vehicle.activeTrip;
@@ -79,15 +93,36 @@ export function VehicleCard({ vehicle, onView, onTrackTrip }: VehicleCardProps) 
 
       {onTrip && vehicle.activeTrip ? (
         <TouchableOpacity
-          style={[s.note, { backgroundColor: TONE.blue.bg }]}
+          style={s.tripBox}
           activeOpacity={onTrackTrip ? 0.7 : 1}
           onPress={onTrackTrip ? () => onTrackTrip(vehicle.activeTrip!.id) : undefined}
+          accessibilityRole="button"
+          accessibilityLabel="Open the trip"
         >
-          <Navigation size={14} color={TONE.blue.fg} strokeWidth={2.3} />
-          <Text style={[s.noteText, { color: TONE.blue.fg }]} numberOfLines={1}>
-            {vehicle.activeTrip.customerName ?? 'On an active trip'}
+          <Text style={s.tripWho} numberOfLines={1}>
+            {[vehicle.activeTrip.refId, vehicle.activeTrip.customerName ? titleCase(vehicle.activeTrip.customerName) : null].filter(Boolean).join(' · ') || 'On an active trip'}
           </Text>
+          <TripStepBar stops={vehicle.activeTrip.stops} late={vehicle.activeTrip.status === 'Delayed'} />
         </TouchableOpacity>
+      ) : null}
+
+      {!onTrip && !maintenance && (vehicle.location || vehicle.lastTrip) ? (
+        <View style={s.facts}>
+          <View style={s.fact}>
+            <MapPin size={13} color={MUTED} />
+            <Text style={s.factText} numberOfLines={1}>
+              {vehicle.location ? `${placeText(vehicle.location.lat, vehicle.location.lng)}${vehicle.location.ago ? ` · seen ${vehicle.location.ago}` : ''}` : 'No location yet'}
+            </Text>
+          </View>
+          <View style={s.fact}>
+            <History size={13} color={MUTED} />
+            <Text style={s.factText} numberOfLines={1}>
+              {vehicle.lastTrip
+                ? `Last trip ${vehicle.lastTrip.endedAt ? `ended ${agoText(vehicle.lastTrip.endedAt)}` : ''}${vehicle.lastTrip.route ? ` · ${vehicle.lastTrip.route}` : ''}`
+                : 'No trips yet'}
+            </Text>
+          </View>
+        </View>
       ) : null}
 
       {maintenance ? (
@@ -118,4 +153,9 @@ const s = StyleSheet.create({
   driver: { flex: 1, fontSize: 14, fontWeight: '600', color: INK },
   note: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 10 },
   noteText: { flex: 1, fontSize: 13, fontWeight: '600' },
+  tripBox: { backgroundColor: '#F6F8FD', borderRadius: 12, padding: 10, gap: 6, marginBottom: 10 },
+  tripWho: { fontSize: 12, fontWeight: '700', color: TONE.blue.fg },
+  facts: { gap: 5, marginBottom: 10, backgroundColor: '#F8F8F9', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8 },
+  fact: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  factText: { flex: 1, fontSize: 12.5, color: '#52525B' },
 });
