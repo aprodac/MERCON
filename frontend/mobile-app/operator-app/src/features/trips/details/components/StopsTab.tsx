@@ -89,12 +89,6 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
           </View>
         </View>
       ))}
-      {onStepBack ? (
-        <TouchableOpacity style={s.undoBar} activeOpacity={0.75} onPress={onStepBack} accessibilityRole="button" accessibilityLabel="Undo driver's step">
-          <Undo2 size={14} color={INK} />
-          <Text style={s.undoText}>Driver tapped ahead? <Text style={{ fontWeight: '800' }}>Undo a step</Text></Text>
-        </TouchableOpacity>
-      ) : null}
       {purged ? (
         <View style={s.purged}>
           <ImageIcon size={13} color={MUTED} />
@@ -103,21 +97,28 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
           </Text>
         </View>
       ) : null}
-      {shots.length === 0 && stops.some((st) => st.actual_arrival) ? (
-        // Any trip's times can be corrected, not only customer-app trips with screenshots.
-        <TouchableOpacity style={[s.timesBar, s.timesBarDone]} activeOpacity={0.8} onPress={() => onCheckTimes()} accessibilityRole="button">
-          <Clock3 size={14} color={MUTED} />
-          <Text style={[s.timesText, { color: MUTED }]}>Driver tapped a time wrong? Correct the stop times</Text>
-          <Text style={[s.timesCta, { color: MUTED }]}>Edit</Text>
-        </TouchableOpacity>
+      {/* One row of tools instead of stacked bars: fix the driver's steps, or the stop times. */}
+      {onStepBack || stops.some((st) => st.actual_arrival) || shots.length > 0 ? (
+        <View style={s.tools}>
+          {onStepBack ? (
+            <TouchableOpacity style={s.tool} activeOpacity={0.75} onPress={onStepBack} accessibilityRole="button" accessibilityLabel="Driver's steps: undo or mark done">
+              <Undo2 size={15} color={INK} />
+              <Text style={s.toolText} numberOfLines={1}>{"Driver's steps"}</Text>
+            </TouchableOpacity>
+          ) : null}
+          {stops.some((st) => st.actual_arrival) || shots.length > 0 ? (
+            <TouchableOpacity style={s.tool} activeOpacity={0.75} onPress={() => onCheckTimes()} accessibilityRole="button" accessibilityLabel="Edit stop times">
+              <Clock3 size={15} color={INK} />
+              <Text style={s.toolText} numberOfLines={1}>Edit times</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
       ) : null}
-      {shots.length > 0 ? (
-        <TouchableOpacity style={[s.timesBar, pendingShots === 0 && s.timesBarDone]} activeOpacity={0.8} onPress={() => onCheckTimes()}>
-          <Clock3 size={14} color={pendingShots > 0 ? '#8A5200' : MUTED} />
-          <Text style={[s.timesText, pendingShots === 0 && { color: MUTED }]}>
-            {pendingShots > 0 ? `${pendingShots} screenshot${pendingShots === 1 ? '' : 's'} · check the stop times` : 'Stop times checked against screenshots'}
-          </Text>
-          <Text style={[s.timesCta, pendingShots === 0 && { color: MUTED }]}>{pendingShots > 0 ? 'Check' : 'Edit'}</Text>
+      {pendingShots > 0 ? (
+        <TouchableOpacity style={s.timesBar} activeOpacity={0.8} onPress={() => onCheckTimes()}>
+          <Clock3 size={14} color="#8A5200" />
+          <Text style={s.timesText}>{pendingShots} screenshot{pendingShots === 1 ? '' : 's'} · check the stop times</Text>
+          <Text style={s.timesCta}>Check</Text>
         </TouchableOpacity>
       ) : null}
       {stops.map((st, i) => {
@@ -193,22 +194,24 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
                 </View>
               ) : null}
 
-              {pinNeeded || (needsPin(st) && gpsPhotos > 0) ? (
-                <TouchableOpacity style={s.pin} activeOpacity={0.8} onPress={() => onSetPin(st)}>
-                  {gpsPhotos > 0 ? <Crosshair size={13} color="#8A5200" /> : <MapPin size={13} color="#8A5200" />}
-                  <Text style={s.pinText}>
-                    {gpsPhotos > 0
-                      ? `${pinNeeded ? 'Pin needed' : 'Pin is approximate'} · ${gpsPhotos} photo${gpsPhotos === 1 ? ' has' : 's have'} GPS — check & use`
-                      : 'Pin needed · ETA is a guess · tap to set'}
-                  </Text>
-                </TouchableOpacity>
-              ) : null}
-
-              {check ? (
-                <TouchableOpacity style={s.check} activeOpacity={0.8} onPress={() => onCheckTimes(st.id)}>
-                  <Clock3 size={13} color="#8A5200" />
-                  <Text style={s.checkText}>Screenshot time needs checking</Text>
-                </TouchableOpacity>
+              {/* Small chips on one line instead of stacked banners. */}
+              {pinNeeded || (needsPin(st) && gpsPhotos > 0) || check ? (
+                <View style={s.hints}>
+                  {pinNeeded || (needsPin(st) && gpsPhotos > 0) ? (
+                    <TouchableOpacity style={s.hint} activeOpacity={0.8} onPress={() => onSetPin(st)} accessibilityRole="button">
+                      {gpsPhotos > 0 ? <Crosshair size={12} color="#8A5200" /> : <MapPin size={12} color="#8A5200" />}
+                      <Text style={s.hintText}>
+                        {gpsPhotos > 0 ? (pinNeeded ? 'Set pin from GPS' : 'Pin: use GPS') : 'Set pin'}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  {check ? (
+                    <TouchableOpacity style={s.hint} activeOpacity={0.8} onPress={() => onCheckTimes(st.id)} accessibilityRole="button">
+                      <Clock3 size={12} color="#8A5200" />
+                      <Text style={s.hintText}>Check time</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
               ) : null}
 
               {sets.map((u) => <PhotoSet key={u.key} u={u} f={f} onOpen={(i) => onOpenPhotos(u, i)} onSend={() => onSendUpdate(u)} />)}
@@ -326,8 +329,6 @@ const s = StyleSheet.create({
   setMeta: { fontSize: 12, color: MUTED, marginTop: -2, marginBottom: 6 },
   movedTag: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', backgroundColor: '#F5F2FD', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 6 },
   movedTagText: { fontSize: 11, fontWeight: '700', color: '#5B34B0' },
-  undoBar: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginHorizontal: 8, marginTop: 4, marginBottom: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: '#F1F3F7' },
-  undoText: { fontSize: 13, color: INK },
   muted: { fontSize: 12, color: MUTED, marginTop: 2 },
   legHead: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: 2 },
   legHeadGap: { marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#ECECEF' },
@@ -345,15 +346,16 @@ const s = StyleSheet.create({
   name: { flex: 1, fontSize: 14, fontWeight: '700', color: INK },
   delay: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 7, backgroundColor: '#FDEDEB', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6 },
   delayText: { flex: 1, fontSize: 12, fontWeight: '600', color: '#912018' },
-  check: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 7, backgroundColor: '#FFF6E5', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 7 },
-  checkText: { flex: 1, fontSize: 12, fontWeight: '700', color: '#8A5200' },
-  pin: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 7, backgroundColor: '#FFF6E5', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 7, borderWidth: 1, borderColor: '#F5D9A3' },
-  pinText: { flex: 1, fontSize: 12, fontWeight: '700', color: '#8A5200' },
+  hints: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  hint: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#FFF6E5', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: '#F5D9A3' },
+  hintText: { fontSize: 12, fontWeight: '700', color: '#8A5200' },
   links: { flexDirection: 'row', gap: 16, marginTop: 7 },
   link: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   linkText: { fontSize: 12, fontWeight: '700', color: '#2449A8' },
+  tools: { flexDirection: 'row', gap: 8, marginTop: 4, marginBottom: 8 },
+  tool: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12, backgroundColor: '#F1F3F7' },
+  toolText: { fontSize: 13.5, fontWeight: '700', color: INK },
   timesBar: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4, marginBottom: 6, backgroundColor: '#FFF6E5', borderRadius: 12, paddingHorizontal: 11, paddingVertical: 10, borderWidth: 1, borderColor: '#F5D9A3' },
-  timesBarDone: { backgroundColor: '#F2F3F6', borderColor: 'transparent' },
   timesText: { flex: 1, fontSize: 12.5, fontWeight: '700', color: '#8A5200' },
   timesCta: { fontSize: 13, fontWeight: '800', color: '#8A5200' },
   purged: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 4, marginBottom: 4, backgroundColor: '#F2F3F6', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 7 },
