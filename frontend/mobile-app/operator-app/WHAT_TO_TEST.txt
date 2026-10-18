@@ -1,3 +1,11 @@
+FROM YOUR LATEST FEEDBACK
+1. To do: Delayed / Not started / No GPS rows show route and driver. Each row (each document too) has its own Read.
+2. Check times: shows the date ("17 Oct · was 00:00") instead of "+1d"; each screenshot shows its number (1 / 6); swiping while editing moves to that stop's time.
+3. Trip photo viewer: "Edit <stop>'s arrived / left time".
+4. Trips > Schedule: only trips still to start. History: filters All / Delivered / Cancelled / Deleted.
+5. Driver's steps: pick any later step to mark every step up to it done.
+6. Create trip: "Same as a recent trip" (last 24 h) fills customer, route, price and truck. When step: Transit time.
+
 NEW: DRIVER'S LOG for customer-app trips
 A. When the driver sends screenshots from the new Trip log, each send arrives in From drivers as "Trip update · near <place>".
 B. Trip > Stops > "Driver's log": every send with time, place and screenshots.

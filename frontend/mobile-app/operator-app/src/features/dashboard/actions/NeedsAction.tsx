@@ -87,8 +87,9 @@ function tidy(text: string): string {
 // ── 2 · Needs action ──────────────────────────────────────────────────────────
 
 /** Every item of one kind, worst first, in a bottom sheet. Actions close the sheet first so the next screen isn't hidden behind it. */
-export function KindSheet({ kind, items, now, onClose, onIntent, onOpenTrip }: {
+export function KindSheet({ kind, items, now, onClose, onIntent, onOpenTrip, onMarkRead }: {
   kind: ActionKind | null;
+  onMarkRead?: (item: ActionItem) => void;
   items: ActionItem[];
   now: number;
   onClose: () => void;
@@ -110,7 +111,7 @@ export function KindSheet({ kind, items, now, onClose, onIntent, onOpenTrip }: {
       <GestureHandlerRootView style={{ flex: 0 }}>
         <ScrollView style={{ maxHeight: height * 0.65 }} showsVerticalScrollIndicator={false}>
           {sheetItems.map((item, i) => (
-            <ActionRow key={item.key} item={item} first={i === 0} now={now} flat onIntent={fromSheet(onIntent)} onOpenTrip={fromSheet(onOpenTrip)} />
+            <ActionRow key={item.key} item={item} first={i === 0} now={now} flat onIntent={fromSheet(onIntent)} onOpenTrip={fromSheet(onOpenTrip)} onMarkRead={onMarkRead} />
           ))}
         </ScrollView>
       </GestureHandlerRootView>
@@ -141,7 +142,11 @@ export function GroupRow({ kind, items, first, now, onPress }: { kind: ActionKin
   );
 }
 
-type RowProps = { item: ActionItem; first: boolean; now: number; flat?: boolean; onIntent: (i: ActionIntent) => void; onOpenTrip: (id: string) => void };
+type RowProps = {
+  item: ActionItem; first: boolean; now: number; flat?: boolean; onIntent: (i: ActionIntent) => void; onOpenTrip: (id: string) => void;
+  /** "Read" on just this row (TestFlight: "each document separate read option"); emergencies never. */
+  onMarkRead?: (item: ActionItem) => void;
+};
 
 /**
  * A row with swipe shortcuts: swipe right to call the driver, left for the
@@ -180,7 +185,7 @@ export function ActionRow(props: RowProps) {
   );
 }
 
-function ActionRowBody({ item, first, now, flat, onIntent, onOpenTrip }: RowProps) {
+function ActionRowBody({ item, first, now, flat, onIntent, onOpenTrip, onMarkRead }: RowProps) {
   const k = KIND[item.kind];
   const Icon = k.icon;
   const when = whenLabel(item, now);
@@ -211,6 +216,11 @@ function ActionRowBody({ item, first, now, flat, onIntent, onOpenTrip }: RowProp
         ) : null}
       </View>
       <View style={s.actions}>
+        {onMarkRead && item.kind !== 'emergency' ? (
+          <TouchableOpacity style={s.ghost} onPress={() => { tap(); onMarkRead(item); }} hitSlop={4} accessibilityRole="button" accessibilityLabel="Mark read">
+            <Text style={s.ghostText}>Read</Text>
+          </TouchableOpacity>
+        ) : null}
         {other ? (
           <TouchableOpacity style={s.ghost} onPress={() => { tap(); onIntent(other.intent); }} hitSlop={4}>
             <Text style={s.ghostText}>{other.label}</Text>

@@ -323,6 +323,10 @@ export default function TripDetailsScreen() {
         sent: u.sent_ids.includes(m.id),
         geo: m.gps ? { lat: m.gps.lat, lng: m.gps.lng, captured_at: m.captured_at, place: name, address: st?.location?.city ?? null, customer: trip.customer?.name ?? null } : null,
         info: facts,
+        timeAction: st && st.actual_arrival ? {
+          label: `Edit ${name}'s arrived / left time`,
+          onPress: () => { setViewer(null); setTimeout(() => { setTimesStop(st.id); setCheckingTimes(true); }, 300); },
+        } : null,
         pinAction: canPin ? {
           label: needsPin(st!) ? `Use this photo's GPS as ${name}'s pin` : `Move ${name}'s pin to this photo's GPS`,
           onPress: () => { setViewer(null); setTimeout(() => openPin(st!, m.id), 300); },

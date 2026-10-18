@@ -534,9 +534,14 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
   // billing, truck class and price, once the customer's quotations are here.
   // Everything stays editable; it's only the starting point.
   const [quotationPresetDone, setQuotationPresetDone] = useState(false);
-  if (!quotationPresetDone && params.quotationId && quotations.length > 0) {
+  // Opened with (or copied from) a truck — applied once the fleet is here, below.
+  const [presetDone, setPresetDone] = useState(false);
+  // "Same as a recent trip" (copyTrip) replaces what the screen was opened with.
+  const [copied, setCopied] = useState<{ quotationId: string | null; vehicleId: string | null } | null>(null);
+  const wantQuotation = copied ? copied.quotationId : params.quotationId;
+  if (!quotationPresetDone && wantQuotation && quotations.length > 0) {
     setQuotationPresetDone(true);
-    const q = quotations.find((x) => x.id === params.quotationId);
+    const q = quotations.find((x) => x.id === wantQuotation);
     if (q) applyQuotation(q, { fillRoute: true });
   }
 
@@ -726,6 +731,32 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     }));
   }, []);
 
+  /**
+   * "Create trip as a previous one" (TestFlight): start from a trip made in the
+   * last day — its customer, quotation (route, trip type, truck class, price)
+   * or, without one, its route, and its truck with that truck's driver. Dates
+   * and times stay to be set.
+   */
+  const copyTrip = useCallback((t: OperatorTrip) => {
+    const cid = t.customer?.id;
+    if (!cid) return;
+    setCustomerId(cid);
+    setAssignmentType(t.is_third_party ? 'third_party' : 'own');
+    const quotationId = t.quotation?.id ?? t.quotationId ?? null;
+    if (!quotationId) {
+      // No quotation: copy the route itself. A round trip keeps its type and
+      // gives its way out (the way back mirrors it, as for a typed round trip).
+      const round = isRoundTripCategory(t.rate_category || '');
+      if (round) setRateCategory('ROUND_TRIP');
+      const outbound = round ? (t.stops ?? []).filter((st: any) => (st.leg_index ?? 0) === 0) : t.stops;
+      const r = recentRoutesFrom([{ ...t, rate_category: '', stops: outbound } as OperatorTrip])[0];
+      if (r) applyRecentRoute(r);
+    }
+    setCopied({ quotationId, vehicleId: t.is_third_party ? null : t.vehicle?.id ?? null });
+    setQuotationPresetDone(false);
+    setPresetDone(false);
+  }, [setCustomerId, applyRecentRoute]);
+
   const setReturnEndpoint = useCallback((which: 'returnOrigin' | 'returnDestination', loc: LocationPick | null) => {
     setSlot((s) => ({ ...s, [which]: loc?.name ?? '', [`${which}LocationId`]: loc?.locationId ?? null }));
   }, []);
@@ -895,10 +926,10 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
   // Opened with a truck (Home → Free trucks → Book trip): choose it, its class
   // (so step 1's quotations match it) and its driver, once the fleet is here.
   // Everything stays editable; it's only the starting point.
-  const [presetDone, setPresetDone] = useState(false);
-  if (!presetDone && params.vehicleId && vehicles.length > 0) {
+  const wantVehicle = copied ? copied.vehicleId : params.vehicleId;
+  if (!presetDone && wantVehicle && vehicles.length > 0) {
     setPresetDone(true);
-    const v = vehicles.find((x) => x.id === params.vehicleId);
+    const v = vehicles.find((x) => x.id === wantVehicle);
     if (v) {
       setAssignmentType('own');
       setVehicleId(v.id);
@@ -1313,6 +1344,7 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     refreshFleet,
     recentRoutes,
     applyRecentRoute,
+    copyTrip,
     quotationUse,
     surchargeRules,
     // customer + price

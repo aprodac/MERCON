@@ -6,6 +6,7 @@ import { Colors, Spacing, Radius } from '@mercon/mobile-shared/theme/tokens';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { TRUCK_CLASSES, lineTypeLabel, filterQuotationsBySearch, pricingFromQuotation } from '@mercon/shared-types';
 import { PriceHistory } from './PriceHistory';
+import { RecentTripPicker } from './RecentTripPicker';
 import { PinPickerSheet, type PickedPin } from '../../details/components/PinSheet';
 import { getQuotationRoute, type OperatorQuotation, type OperatorSurchargeRule } from '../../../../lib/operator';
 import { quotationBilling, quotationClass, quotationLineType, type CreateTripForm, type LocationPick } from '../useCreateTrip';
@@ -256,6 +257,7 @@ export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors
 
   return (
     <View style={{ gap: Spacing.sm }}>
+      {!form.customerId ? <RecentTripPicker onPick={form.copyTrip} /> : null}
       <Section icon={Building2} tone="blue" title="Customer">
         <FieldButton
           icon={form.selectedCustomer ? <CompanyAvatar name={form.selectedCustomer.name} url={form.selectedCustomer.logo_url || form.selectedCustomer.avatar_url} size={28} /> : undefined}

@@ -373,7 +373,12 @@ export interface StepForwardResult {
  * step that finishes the trip is not done here — Confirm delivery does that,
  * since it also makes the invoice.
  */
-export async function stepForwardTrip(tripId: string, userId: string | null): Promise<StepForwardResult> {
+/**
+ * Mark the trip's next step done for the driver — or, with `toIndex`, every
+ * step up to that one (TestFlight: "mark next should reach any step"). Never
+ * the step that finishes the trip: that stays with Confirm delivery.
+ */
+export async function stepForwardTrip(tripId: string, userId: string | null, toIndex?: number): Promise<StepForwardResult> {
   return prisma.$transaction(async (tx) => {
     const trip = await loadTrip(tx, tripId);
     const steps = buildSteps(trip.stops);
@@ -385,13 +390,17 @@ export async function stepForwardTrip(tripId: string, userId: string | null): Pr
       throw new StepBackError(409, 'CANNOT_STEP_FORWARD', `The trip is ${trip.status === TripStatus.Cancelled ? 'cancelled' : 'already finished'}.`);
     }
     if (trip.status === TripStatus.Draft) throw new StepBackError(409, 'CANNOT_STEP_FORWARD', 'The trip is a draft — schedule it first.');
-    const next = steps[current + 1];
+    const to = toIndex ?? current + 1;
+    if (to <= current) throw new StepBackError(409, 'CANNOT_STEP_FORWARD', 'That step is already done — use Go back to undo steps.');
+    const next = steps[to];
     if (!next) throw new StepBackError(409, 'CANNOT_STEP_FORWARD', 'The trip has no further step.');
     if (next.completes) throw new StepBackError(409, 'USE_CONFIRM_DELIVERY', 'The last step finishes the trip — use Confirm delivery.');
 
     const now = new Date();
-    for (const m of next.marks) {
-      await tx.tripStop.updateMany({ where: { id: m.stopId, tripId, [m.field]: null }, data: { [m.field]: now } });
+    for (const st of steps.slice(current + 1, to + 1)) {
+      for (const m of st.marks) {
+        await tx.tripStop.updateMany({ where: { id: m.stopId, tripId, [m.field]: null }, data: { [m.field]: now } });
+      }
     }
     let status: TripStatus = next.status;
     // Delayed is the office's flag on a running trip — keep it while still on the road.
@@ -402,7 +411,7 @@ export async function stepForwardTrip(tripId: string, userId: string | null): Pr
         status,
         driver_workflow_state: next.workflow,
         // "Loaded and left" is when the trip started moving.
-        ...(next.key === 'pickup_left' && !trip.actual_start ? { actual_start: now } : {}),
+        ...(steps.slice(current + 1, to + 1).some((st) => st.key === 'pickup_left') && !trip.actual_start ? { actual_start: now } : {}),
         updated_by: userId ?? undefined,
       },
     });
@@ -411,7 +420,7 @@ export async function stepForwardTrip(tripId: string, userId: string | null): Pr
     return {
       trip_id: tripId,
       from: { index: current, label: current >= 0 ? steps[current].label : 'Not started' },
-      to: { index: current + 1, label: next.label, next: next.next },
+      to: { index: to, label: next.label, next: next.next },
       driver_id: trip.driverId,
     };
   });
