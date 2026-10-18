@@ -6,7 +6,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView, TextInput, Alert } from 'react-native';
-import { CircleCheck, MapPin, Plus, ListPlus } from 'lucide-react-native';
+import { ChevronDown, ChevronUp, CircleCheck, MapPin, Plus, ListPlus } from 'lucide-react-native';
 import { tripLogEntries, type TripLogEntry } from '@mercon/shared-types';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
@@ -27,14 +27,31 @@ export function DriverLog({ trip, f, onOpen, onPick }: {
 }) {
   const entries = useMemo(() => driverLogOf(trip), [trip]);
   const stops = useMemo(() => sortedStops(trip), [trip]);
+  const [expanded, setExpanded] = useState(false);
   if (entries.length === 0) return null;
   const open = entries.filter((e) => !e.stop_id).length;
+
+  // Every send already on a stop: nothing left to do here, so one line (its screenshots are under the stops).
+  if (open === 0 && !expanded) {
+    return (
+      <TouchableOpacity style={s.folded} onPress={() => { tap(); setExpanded(true); }} activeOpacity={0.8} accessibilityRole="button">
+        <CircleCheck size={16} color="#15803D" />
+        <Text style={s.foldedText} numberOfLines={1}>{"Driver's log"} · {entries.length} {entries.length === 1 ? 'send' : 'sends'} · all on stops</Text>
+        <ChevronDown size={16} color={MUTED} />
+      </TouchableOpacity>
+    );
+  }
 
   return (
     <Card style={{ paddingVertical: 12, marginBottom: 12 }}>
       <SectionHead
         title={`Driver's log · ${entries.length} ${entries.length === 1 ? 'send' : 'sends'}`}
-        right={open ? <Text style={s.open}>{open} not on a stop yet</Text> : <Text style={s.done}>All on stops</Text>}
+        right={open ? <Text style={s.open}>{open} not on a stop yet</Text> : (
+          <TouchableOpacity onPress={() => setExpanded(false)} hitSlop={8} style={s.hide} accessibilityRole="button">
+            <Text style={s.done}>All on stops</Text>
+            <ChevronUp size={14} color="#15803D" />
+          </TouchableOpacity>
+        )}
       />
       <Text style={s.lead}>Stops weren{"'"}t known at booking. Turn each send into a stop, or add it to one.</Text>
       {entries.map((e, i) => {
@@ -64,6 +81,8 @@ export function DriverLog({ trip, f, onOpen, onPick }: {
                 </TouchableOpacity>
               )}
             </View>
+            {/* Screenshots only while the send waits for a stop — once on one, they show under that stop. */}
+            {stopIdx >= 0 ? null : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingTop: 8 }}>
               {e.docs.map((d, k) => (
                 <TouchableOpacity key={d.id} onPress={() => { tap(); onOpen(e, k); }} activeOpacity={0.85}>
@@ -71,6 +90,7 @@ export function DriverLog({ trip, f, onOpen, onPick }: {
                 </TouchableOpacity>
               ))}
             </ScrollView>
+            )}
           </View>
         );
       })}
@@ -148,7 +168,10 @@ export function LogStopSheet({ trip, entry, f, onClose, onDone }: {
 }
 
 const s = StyleSheet.create({
-  open: { fontSize: 12, fontWeight: '800', color: '#B54708' },
+  open: { fontSize: 12, fontWeight: '800', color: '#B42318' },
+  folded: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E4E4E7', paddingHorizontal: 14, paddingVertical: 12, marginBottom: 12 },
+  foldedText: { flex: 1, fontSize: 13.5, fontWeight: '700', color: INK },
+  hide: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   done: { fontSize: 12, fontWeight: '800', color: '#15803D' },
   lead: { fontSize: 12.5, color: MUTED, marginTop: 4, marginBottom: 6 },
   row: { paddingVertical: 10 },

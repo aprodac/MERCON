@@ -35,6 +35,15 @@ interface Props {
   onRestorePhotos?: (removedAt: string) => void;
 }
 
+/**
+ * Colour roles on this tab: red only where the office has to act (stop times to
+ * check); grey for information (pin hints, "not sent yet"); green when done.
+ * Everything amber made nothing stand out (owner: "clean UI").
+ */
+const ACT = '#B42318';
+const ACT_BG = '#FEF3F2';
+const ACT_LINE = '#FECDCA';
+
 /** "45m", "2.8h", "5h" — short enough to sit on the line between two stops. */
 const shortDuration = (min: number) => (min < 60 ? `${Math.round(min)}m` : `${(min / 60).toFixed(1).replace(/\.0$/, '')}h`);
 
@@ -119,7 +128,7 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
       ) : null}
       {pendingShots > 0 ? (
         <TouchableOpacity style={s.timesBar} activeOpacity={0.8} onPress={() => onCheckTimes()}>
-          <Clock3 size={14} color="#8A5200" />
+          <Clock3 size={14} color={ACT} />
           <Text style={s.timesText}>{pendingShots} screenshot{pendingShots === 1 ? '' : 's'} · check the stop times</Text>
           <Text style={s.timesCta}>Check</Text>
         </TouchableOpacity>
@@ -220,16 +229,16 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
                 <View style={s.hints}>
                   {pinNeeded || (needsPin(st) && gpsPhotos > 0) ? (
                     <TouchableOpacity style={s.hint} activeOpacity={0.8} onPress={() => onSetPin(st)} accessibilityRole="button">
-                      {gpsPhotos > 0 ? <Crosshair size={12} color="#8A5200" /> : <MapPin size={12} color="#8A5200" />}
+                      {gpsPhotos > 0 ? <Crosshair size={12} color={MUTED} /> : <MapPin size={12} color={MUTED} />}
                       <Text style={s.hintText}>
                         {gpsPhotos > 0 ? (pinNeeded ? 'Set pin from GPS' : 'Pin: use GPS') : 'Set pin'}
                       </Text>
                     </TouchableOpacity>
                   ) : null}
                   {check && sets.length === 0 ? (
-                    <TouchableOpacity style={s.hint} activeOpacity={0.8} onPress={() => onCheckTimes(st.id)} accessibilityRole="button">
-                      <Clock3 size={12} color="#8A5200" />
-                      <Text style={s.hintText}>Check time</Text>
+                    <TouchableOpacity style={[s.hint, s.hintAct]} activeOpacity={0.8} onPress={() => onCheckTimes(st.id)} accessibilityRole="button">
+                      <Clock3 size={12} color={ACT} />
+                      <Text style={[s.hintText, { color: ACT }]}>Check time</Text>
                     </TouchableOpacity>
                   ) : null}
                 </View>
@@ -288,7 +297,7 @@ function PhotoSet({ u, f, onOpen, onSend, timeState, onCheckTime }: {
   const extra = u.items.length - shown.length;
   return (
     <View style={[s.set, sent ? s.setSent : s.setUnsent]}>
-      <Text style={s.setTitle}>{updateTitle(u)} · {u.items.length} {u.items.length === 1 ? 'photo' : 'photos'}</Text>
+      <Text style={s.setTitle}>{updateTitle(u)} · {u.items.length}{u.stage === 'log' ? '' : ` ${u.items.length === 1 ? 'photo' : 'photos'}`}</Text>
       {(() => {
         // When they were taken and when they reached us — a big gap means the phone was offline.
         const taken = u.items.map((m) => m.captured_at).sort();
@@ -323,7 +332,7 @@ function PhotoSet({ u, f, onOpen, onSend, timeState, onCheckTime }: {
                   {isVideo(m) ? <Play size={16} color={Colors.white} fill={Colors.white} /> : <ImageOff size={16} color="#A1A1AA" />}
                 </View>
               )}
-              <View style={[s.tick, { backgroundColor: mSent ? WA : '#B45309' }]}>
+              <View style={[s.tick, { backgroundColor: mSent ? WA : '#A1A1AA' }]}>
                 {mSent ? <CheckCheck size={10} color={Colors.white} strokeWidth={3} /> : <Clock3 size={10} color={Colors.white} strokeWidth={3} />}
               </View>
               {i === shown.length - 1 && extra > 0 ? <View style={s.more}><Text style={s.moreText}>+{extra}</Text></View> : null}
@@ -333,9 +342,9 @@ function PhotoSet({ u, f, onOpen, onSend, timeState, onCheckTime }: {
         {timeState ? (
           <TouchableOpacity style={[s.timeState, timeState === 'confirmed' ? s.timeOk : s.timeTodo]} onPress={() => { tap(); onCheckTime?.(); }} activeOpacity={0.8}
             accessibilityRole="button" accessibilityLabel={timeState === 'confirmed' ? 'Time confirmed. Open Check times' : 'Time needs confirming. Check it'}>
-            {timeState === 'confirmed' ? <CircleCheck size={15} color="#15803D" /> : <Clock3 size={15} color="#8A5200" />}
+            {timeState === 'confirmed' ? <CircleCheck size={15} color="#15803D" /> : <Clock3 size={15} color={ACT} />}
             <View style={{ flexShrink: 1 }}>
-              <Text style={[s.timeStateTitle, { color: timeState === 'confirmed' ? '#15803D' : '#8A5200' }]}>
+              <Text style={[s.timeStateTitle, { color: timeState === 'confirmed' ? '#15803D' : ACT }]}>
                 {timeState === 'confirmed' ? 'Time confirmed' : 'Time to confirm'}
               </Text>
               <Text style={s.timeStateSub}>{timeState === 'confirmed' ? 'Checked on the screenshot' : 'Tap to check it'}</Text>
@@ -344,8 +353,8 @@ function PhotoSet({ u, f, onOpen, onSend, timeState, onCheckTime }: {
         ) : null}
       </View>
       <View style={s.setFoot}>
-        {sent ? <CheckCheck size={14} color={WA} strokeWidth={2.5} /> : <Clock3 size={14} color="#B45309" strokeWidth={2.4} />}
-        <Text style={[s.setStatus, { color: sent ? WA_INK : '#8A5200' }]} numberOfLines={2}>{status.text}</Text>
+        {sent ? <CheckCheck size={14} color={WA} strokeWidth={2.5} /> : <Clock3 size={14} color={MUTED} strokeWidth={2.4} />}
+        <Text style={[s.setStatus, { color: sent ? WA_INK : MUTED }]} numberOfLines={2}>{status.text}</Text>
         <TouchableOpacity style={[s.setSend, sent && s.setSendAgain]} onPress={() => { tap(); onSend(); }} hitSlop={6}
           accessibilityLabel={status.state === 'partial' ? 'Send more on WhatsApp' : sent ? 'Send again on WhatsApp' : 'Send on WhatsApp'}>
           <MessageCircle size={13} color={sent ? WA_INK : Colors.white} strokeWidth={2.4} />
@@ -389,28 +398,29 @@ const s = StyleSheet.create({
   delay: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 7, backgroundColor: '#FDEDEB', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6 },
   delayText: { flex: 1, fontSize: 12, fontWeight: '600', color: '#912018' },
   hints: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
-  hint: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#FFF6E5', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: '#F5D9A3' },
-  hintText: { fontSize: 12, fontWeight: '700', color: '#8A5200' },
+  hint: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#F4F4F5', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: '#E4E4E7' },
+  hintAct: { backgroundColor: ACT_BG, borderColor: ACT_LINE },
+  hintText: { fontSize: 12, fontWeight: '700', color: '#52525B' },
   links: { flexDirection: 'row', gap: 16, marginTop: 7 },
   link: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   linkText: { fontSize: 12, fontWeight: '700', color: '#2449A8' },
   tools: { flexDirection: 'row', gap: 8, marginTop: 4, marginBottom: 8 },
   tool: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12, backgroundColor: '#F1F3F7' },
   toolText: { fontSize: 13.5, fontWeight: '700', color: INK },
-  timesBar: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4, marginBottom: 6, backgroundColor: '#FFF6E5', borderRadius: 12, paddingHorizontal: 11, paddingVertical: 10, borderWidth: 1, borderColor: '#F5D9A3' },
-  timesText: { flex: 1, fontSize: 12.5, fontWeight: '700', color: '#8A5200' },
-  timesCta: { fontSize: 13, fontWeight: '800', color: '#8A5200' },
+  timesBar: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4, marginBottom: 6, backgroundColor: ACT_BG, borderRadius: 12, paddingHorizontal: 11, paddingVertical: 10, borderWidth: 1, borderColor: ACT_LINE },
+  timesText: { flex: 1, fontSize: 12.5, fontWeight: '700', color: ACT },
+  timesCta: { fontSize: 13, fontWeight: '800', color: ACT },
   purged: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 4, marginBottom: 4, backgroundColor: '#F2F3F6', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 7 },
   purgedText: { flex: 1, fontSize: 12, fontWeight: '600', color: MUTED },
   set: { marginTop: 8, borderRadius: 12, padding: 9, gap: 8, borderWidth: 1 },
   setSent: { backgroundColor: '#F4FBF6', borderColor: WA_LIGHT },
-  setUnsent: { backgroundColor: '#FFFAF0', borderColor: '#F5D9A3' },
+  setUnsent: { backgroundColor: Colors.white, borderColor: '#E4E4E7' },
   setTitle: { fontSize: 12, fontWeight: '700', color: INK },
   // Wraps: next to one or two photos the time chip fills the space beside them; with more it drops to its own line.
   thumbs: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
   timeState: { flexGrow: 1, flexBasis: 150, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 7, borderWidth: 1 },
   timeOk: { backgroundColor: '#ECFDF3', borderColor: '#ABEFC6' },
-  timeTodo: { backgroundColor: '#FFF6E5', borderColor: '#F5D9A3' },
+  timeTodo: { backgroundColor: ACT_BG, borderColor: ACT_LINE },
   timeStateTitle: { fontSize: 12.5, fontWeight: '800' },
   timeStateSub: { fontSize: 11, color: MUTED, marginTop: 1 },
   transitWrap: { position: 'absolute', top: '50%', left: -24, width: 50, alignItems: 'center', marginTop: -11 },
