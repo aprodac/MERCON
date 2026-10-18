@@ -197,16 +197,20 @@ export function ChargeAssistant({ userName }: { userName?: string }) {
               <CrewChief ref={chief} size={44} look={config.look} />
               <View style={{ flex: 1 }}>
                 <Text style={s.headTitle}>Extra charges</Text>
-                {trip && !flash ? <Text style={s.headSub}>{Math.min(answered + 1, of)} of {of} to check</Text> : null}
+                {trip ? <Text style={s.headSub}>{Math.min(answered + 1, of)} of {of} to check</Text> : null}
               </View>
               <TouchableOpacity onPress={() => setOpen(false)} accessibilityLabel="Close" style={s.iconBtn} hitSlop={6}><X size={18} color={MUTED} /></TouchableOpacity>
             </View>
             <View style={s.progress}><View style={[s.progressFill, { width: `${of ? (answered / of) * 100 : 100}%` }]} /></View>
 
             <ScrollView contentContainerStyle={s.body} keyboardShouldPersistTaps="handled">
+              {/* The answer's "Noted" sits above the next trip instead of replacing it, so the
+                  next question is there straight away (TestFlight: "press None, it shows Noted
+                  and I can't select the next one"). */}
               {flash ? (
                 <View style={s.flash}><View style={s.check}><Text style={{ color: '#fff', fontWeight: '800' }}>✓</Text></View><Text style={s.flashText}>{flash}</Text></View>
-              ) : queue.isLoading ? (
+              ) : null}
+              {queue.isLoading ? (
                 <View style={s.row}><ActivityIndicator color={BRAND} /><Text style={s.muted}>Checking finished trips…</Text></View>
               ) : !trip ? (
                 <>
@@ -457,7 +461,7 @@ const s = StyleSheet.create({
   rate: { width: 76, height: 36, borderWidth: 1, borderColor: '#D8D3D0', borderRadius: 9, paddingHorizontal: 8, textAlign: 'right', fontSize: 14, fontWeight: '600', color: INK },
   error: { fontSize: 13, color: '#C53030', fontWeight: '500' },
   total: { fontSize: 20, fontWeight: '700', color: INK, fontFamily: MONO },
-  flash: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
+  flash: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 10, backgroundColor: '#ECFDF3', borderRadius: 12 },
   check: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#1F9D55', alignItems: 'center', justifyContent: 'center' },
   flashText: { fontSize: 15, fontWeight: '600', color: INK, flex: 1, lineHeight: 21 },
 });

@@ -125,6 +125,34 @@ export const vehicleDetailApi = {
     return (data.data ?? []) as VehicleMaintenance[];
   },
 
+  /** Saved and recently used workshops, for the "Send to workshop" picker. */
+  async workshops(): Promise<{ name: string; order_count: number }[]> {
+    const { data } = await api.get('/maintenance/workshops');
+    return ((data.data ?? []) as { name: string; order_count: number }[]).sort((a, b) => b.order_count - a.order_count);
+  },
+
+  /**
+   * The truck goes to the workshop now: an open service order, which puts the
+   * truck "In maintenance" (off the free list) until it's back in service.
+   */
+  async sendToWorkshop(vehicleId: string, body: { workshop_name: string; maintenance_type: string; remarks?: string; odometer: number }): Promise<void> {
+    await api.post('/maintenance', {
+      vehicle_id: vehicleId,
+      workshop_name: body.workshop_name,
+      maintenance_type: body.maintenance_type,
+      status: 'In_Progress',
+      start_date: new Date().toISOString(),
+      odometer_reading: body.odometer,
+      remarks: body.remarks || null,
+      payment_status: 'Pending',
+    });
+  },
+
+  /** Closes the truck's open service orders and makes it available again. */
+  async backInService(vehicleId: string): Promise<void> {
+    await api.post(`/maintenance/vehicles/${vehicleId}/return-to-service`);
+  },
+
   async timezone(): Promise<string> {
     try {
       const { data } = await api.get('/settings/public');

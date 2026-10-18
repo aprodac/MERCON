@@ -5,8 +5,9 @@
  *   [☰]  MERCON  (Home)   or   [page icon] Page title (every other page)   [page actions] [🔔]
  *
  * ☰ opens the side drawer (owned here, so pages don't each wire their own),
- * the bell opens notifications and shows a dot for unread ones (and, on Home,
- * for urgent To do items). Pages pass
+ * the bell opens notifications and shows a red dot only while a notification is
+ * unread — To do items alone don't light it (TestFlight: "every message read,
+ * then it should not show red"). Pages pass
  * their own icon buttons (search, filter, add…) through `actions`.
  */
 import React, { useState } from 'react';
@@ -34,7 +35,7 @@ interface AppTopBarProps {
   actions?: TopBarAction[];
   /** Hide the bell (on the notifications page itself). */
   hideBell?: boolean;
-  /** Urgent items on Notifications → To do — lights the bell's dot even when every notification is read. */
+  /** Urgent items on Notifications → To do — said in the bell's label; the dot is for unread notifications only. */
   urgent?: number;
   /** Show a back arrow instead of the menu (pages opened from another page). */
   onBack?: () => void;
@@ -69,7 +70,7 @@ export function AppTopBar({ title, actions = [], hideBell, urgent = 0, onBack }:
             icon={Bell}
             label={['Notifications', urgent ? `${urgent} urgent` : '', unread ? `${unread} unread` : ''].filter(Boolean).join(', ')}
             onPress={() => router.push('/notifications')}
-            dot={unread > 0 || urgent > 0}
+            dot={unread > 0}
             dotColor="#F04438"
           />
         )}

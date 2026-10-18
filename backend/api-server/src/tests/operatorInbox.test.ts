@@ -63,11 +63,11 @@ test('driver updates', async (t) => {
     assert.equal(ups.find((u) => u.key === 'p:loaded')!.unsent_count, 1);
   });
 
-  await t.test('the WhatsApp message is short and carries the link', () => {
+  await t.test('the WhatsApp message has one labelled fact per line and carries the link', () => {
     const u = buildDriverUpdates([trip], docs, []).find((x) => x.key === 'd:delay')!;
     assert.equal(
       buildShareMessage(u, u.items, 'https://dev.mercon.tech/s/tok'),
-      '*TRP-0259 · Delay on the way to Medina*\nSHIPA · Airport → Medina\nTruck ESA-4244 · Driver Abu Bakar\nReason: Traffic - jam\n\n1 video: https://dev.mercon.tech/s/tok',
+      '*TRP-0259 · Delay on the way to Medina*\nCustomer: SHIPA\nRoute: Airport → Medina\nTruck: ESA-4244\nDriver: Abu Bakar\nReason: Traffic - jam\n\n1 video: https://dev.mercon.tech/s/tok',
     );
   });
 });

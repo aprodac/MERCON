@@ -27,7 +27,28 @@ export function toVehicleListItem(raw: RawVehicle): VehicleListItem {
         driverName: activeTripRaw.driver
           ? `${activeTripRaw.driver.first_name} ${activeTripRaw.driver.last_name}`
           : null,
+        refId: activeTripRaw.ref_id ?? null,
+        stops: [...(activeTripRaw.stops ?? [])]
+          .sort((a, b) => a.stop_sequence - b.stop_sequence)
+          .map((st) => ({ type: st.stop_type, name: st.location_name, actual_arrival: st.actual_arrival ?? null, actual_departure: st.actual_departure ?? null })),
       }
+    : null;
+
+  const last = raw.last_trip;
+  const lastNames = (last?.stops ?? []).map((st) => (st.location_name ?? '').split(',')[0].trim()).filter(Boolean);
+  const lastTrip = last
+    ? {
+        id: last.id,
+        refId: last.ref_id,
+        // When the truck got back: the trip's end, else its last stop reached.
+        endedAt: last.actual_end ?? [...last.stops].reverse().find((st) => st.actual_arrival)?.actual_arrival ?? last.planned_start,
+        route: lastNames.filter((n, i) => n !== lastNames[i - 1]).join(' › '),
+      }
+    : null;
+
+  const loc = raw.resolved_location;
+  const location = loc && Number.isFinite(loc.latitude) && Number.isFinite(loc.longitude) && (loc.latitude || loc.longitude)
+    ? { lat: loc.latitude as number, lng: loc.longitude as number, ago: loc.formatted_time_ago && loc.formatted_time_ago !== 'Never' ? String(loc.formatted_time_ago) : null }
     : null;
 
   let activeMaintenance = raw.active_maintenance
@@ -55,6 +76,8 @@ export function toVehicleListItem(raw: RawVehicle): VehicleListItem {
     assignedDriver,
     activeTrip,
     activeMaintenance,
+    lastTrip,
+    location,
   };
 }
 

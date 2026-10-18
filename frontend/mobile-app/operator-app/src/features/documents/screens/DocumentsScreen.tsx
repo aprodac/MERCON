@@ -267,13 +267,13 @@ export default function DocumentsScreen() {
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
+    // The filter and search pick which folders show; each folder still counts all its
+    // documents (TestFlight: "showing 0 documents and 1 missing, but 2-3 are saved").
     return ofKind
-      .map((g) => {
+      .filter((g) => {
         const ownerHit = !q || `${g.owner.name} ${g.owner.sub ?? ''}`.toLowerCase().includes(q);
-        const slots = g.slots.filter((x) => (filter === 'all' || x.state === filter) && (ownerHit || x.type.name.toLowerCase().includes(q)));
-        return { ...g, slots };
+        return g.slots.some((x) => (filter === 'all' || x.state === filter) && (ownerHit || x.type.name.toLowerCase().includes(q)));
       })
-      .filter((g) => g.slots.length > 0)
       .sort((a, b) => a.worst - b.worst || a.owner.name.localeCompare(b.owner.name));
   }, [ofKind, filter, query]);
 

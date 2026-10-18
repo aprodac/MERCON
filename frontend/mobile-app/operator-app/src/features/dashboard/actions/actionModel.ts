@@ -31,6 +31,7 @@ export type ActionIntent =
   | { type: 'handled'; notificationId: string }
   | { type: 'driver'; id: string }
   | { type: 'vehicle'; id: string }
+  | { type: 'documents'; kind: 'Driver' | 'Vehicle'; owner: string }
   | { type: 'invoices' }
   | { type: 'customer'; id: string };
 
@@ -310,6 +311,8 @@ export function buildActions(src: ActionSources): ActionItem[] {
       primary: e.contact
         ? { label: 'Remind', intent: { type: 'whatsapp', phone: e.contact.phone, text: remind } }
         : e.entity_type === 'Vehicle' ? { label: 'Open', intent: { type: 'vehicle', id: e.entity_id } } : { label: 'Open', intent: { type: 'driver', id: e.entity_id } },
+      // Got the renewed copy already? Straight to its folder to upload it (TestFlight: "add option to Add new").
+      secondary: { label: 'Add new', intent: { type: 'documents', kind: e.entity_type === 'Vehicle' ? 'Vehicle' : 'Driver', owner: e.entity_id } },
     });
   }
 

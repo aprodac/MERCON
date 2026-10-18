@@ -14,11 +14,35 @@ export interface VehicleAssignedDriver {
   avatarUrl: string | null;
 }
 
+export interface VehicleTripStop {
+  type: string | null;
+  name: string | null;
+  actual_arrival: string | null;
+  actual_departure: string | null;
+}
+
 export interface VehicleActiveTrip {
   id: string;
+  refId: string | null;
   status: string;
   customerName: string | null;
   driverName: string | null;
+  stops: VehicleTripStop[];
+}
+
+/** A free truck's last finished trip. */
+export interface VehicleLastTrip {
+  id: string;
+  refId: string | null;
+  endedAt: string | null;
+  route: string;
+}
+
+export interface VehicleLocation {
+  lat: number;
+  lng: number;
+  /** "1h ago" */
+  ago: string | null;
 }
 
 export interface VehicleActiveMaintenance {
@@ -44,6 +68,8 @@ export interface VehicleListItem {
   assignedDriver: VehicleAssignedDriver | null;
   activeTrip: VehicleActiveTrip | null;
   activeMaintenance: VehicleActiveMaintenance | null;
+  lastTrip: VehicleLastTrip | null;
+  location: VehicleLocation | null;
 }
 
 export interface VehicleStats {

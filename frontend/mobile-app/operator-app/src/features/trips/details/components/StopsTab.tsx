@@ -1,10 +1,10 @@
 /** Every stop in order: planned vs actual time, lateness, delay reason, photos, and screenshots to check. */
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking, Image } from 'react-native';
-import { Check, CheckCheck, Clock3, Image as ImageIcon, ImageOff, MapPin, MessageCircle, Navigation, Play, TriangleAlert, Undo2, Crosshair, ArrowRightLeft } from 'lucide-react-native';
+import { Check, CheckCheck, Clock3, Image as ImageIcon, ImageOff, MapPin, MessageCircle, Navigation, Play, TriangleAlert, Undo2, Crosshair, ArrowRightLeft, CircleCheck, Truck } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
-import type { DriverUpdate, LiveMediaItem, OperatorTripDetail, OperatorTripDocument, TripPhase } from '../../../../lib/operator';
+import type { DriverUpdate, LiveMediaItem, OperatorTripDetail, TripPhase } from '../../../../lib/operator';
 import { ON_TIME_GRACE_MIN, TONE, delayText, mapsLink, minutesLate, minutesText, photoPinsForStop, sendStatus, sortedStops, stopName, stopTiming, tripLegsOf, updateTitle, type Formatters, type Stop } from '../tripDetailsModel';
 import { extraStopNote } from '@mercon/shared-types';
 import { liveLegOf } from '../../tripLegs';
@@ -129,6 +129,15 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
         const delay = delayText(st);
         const sets = updates.filter((u) => u.stop?.id === st.id);
         const check = docs.find((d) => pendingTimeCheck(d) && d.ai_extracted_json?.stop_id === st.id);
+        // Is this stop's time read off the customer's screenshot yet? (TestFlight: "show whether the time is confirmed or needs to confirm")
+        const stopShots = shots.filter((d) => d.ai_extracted_json?.stop_id === st.id);
+        const timeState: TimeState = check ? 'pending' : stopShots.length ? 'confirmed' : null;
+        // Time on the road to the next stop, like the customer's app shows it (TestFlight: "show taken transit time").
+        const nextSt = stops[i + 1];
+        const leftAt = isDropoff(st) ? st.actual_departure ?? st.actual_arrival : st.actual_departure;
+        // Offloading then loading at the same place isn't a drive.
+        const samePlace = !!nextSt && stopName(nextSt, i + 1) === stopName(st, i);
+        const transit = nextSt?.actual_arrival && leftAt && !samePlace ? (Date.parse(nextSt.actual_arrival) - Date.parse(leftAt)) / 60_000 : null;
         const pinNeeded = (phase === 'planned' || phase === 'active') && !st.actual_arrival && needsPin(st);
         // Driver photos at this stop that carry a GPS fix — a better pin than a guessed one.
         const gpsPhotos = photoPinsForStop(updates, st.id).length;
@@ -195,7 +204,7 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
               ) : null}
 
               {/* Small chips on one line instead of stacked banners. */}
-              {pinNeeded || (needsPin(st) && gpsPhotos > 0) || check ? (
+              {pinNeeded || (needsPin(st) && gpsPhotos > 0) || (check && sets.length === 0) ? (
                 <View style={s.hints}>
                   {pinNeeded || (needsPin(st) && gpsPhotos > 0) ? (
                     <TouchableOpacity style={s.hint} activeOpacity={0.8} onPress={() => onSetPin(st)} accessibilityRole="button">
@@ -205,7 +214,7 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
                       </Text>
                     </TouchableOpacity>
                   ) : null}
-                  {check ? (
+                  {check && sets.length === 0 ? (
                     <TouchableOpacity style={s.hint} activeOpacity={0.8} onPress={() => onCheckTimes(st.id)} accessibilityRole="button">
                       <Clock3 size={12} color="#8A5200" />
                       <Text style={s.hintText}>Check time</Text>
@@ -214,7 +223,10 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
                 </View>
               ) : null}
 
-              {sets.map((u) => <PhotoSet key={u.key} u={u} f={f} onOpen={(i) => onOpenPhotos(u, i)} onSend={() => onSendUpdate(u)} />)}
+              {sets.map((u, k) => (
+                <PhotoSet key={u.key} u={u} f={f} onOpen={(i) => onOpenPhotos(u, i)} onSend={() => onSendUpdate(u)}
+                  timeState={k === 0 ? timeState : null} onCheckTime={() => onCheckTimes(st.id)} />
+              ))}
 
               <View style={s.links}>
                 {Number.isFinite(st.location_lat) && (st.location_lat || st.location_lng) ? (
@@ -224,6 +236,14 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
                   </TouchableOpacity>
                 ) : null}
               </View>
+              {transit != null && transit >= 0 ? (
+                <View style={s.transit}>
+                  <Truck size={13} color={MUTED} />
+                  <Text style={s.transitText} numberOfLines={1}>
+                    <Text style={s.transitTime}>{minutesText(transit)}</Text> on the road to {stopName(nextSt, i + 1)}
+                  </Text>
+                </View>
+              ) : null}
             </View>
           </View>
           </React.Fragment>
@@ -249,8 +269,14 @@ function TimeCell({ label, f, iso, tone, empty = '—' }: { label: string; f: Fo
 const THUMBS = 4;
 const isVideo = (m: LiveMediaItem) => m.kind === 'video' || !!m.mime?.startsWith('video/');
 
+type TimeState = 'confirmed' | 'pending' | null;
+
 /** One photo set at a stop: the pictures themselves, each marked sent or not, and whether the customer has them. */
-function PhotoSet({ u, f, onOpen, onSend }: { u: DriverUpdate; f: Formatters; onOpen: (index: number) => void; onSend: () => void }) {
+function PhotoSet({ u, f, onOpen, onSend, timeState, onCheckTime }: {
+  u: DriverUpdate; f: Formatters; onOpen: (index: number) => void; onSend: () => void;
+  /** Whether the stop's time has been checked against the customer-app screenshot. */
+  timeState?: TimeState; onCheckTime?: () => void;
+}) {
   const status = sendStatus(u);
   // One photo sent is enough: the set is done, the unsent photos keep their "not sent" mark.
   const sent = status.state !== 'unsent';
@@ -300,6 +326,18 @@ function PhotoSet({ u, f, onOpen, onSend }: { u: DriverUpdate; f: Formatters; on
             </TouchableOpacity>
           );
         })}
+        {timeState ? (
+          <TouchableOpacity style={[s.timeState, timeState === 'confirmed' ? s.timeOk : s.timeTodo]} onPress={() => { tap(); onCheckTime?.(); }} activeOpacity={0.8}
+            accessibilityRole="button" accessibilityLabel={timeState === 'confirmed' ? 'Time confirmed. Open Check times' : 'Time needs confirming. Check it'}>
+            {timeState === 'confirmed' ? <CircleCheck size={15} color="#15803D" /> : <Clock3 size={15} color="#8A5200" />}
+            <View style={{ flexShrink: 1 }}>
+              <Text style={[s.timeStateTitle, { color: timeState === 'confirmed' ? '#15803D' : '#8A5200' }]}>
+                {timeState === 'confirmed' ? 'Time confirmed' : 'Time to confirm'}
+              </Text>
+              <Text style={s.timeStateSub}>{timeState === 'confirmed' ? 'Checked on the screenshot' : 'Tap to check it'}</Text>
+            </View>
+          </TouchableOpacity>
+        ) : null}
       </View>
       <View style={s.setFoot}>
         {sent ? <CheckCheck size={14} color={WA} strokeWidth={2.5} /> : <Clock3 size={14} color="#B45309" strokeWidth={2.4} />}
@@ -364,7 +402,16 @@ const s = StyleSheet.create({
   setSent: { backgroundColor: '#F4FBF6', borderColor: WA_LIGHT },
   setUnsent: { backgroundColor: '#FFFAF0', borderColor: '#F5D9A3' },
   setTitle: { fontSize: 12, fontWeight: '700', color: INK },
-  thumbs: { flexDirection: 'row', gap: 6 },
+  // Wraps: next to one or two photos the time chip fills the space beside them; with more it drops to its own line.
+  thumbs: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
+  timeState: { flexGrow: 1, flexBasis: 150, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 7, borderWidth: 1 },
+  timeOk: { backgroundColor: '#ECFDF3', borderColor: '#ABEFC6' },
+  timeTodo: { backgroundColor: '#FFF6E5', borderColor: '#F5D9A3' },
+  timeStateTitle: { fontSize: 12.5, fontWeight: '800' },
+  timeStateSub: { fontSize: 11, color: MUTED, marginTop: 1 },
+  transit: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, alignSelf: 'flex-start', backgroundColor: '#F6F7F9', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  transitText: { fontSize: 12, color: MUTED, flexShrink: 1 },
+  transitTime: { fontWeight: '800', color: INK },
   thumb: { width: 60, height: 60, borderRadius: 10, overflow: 'hidden', backgroundColor: '#E4E7EE' },
   thumbEmpty: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#E4E7EE' },
   tick: { position: 'absolute', right: 4, bottom: 4, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: Colors.white },
