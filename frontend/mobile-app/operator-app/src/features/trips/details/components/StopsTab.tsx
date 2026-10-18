@@ -1,7 +1,7 @@
 /** Every stop in order: planned vs actual time, lateness, delay reason, photos, and screenshots to check. */
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking, Image } from 'react-native';
-import { Check, CheckCheck, Clock3, Image as ImageIcon, ImageOff, MapPin, MessageCircle, Navigation, Play, TriangleAlert, Undo2, Crosshair, ArrowRightLeft, CircleCheck, Truck } from 'lucide-react-native';
+import { Check, CheckCheck, Clock3, Image as ImageIcon, ImageOff, MapPin, MessageCircle, Navigation, Play, TriangleAlert, Undo2, Crosshair, ArrowRightLeft, CircleCheck } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import type { DriverUpdate, LiveMediaItem, OperatorTripDetail, TripPhase } from '../../../../lib/operator';
@@ -34,6 +34,9 @@ interface Props {
   /** Bring back the photos a step-back removed. */
   onRestorePhotos?: (removedAt: string) => void;
 }
+
+/** "45m", "2.8h", "5h" — short enough to sit on the line between two stops. */
+const shortDuration = (min: number) => (min < 60 ? `${Math.round(min)}m` : `${(min / 60).toFixed(1).replace(/\.0$/, '')}h`);
 
 /** Only an EXACT pin can be trusted for ETA, navigation and arrival — anything else needs one. */
 export const needsPin = (st: Stop) =>
@@ -167,7 +170,16 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
                   <Text style={[s.bubbleText, isNext && { color: Colors.white }, phase === 'planned' && { color: '#5B34B0' }]}>{i + 1}</Text>
                 )}
               </View>
-              {!last ? <View style={[s.line, { backgroundColor: done && phase !== 'cancelled' ? TONE.green.dot : '#DDE0E8' }]} /> : null}
+              {!last ? (
+                <View style={[s.line, { backgroundColor: done && phase !== 'cancelled' ? TONE.green.dot : '#DDE0E8' }]}>
+                  {/* Actual time on the road (left this stop → reached the next), in the middle of the line — as the customer's app (iMile) shows it. */}
+                  {transit != null && transit >= 0 ? (
+                    <View style={s.transitWrap} pointerEvents="none" accessibilityLabel={`${minutesText(transit)} on the road to ${stopName(nextSt, i + 1)}`}>
+                      <Text style={s.transitPill}>{shortDuration(transit)}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
             </View>
 
             <View style={[s.body, !last && { paddingBottom: 16 }]}>
@@ -236,14 +248,6 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
                   </TouchableOpacity>
                 ) : null}
               </View>
-              {transit != null && transit >= 0 ? (
-                <View style={s.transit}>
-                  <Truck size={13} color={MUTED} />
-                  <Text style={s.transitText} numberOfLines={1}>
-                    <Text style={s.transitTime}>{minutesText(transit)}</Text> on the road to {stopName(nextSt, i + 1)}
-                  </Text>
-                </View>
-              ) : null}
             </View>
           </View>
           </React.Fragment>
@@ -409,9 +413,9 @@ const s = StyleSheet.create({
   timeTodo: { backgroundColor: '#FFF6E5', borderColor: '#F5D9A3' },
   timeStateTitle: { fontSize: 12.5, fontWeight: '800' },
   timeStateSub: { fontSize: 11, color: MUTED, marginTop: 1 },
-  transit: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, alignSelf: 'flex-start', backgroundColor: '#F6F7F9', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
-  transitText: { fontSize: 12, color: MUTED, flexShrink: 1 },
-  transitTime: { fontWeight: '800', color: INK },
+  transitWrap: { position: 'absolute', top: '50%', left: -24, width: 50, alignItems: 'center', marginTop: -11 },
+  // Plain grey text breaking the line, like iMile's "2.8h".
+  transitPill: { fontSize: 12, fontWeight: '600', color: '#8A8A96', backgroundColor: Colors.white, paddingHorizontal: 2, paddingVertical: 3, fontVariant: ['tabular-nums'] },
   thumb: { width: 60, height: 60, borderRadius: 10, overflow: 'hidden', backgroundColor: '#E4E7EE' },
   thumbEmpty: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#E4E7EE' },
   tick: { position: 'absolute', right: 4, bottom: 4, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: Colors.white },

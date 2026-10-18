@@ -1,7 +1,7 @@
 FROM YOUR LATEST FEEDBACK (18 Oct morning)
 1. Check times: Najran-type trip (offload then load at the same place) — your times in order now save. Any problem is written in full under the stop.
 2. Check times: wheels go round — from 00:47 roll the hour back to 23. Tap the screenshot to enlarge it while a time is open; pinch to zoom.
-3. Trip > Stops: "X h on the road to <next stop>" between stops; "Time confirmed" / "Time to confirm" next to each stop's photos.
+3. Trip > Stops: the real time on the road (e.g. "5h", "2.8h") in the middle of the line between two stops, like iMile; "Time confirmed" / "Time to confirm" next to each stop's photos.
 4. Send to WhatsApp: message has one fact per line (Customer / Route / Truck / Driver / Next).
 5. Notifications > Activity: "Mark read" on each unread one. Bell turns red only for unread notifications.
 6. Extra charges: press None — the next trip shows straight away.
