@@ -10,7 +10,7 @@ import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import {
-  AlarmClock, ChevronRight, Clock3, FileClock, Images, Phone, Play, Receipt, MapPinOff, Siren, Split, UserX,
+  AlarmClock, Check, ChevronRight, Clock3, FileClock, Images, Phone, Play, Receipt, MapPinOff, Siren, Split, UserX,
   type LucideIcon,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -193,12 +193,22 @@ function ActionRowBody({ item, first, now, flat, onIntent, onOpenTrip, onMarkRea
   const other = item.secondary && !call ? item.secondary : null;
   const openRow = () => (item.tripId ? onOpenTrip(item.tripId) : onIntent(item.primary.intent));
 
+  // Text gets the full width; the buttons sit on their own line under it, and
+  // "Read" is a quiet link by the title (it was squeezing rows to 5-6 lines).
   return (
     <TouchableOpacity style={[s.row, !first && s.rowBorder, flat && { paddingHorizontal: 0 }]} onPress={openRow} activeOpacity={0.6}>
       <View style={s.icon}><Icon size={18} color={k.fg} strokeWidth={2.2} /></View>
       <View style={{ flex: 1, gap: 2 }}>
-        <Text style={s.title}>{item.title}</Text>
-        {item.detail ? <Text style={s.detail}>{tidy(item.detail)}</Text> : null}
+        <View style={s.titleRow}>
+          <Text style={[s.title, { flex: 1 }]}>{item.title}</Text>
+          {onMarkRead && item.kind !== 'emergency' ? (
+            <TouchableOpacity style={s.read} onPress={() => { tap(); onMarkRead(item); }} hitSlop={8} accessibilityRole="button" accessibilityLabel="Mark read">
+              <Check size={13} color={MUTED} strokeWidth={2.4} />
+              <Text style={s.readText}>Read</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+        {item.detail ? <Text style={s.detail} numberOfLines={3}>{tidy(item.detail)}</Text> : null}
         {when ? <Text style={[s.when, when.hot && { color: RED }]}>{when.text}</Text> : null}
         {item.media?.length ? (
           <View style={s.thumbs}>
@@ -214,26 +224,21 @@ function ActionRowBody({ item, first, now, flat, onIntent, onOpenTrip, onMarkRea
             })}
           </View>
         ) : null}
-      </View>
-      <View style={s.actions}>
-        {onMarkRead && item.kind !== 'emergency' ? (
-          <TouchableOpacity style={s.ghost} onPress={() => { tap(); onMarkRead(item); }} hitSlop={4} accessibilityRole="button" accessibilityLabel="Mark read">
-            <Text style={s.ghostText}>Read</Text>
+        <View style={s.actions}>
+          <TouchableOpacity style={s.primary} onPress={() => { tap(); onIntent(item.primary.intent); }} hitSlop={4}>
+            <Text style={s.primaryText}>{item.primary.label}</Text>
           </TouchableOpacity>
-        ) : null}
-        {other ? (
-          <TouchableOpacity style={s.ghost} onPress={() => { tap(); onIntent(other.intent); }} hitSlop={4}>
-            <Text style={s.ghostText}>{other.label}</Text>
-          </TouchableOpacity>
-        ) : null}
-        {call ? (
-          <TouchableOpacity style={s.callBtn} onPress={() => { tap(); onIntent(call.intent); }} hitSlop={6} accessibilityLabel="Call driver">
-            <Phone size={16} color="#3F3F46" strokeWidth={2.2} />
-          </TouchableOpacity>
-        ) : null}
-        <TouchableOpacity style={s.primary} onPress={() => { tap(); onIntent(item.primary.intent); }} hitSlop={4}>
-          <Text style={s.primaryText}>{item.primary.label}</Text>
-        </TouchableOpacity>
+          {call ? (
+            <TouchableOpacity style={s.callBtn} onPress={() => { tap(); onIntent(call.intent); }} hitSlop={6} accessibilityLabel="Call driver">
+              <Phone size={16} color="#3F3F46" strokeWidth={2.2} />
+            </TouchableOpacity>
+          ) : null}
+          {other ? (
+            <TouchableOpacity style={s.ghost} onPress={() => { tap(); onIntent(other.intent); }} hitSlop={4}>
+              <Text style={s.ghostText}>{other.label}</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -300,8 +305,11 @@ const s = StyleSheet.create({
   thumbs: { flexDirection: 'row', gap: 6, marginTop: 6 },
   thumb: { width: 40, height: 40, borderRadius: 8, overflow: 'hidden', backgroundColor: '#E4E7EE' },
   thumbFill: { width: '100%', height: '100%' },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'center' },
-  primary: { height: 34, borderRadius: 10, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: INK },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  read: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingTop: 2 },
+  readText: { fontSize: 12.5, fontWeight: '600', color: MUTED },
+  primary: { height: 34, borderRadius: 10, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: INK },
   primaryText: { fontSize: 13, fontWeight: '600', color: Colors.white },
   ghost: { height: 34, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center' },
   ghostText: { fontSize: 13, fontWeight: '500', color: MUTED },

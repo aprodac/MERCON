@@ -243,7 +243,7 @@ export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: P
                     >
                       <Text style={[s.inputText, !typed[st.id]?.[field] && { color: '#A1A1AA' }]}>{value ?? 'set'}</Text>
                     </TouchableOpacity>
-                    <Text style={[s.note, !!t.error && { color: '#B42318' }]} numberOfLines={1}>
+                    <Text style={[s.note, !!t.error && { color: '#B42318' }]} numberOfLines={2}>
                       {t.error ?? (t.changed ? [t.dayOffset && t.iso ? dayOf(t.iso) : '', recorded ? `was ${clock(recorded)?.slice(0, 5)}` : 'new'].filter(Boolean).join(' · ') : ' ')}
                     </Text>
                   </View>
