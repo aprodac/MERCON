@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { enterFullscreen, exitFullscreen, fullscreenElement } from '@/utils/fullscreen';
 import AssistantToggle from '@/components/assistant/AssistantToggle';
 import { 
   Bell, 
@@ -181,17 +182,19 @@ export default function Header({ title, icon, breadcrumb, hideBackButton, onBack
   const ResolvedIcon = resolved?.icon;
 
   useEffect(() => {
-    const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
+    const handleFullscreenChange = () => setIsFullscreen(!!fullscreenElement());
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    };
   }, []);
 
+  // iPhone Safari has no page full screen: the button does nothing there instead of crashing.
   const toggleFullscreen = () => {
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
-    } else {
-      document.documentElement.requestFullscreen().catch(() => {});
-    }
+    if (fullscreenElement()) exitFullscreen();
+    else enterFullscreen();
   };
 
   // Global Keyboard Shortcut: Alt + T or Alt + N opens Create New Trip Modal from any page

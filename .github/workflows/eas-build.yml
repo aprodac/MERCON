@@ -17,6 +17,14 @@ name: Mobile Build (EAS)
 #   - each app + platform: one interactive `npx eas-cli build` so EAS creates and
 #     stores the Android keystore / iOS certificates. After that, CI builds work.
 # Requires the EXPO_TOKEN repository secret (an Expo access token).
+#
+# builder = github (Android only): the same EAS build, run on GitHub's own
+# runner with `eas build --local` instead of Expo's servers — free, and not
+# counted against Expo's monthly build limit. It still signs with the keystore
+# stored on Expo (same SHA-1 as every Play upload) and still takes the version
+# code from Expo (appVersionSource: remote + autoIncrement), so numbers never
+# repeat or jump. The APK/AAB is attached to the run as an artifact; the job
+# prints its SHA-1 and API URL to check before uploading (ANDROID_PLAY_RELEASE.md).
 
 on:
   workflow_dispatch:
@@ -36,10 +44,51 @@ on:
         type: choice
         options: [preview, production]
         default: preview
+      builder:
+        description: 'Where to build (github = free, Android only, file attached to the run)'
+        type: choice
+        options: [expo, github]
+        default: expo
+      publish_run_id:
+        description: 'Instead of building: publish the APK from this earlier run as a plain download link (GitHub pre-release)'
+        type: string
+        default: ''
 
 jobs:
+  # Testers can't always use the run's artifact (needs a GitHub login, and
+  # browsers block zipped apps). This copies a finished build's APK to a
+  # pre-release with a direct link. Test builds only — they talk to the dev server.
+  publish:
+    name: Publish APK from run ${{ inputs.publish_run_id }}
+    if: ${{ inputs.publish_run_id != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Download the run's artifact
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.publish_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: out
+      - name: Create the pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          files=$(find out -name '*.apk')
+          [ -n "$files" ] || { echo "::error::No APK in run ${{ inputs.publish_run_id }} (AABs are never published here)"; exit 1; }
+          for f in $files; do unzip -p "$f" assets/app.config | grep -q 'dev.mercon.tech/api' || { echo "::error::$(basename "$f") is not a dev build — not publishing"; exit 1; }; done
+          tag="test-build-${{ inputs.publish_run_id }}"
+          gh release create "$tag" $files --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "Test build (run ${{ inputs.publish_run_id }}) — DEV server only" \
+            --notes "Test APK for MERCON testers. Talks to https://dev.mercon.tech (test data), not the live system. Not for drivers' daily use."
+          for f in $files; do echo "::notice title=Download link::https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/$(basename "$f")"; done
+
   plan:
     name: Pick apps
+    if: ${{ inputs.publish_run_id == '' }}
     runs-on: ubuntu-latest
     outputs:
       apps: ${{ steps.pick.outputs.apps }}
@@ -55,6 +104,7 @@ jobs:
   build:
     name: ${{ matrix.app }} · ${{ inputs.platform }} · ${{ inputs.profile }}
     needs: plan
+    if: ${{ inputs.builder != 'github' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -93,5 +143,102 @@ jobs:
             exit 1
           fi
 
+      # On failure, EAS's own message is copied into a job annotation so it can
+      # be read from the run summary / API without opening the raw log.
       - name: Queue EAS build
-        run: eas build --platform ${{ inputs.platform }} --profile ${{ inputs.profile }} --non-interactive --no-wait
+        run: |
+          set -o pipefail
+          if ! eas build --platform ${{ inputs.platform }} --profile ${{ inputs.profile }} --non-interactive --no-wait 2>&1 | tee eas-build.log; then
+            msg=$(grep -v '^\s*$' eas-build.log | tail -n 12 | tr '\n' ' ' | cut -c1-1500)
+            echo "::error title=EAS build did not queue::${msg}"
+            exit 1
+          fi
+
+  local-build:
+    name: ${{ matrix.app }} · android · ${{ inputs.profile }} · on GitHub
+    needs: plan
+    if: ${{ inputs.builder == 'github' && inputs.platform == 'android' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.plan.outputs.apps) }}
+    defaults:
+      run:
+        working-directory: ./frontend/mobile-app/${{ matrix.app }}
+    env:
+      GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx6g -Dorg.gradle.daemon=false
+    steps:
+      - name: Free disk space
+        working-directory: /
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost "$AGENT_TOOLSDIRECTORY/CodeQL" || true
+          df -h /
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: 'npm'
+          cache-dependency-path: './frontend/mobile-app/package-lock.json'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ./frontend/mobile-app
+
+      - name: Build on this runner
+        run: |
+          set -o pipefail
+          ext=$([ "${{ inputs.profile }}" = production ] && echo aab || echo apk)
+          out="$RUNNER_TEMP/${{ matrix.app }}-${{ inputs.profile }}-${GITHUB_SHA::8}.$ext"
+          echo "OUT=$out" >> "$GITHUB_ENV"
+          if ! eas build --local --platform android --profile ${{ inputs.profile }} --non-interactive --output "$out" 2>&1 | tee eas-local.log; then
+            msg=$(grep -v '^\s*$' eas-local.log | tail -n 12 | tr '\n' ' ' | cut -c1-1500)
+            echo "::error title=Local EAS build failed::${msg}"
+            exit 1
+          fi
+
+      - name: Check signing key, package, version and server
+        run: |
+          sha1=$(keytool -printcert -jarfile "$OUT" 2>/dev/null | grep -m1 'SHA1:' | awk '{print $2}')
+          if [ -z "$sha1" ]; then
+            # APKs signed only with v2/v3 schemes: ask apksigner instead.
+            signer=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+            sha1=$("$signer" verify --print-certs "$OUT" | grep -m1 'SHA-1 digest' | awk '{print $NF}' | sed 's/../&:/g;s/:$//' | tr a-z A-Z)
+          fi
+          if [ "${OUT##*.}" = aab ]; then
+            api=$(unzip -p "$OUT" base/assets/app.config | grep -o 'https://[a-z.]*mercon.tech/api' | head -1)
+          else
+            api=$(unzip -p "$OUT" assets/app.config | grep -o 'https://[a-z.]*mercon.tech/api' | head -1)
+          fi
+          echo "::notice title=Build file::$(basename "$OUT") · SHA-1 ${sha1} · API ${api}"
+          {
+            echo "### $(basename "$OUT")"
+            echo "- Signing SHA-1: \`${sha1}\`"
+            echo "- Talks to: ${api}"
+            echo "- Download: Artifacts at the bottom of this run page"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Attach the build file to this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.app }}-${{ inputs.profile }}
+          path: ${{ env.OUT }}
+          retention-days: 14
+          if-no-files-found: error
