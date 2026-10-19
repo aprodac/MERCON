@@ -14,8 +14,9 @@ import { StageHeader, STAGE_THEME } from '../components/StageHeader';
 import { FadedBottomIllustration } from '../components/FadedBottomIllustration';
 import { DelayReportModal } from '../components/DelayReportModal';
 import { roundTimes } from '../services/roundTimes';
+import { driverWorkflowState, isOnReturnLeg } from '../utils/driverWorkflow';
 import { useCurrentTrip } from '../hooks/use-current-trip';
-import { tripService, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, getLegEndpoints, getEvidencePolicy } from '@mercon/mobile-shared/lib/trips';
+import { tripService, stopAddress, stopLabel, isRoundTrip, getLegEndpoints, getEvidencePolicy } from '@mercon/mobile-shared/lib/trips';
 
 import { keepExistingPhotos, pickFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
 import { PhotoCaptureModal } from '../components/PhotoCaptureModal';
@@ -99,7 +100,7 @@ const DeliveryVerificationScreen = () => {
   const router = useRouter();
   const { t, language, tr } = useLanguage();
   const { trip, loading, refetch, setTrip } = useCurrentTrip();
-  const ws = getEffectiveWorkflowState(trip);
+  const ws = driverWorkflowState(trip);
   const isRound = isRoundTrip(trip);
   // Once the return-leg dropoff's actual_departure is stamped,
   // getEffectiveWorkflowState() immediately jumps to 'COMPLETED' — it never
@@ -137,17 +138,21 @@ const DeliveryVerificationScreen = () => {
   const [previewPhoto, setPreviewPhoto] = useState<CapturedPhoto | null>(null);
   const [showDelayModal, setShowDelayModal] = useState(false);
 
-  // If this delivery stop is already completed and departed, navigate forward
+  // This delivery is behind the driver: move on. Decided by HIS progress
+  // (driverWorkflowState), never by the stop's departure time — the office can
+  // type that in while he is still here, which used to bounce him off this
+  // screen so he could never press Delivery complete.
+  const pastThisDelivery = isFinalDelivery ? ws === 'COMPLETED' : isOnReturnLeg(ws);
   useEffect(() => {
     if (loading || !trip || !dropoffStop) return;
-    if (dropoffStop.actual_departure) {
-      if (isReturnDelivery || !isRound) {
+    if (pastThisDelivery) {
+      if (isFinalDelivery) {
         router.replace({ pathname: '/trip/completed', params: { tripId: trip.id } } as any);
       } else {
         router.replace('/trip/round-done' as any);
       }
     }
-  }, [loading, trip?.id, dropoffStop?.id, dropoffStop?.actual_departure, isReturnDelivery, isRound]);
+  }, [loading, trip?.id, dropoffStop?.id, pastThisDelivery, isFinalDelivery]);
 
   const validPhotosCount = photos.filter((p) => !!p?.uri).length;
   // Up to `need` boxes, but one photo is enough to continue (getEvidencePolicy).

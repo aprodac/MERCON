@@ -14,8 +14,9 @@ import { StageHeader, STAGE_THEME } from '../components/StageHeader';
 import { FadedBottomIllustration } from '../components/FadedBottomIllustration';
 import { DelayReportModal } from '../components/DelayReportModal';
 import { roundTimes } from '../services/roundTimes';
+import { driverWorkflowState, driverIsReturnLoading, isAtOutboundLoading, isOnReturnLeg } from '../utils/driverWorkflow';
 import { useCurrentTrip } from '../hooks/use-current-trip';
-import { tripService, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, isReturnLoadingPhase, getLegEndpoints, getEvidencePolicy } from '@mercon/mobile-shared/lib/trips';
+import { tripService, stopAddress, stopLabel, isRoundTrip, getLegEndpoints, getEvidencePolicy } from '@mercon/mobile-shared/lib/trips';
 
 import { keepExistingPhotos, pickFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
 import { PhotoCaptureModal } from '../components/PhotoCaptureModal';
@@ -26,7 +27,7 @@ import { isValidCoordinate } from '../utils/geo';
 import { API_URL, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { safeSecureStore as SecureStore } from '@mercon/mobile-shared/lib/secure-store';
 import { triggerGPayHapticsAndSound } from '../services/sound';
-import { getIntermediateStops, getOutboundIntermediateStops, getReturnIntermediateStops } from '../utils/routeParser';
+import { parseStopWorkflowState, getIntermediateStops, getOutboundIntermediateStops, getReturnIntermediateStops } from '../utils/routeParser';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
 
@@ -99,9 +100,9 @@ const PickupVerificationScreen = () => {
   const router = useRouter();
   const { t, language, tr } = useLanguage();
   const { trip, loading, refetch, setTrip } = useCurrentTrip();
-  const ws = getEffectiveWorkflowState(trip);
+  const ws = driverWorkflowState(trip);
   const isRound = isRoundTrip(trip);
-  const isReturnLoading = isReturnLoadingPhase(trip);
+  const isReturnLoading = driverIsReturnLoading(trip);
   const isStarted = ws === 'LOADING' || ws === 'ARRIVED_AT_PICKUP' || isReturnLoading;
 
   const legIndex = isReturnLoading ? 1 : 0;
@@ -126,7 +127,9 @@ const PickupVerificationScreen = () => {
   // a restart): show the Round 1 completed page first, where the break is
   // counted and Start Round 2 is tapped. Skipped once round 2 is under way.
   useEffect(() => {
-    if (loading || !trip?.id || !isReturnLoading || !pickupStop || pickupStop.actual_arrival || pickupStop.actual_departure) return;
+    // (Older servers stamped the return loading's arrival the moment round 1
+    // was delivered, so that time can't tell whether round 2 has started.)
+    if (loading || !trip?.id || !isReturnLoading || !pickupStop || pickupStop.actual_departure) return;
     let cancelled = false;
     roundTimes.get(trip.id).then(({ round2StartedAt }) => {
       if (!cancelled && !round2StartedAt) router.replace('/trip/round-done' as any);
@@ -149,24 +152,23 @@ const PickupVerificationScreen = () => {
       router.replace({ pathname: '/trip/completed', params: { tripId: trip.id } } as any);
       return;
     }
-    if (pickupStop.actual_departure) {
-      const outStops = getOutboundIntermediateStops(trip);
-      const retStops = getReturnIntermediateStops(trip);
-      if (isReturnLoading) {
-        if (retStops.length > 0) {
-          router.replace({ pathname: '/trip/stop', params: { legIndex: '1', stopIndex: '0' } } as any);
-        } else {
-          router.replace('/trip/navigate');
-        }
+    // Loading is behind the driver: move on. Decided by HIS progress, never by
+    // the stop's departure time (the office can type that in while he is
+    // still loading, which bounced him off this screen for good).
+    const pastThisPickup = isReturnLoading ? false : !isAtOutboundLoading(ws);
+    if (pastThisPickup) {
+      const onReturn = isOnReturnLeg(ws);
+      const legStops = onReturn ? getReturnIntermediateStops(trip) : getOutboundIntermediateStops(trip);
+      if (legStops.length > 0 && parseStopWorkflowState(ws)) {
+        // At a stop on this leg: the stop screen picks the right one from the state.
+        router.replace({ pathname: '/trip/stop', params: { legIndex: onReturn ? '1' : '0' } } as any);
+      } else if (legStops.length > 0 && (ws === 'GOING_TO_STOP' || ws === 'GOING_TO_RETURN_STOP')) {
+        router.replace({ pathname: '/trip/stop', params: { legIndex: onReturn ? '1' : '0', stopIndex: '0' } } as any);
       } else {
-        if (outStops.length > 0) {
-          router.replace({ pathname: '/trip/stop', params: { legIndex: '0', stopIndex: '0' } } as any);
-        } else {
-          router.replace('/trip/navigate');
-        }
+        router.replace('/trip/navigate');
       }
     }
-  }, [loading, trip?.id, pickupStop?.id, pickupStop?.actual_departure, isReturnLoading]);
+  }, [loading, trip?.id, pickupStop?.id, ws, isReturnLoading]);
 
   const validPhotosCount = photos.filter((p) => !!p?.uri).length;
   // Up to `need` boxes, but one photo is enough to continue (getEvidencePolicy).

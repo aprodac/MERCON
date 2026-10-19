@@ -14,7 +14,8 @@ import { DelayReportModal } from '../components/DelayReportModal';
 import { TripProgressStepper } from '../components/TripProgressStepper';
 import { DelayButton } from '../components/DelayButton';
 import { useCurrentTrip } from '../hooks/use-current-trip';
-import { tripService, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, isReturnLoadingPhase, resolveAuthoritativeActiveStop, getLegEndpoints } from '@mercon/mobile-shared/lib/trips';
+import { driverWorkflowState, driverIsReturnLoading } from '../utils/driverWorkflow';
+import { tripService, stopAddress, stopLabel, isRoundTrip, resolveAuthoritativeActiveStop, getLegEndpoints } from '@mercon/mobile-shared/lib/trips';
 
 import { targetFromWorkflowState } from '../utils/routeParser';
 import { pendingStopFromWorkflow } from '@mercon/shared-types';
@@ -71,9 +72,9 @@ const LiveNavigationScreen = () => {
   // Same state Home and the pickup/delivery screens use. The raw state can be a
   // stale round-1 one (ARRIVED_AT_PICKUP) on a round trip's return leg, which
   // sent the driver back to the round-1 origin.
-  const ws = getEffectiveWorkflowState(trip);
+  const ws = driverWorkflowState(trip);
   const isRound = isRoundTrip(trip);
-  const isReturnPickup = isReturnLoadingPhase(trip);
+  const isReturnPickup = driverIsReturnLoading(trip);
 
   const authActive = React.useMemo(() => {
     return resolveAuthoritativeActiveStop(trip);

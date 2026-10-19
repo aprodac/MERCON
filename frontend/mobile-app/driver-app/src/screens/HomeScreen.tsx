@@ -20,9 +20,10 @@ import { NotificationBell } from '../components/NotificationBell';
 import { showToast } from '../components/AppToast';
 import { BilingualText } from '@mercon/mobile-shared/components/BilingualText';
 import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
+import { driverWorkflowState } from '../utils/driverWorkflow';
 import { useCurrentTrip } from '../hooks/use-current-trip';
 import { useScheduledTrips } from '../hooks/use-scheduled-trips';
-import { tripService, plannedRouteText, statusLabel, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, parseStopWorkflowState, getTripChargeValue, getMonthlyDriverPayout, DRIVER_WORKFLOW_STATES, type TripStatus, type MobileTrip } from '@mercon/mobile-shared/lib/trips';
+import { tripService, plannedRouteText, statusLabel, stopAddress, stopLabel, isRoundTrip, parseStopWorkflowState, getTripChargeValue, getMonthlyDriverPayout, DRIVER_WORKFLOW_STATES, type TripStatus, type MobileTrip } from '@mercon/mobile-shared/lib/trips';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useLanguage, getLocalizedStatus, bilingual, translate } from '@mercon/mobile-shared/lib/language-context';
 import { parseTripRouteNodes, getIntermediateStops, getOutboundIntermediateStops, getReturnIntermediateStops, targetFromWorkflowState, type TimelineStop } from '../utils/routeParser';
@@ -122,7 +123,7 @@ function fmtTime(value?: Date | string | null): string | null {
 
 /** Minutes the pickup is overdue (planned start passed, driver not there yet), else 0. */
 function minutesLate(trip: MobileTrip): number {
-  const ws = getEffectiveWorkflowState(trip);
+  const ws = driverWorkflowState(trip);
   if (ws !== 'ASSIGNED' && ws !== 'GOING_TO_PICKUP') return 0;
   if (!trip.planned_start) return 0;
   const due = new Date(trip.planned_start).getTime();
@@ -267,7 +268,7 @@ const HomeScreen = () => {
         },
       };
     }
-    const ws = getEffectiveWorkflowState(t);
+    const ws = driverWorkflowState(t);
     const isRound = isRoundTrip(t);
     const outboundStops = getOutboundIntermediateStops(t);
     const returnStops = getReturnIntermediateStops(t);
@@ -507,8 +508,8 @@ const HomeScreen = () => {
               <View style={styles.cardHeaderRow}>
                 <View style={styles.cardTitleCol}>
                   <BilingualText
-                    ur={getEffectiveWorkflowState(displayTrip) === 'ASSIGNED' || displayTrip.status === 'Draft' ? 'اگلا شیڈول شدہ ٹرپ' : 'موجودہ ٹرپ'}
-                    en={getEffectiveWorkflowState(displayTrip) === 'ASSIGNED' || displayTrip.status === 'Draft' ? 'Next Scheduled Trip' : 'Ongoing Trip'}
+                    ur={driverWorkflowState(displayTrip) === 'ASSIGNED' || displayTrip.status === 'Draft' ? 'اگلا شیڈول شدہ ٹرپ' : 'موجودہ ٹرپ'}
+                    en={driverWorkflowState(displayTrip) === 'ASSIGNED' || displayTrip.status === 'Draft' ? 'Next Scheduled Trip' : 'Ongoing Trip'}
                     primaryStyle={styles.cardTitleUrduPrimary}
                     subStyle={styles.cardTitleSubEn}
                   />
@@ -770,7 +771,7 @@ const HomeScreen = () => {
                           <BilingualText
                             // Same state as the button's action: after the office undoes a step the stored
                             // state and the stop times can differ, and the label said "Start" while the tap did more.
-                            ur={info.urLabel || WORKFLOW_URDU_LABEL[getEffectiveWorkflowState(displayTrip)] || 'ٹرپ شروع کریں'}
+                            ur={info.urLabel || WORKFLOW_URDU_LABEL[driverWorkflowState(displayTrip)] || 'ٹرپ شروع کریں'}
                             en={info.btnLabel || 'Start Trip'}
                             align="center"
                             primaryStyle={styles.ctaUrduPrimary}
