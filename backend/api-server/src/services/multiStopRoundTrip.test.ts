@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { getTimelineProgress, quotationMatchesRoute, getTimelineVehiclePosition, timelineStopRole, stopRoleAt, tripStopRole } from '@mercon/shared-types';
 
 import { validateTripStops } from './tripValidationService';
-import { stampWorkflowTransition, stampStopTransition, resolveAuthoritativeActiveStop, stampIntermediateStopVisit } from './tripLifecycle';
+import { stampWorkflowTransition, resolveIncomingWorkflowState, stampStopTransition, resolveAuthoritativeActiveStop, stampIntermediateStopVisit } from './tripLifecycle';
 import { isRoundTrip, getEffectiveWorkflowState, type MobileTrip, type TripStop, parseTripRouteNodes, parseStopWorkflowState, getLegEndpoints, targetFromWorkflowState, buildTripStops, type BuiltTripStop, isRouteLocked, isRouteEditable, ROUTE_EDITABLE_STATUSES, buildTripRouteTimeline } from './tripRouteTimeline';
+import { isReturnLoadingPhase } from '@mercon/shared-types';
 import { findQuotationForLane } from './rateLookup';
 import { writeTripStops } from './tripStopWriter';
 import { parseFullTripStops } from './legacyStopStringParser';
@@ -394,9 +395,13 @@ describe('DEEP CODE-LEVEL TEST SUITE — INDEPENDENT OUTBOUND + RETURN ARCHITECT
 
       await stampWorkflowTransition(tx, 'trip-guard-test', 'RETURN_LOADING');
       const finalStops = await tx.tripStop.findMany();
-      // Outbound delivery should have its departure stamped and return loading its arrival stamped
+      // Confirming the outbound delivery only closes it: the return pickup
+      // is not "arrived" until the driver gets there (often the next morning).
       assert.ok(finalStops[1].actual_departure != null);
-      assert.ok(finalStops[2].actual_arrival != null);
+      assert.equal(finalStops[2].actual_arrival, null);
+      // The RETURN_LOADING that comes once the delivery has departed is the arrival.
+      await stampWorkflowTransition(tx, 'trip-guard-test', 'RETURN_LOADING');
+      assert.ok((await tx.tripStop.findMany())[2].actual_arrival != null);
     });
   });
 
@@ -1284,6 +1289,8 @@ describe('DEEP CODE-LEVEL TEST SUITE — INDEPENDENT OUTBOUND + RETURN ARCHITECT
 
       await stampWorkflowTransition(tx, 't10', 'RETURN_LOADING');
       assert.ok(at('b0').actual_departure, 'left B after unloading');
+      assert.equal(at('b1').actual_arrival, null, 'return loading not arrived at delivery confirmation');
+      await stampWorkflowTransition(tx, 't10', 'RETURN_LOADING');
       assert.ok(at('b1').actual_arrival, 'return loading at B started');
 
       await stampWorkflowTransition(tx, 't10', 'GOING_TO_RETURN_STOP');
@@ -1297,6 +1304,93 @@ describe('DEEP CODE-LEVEL TEST SUITE — INDEPENDENT OUTBOUND + RETURN ARCHITECT
       await stampWorkflowTransition(tx, 't10', 'ARRIVED_AT_FINAL_DELIVERY');
       assert.ok(at('a1').actual_arrival, 'arrived back at A');
       assert.equal(at('a0').actual_arrival, state.find((s) => s.id === 'a0')!.actual_arrival, 'outbound A not re-stamped');
+    });
+
+    describe('overnight stop and stale round-1 pickup state (TRP-0038)', () => {
+      const trip = (state: any[], ws: string): MobileTrip => ({ id: 't10', status: 'Loading', stops: state, rate_category: 'Round Trip', driver_workflow_state: ws });
+      // Replays the status endpoint: resolve the incoming state, stamp it, save it.
+      const send = async (tx: any, ws: string) => {
+        const resolved = await resolveIncomingWorkflowState(tx, 't10', ws);
+        await stampWorkflowTransition(tx, 't10', resolved);
+        return resolved;
+      };
+
+      it('replays a full round trip with the return pickup reached the next morning', async () => {
+        const state = stops();
+        const tx = mockTx(state);
+        const at = (id: string) => state.find((s) => s.id === id)!;
+
+        await send(tx, 'ARRIVED_AT_PICKUP');
+        await send(tx, 'LOADING_COMPLETED');
+        await send(tx, 'ARRIVED_AT_DELIVERY');
+        // Delivery confirmed at night: the app sends RETURN_LOADING.
+        assert.equal(await send(tx, 'RETURN_LOADING'), 'RETURN_LOADING');
+        assert.ok(at('b0').actual_departure, 'delivery closed');
+        assert.equal(at('b1').actual_arrival, null, 'overnight: return pickup not arrived');
+        assert.equal(getEffectiveWorkflowState(trip(state, 'RETURN_LOADING')), 'RETURN_LOADING');
+
+        // Next morning an older app build taps "I've arrived" and sends the round-1 state.
+        assert.equal(await send(tx, 'ARRIVED_AT_PICKUP'), 'RETURN_LOADING');
+        assert.ok(at('b1').actual_arrival, 'return pickup arrival stamped on arrival');
+        assert.equal(at('a0').actual_arrival, state.find((s) => s.id === 'a0')!.actual_arrival, 'round-1 origin untouched');
+
+        // Return loading photos taken, then the driver leaves.
+        assert.equal(await send(tx, 'LOADING'), 'RETURN_LOADING');
+        await send(tx, 'GOING_TO_RETURN_STOP');
+        assert.ok(at('b1').actual_departure);
+        await stampIntermediateStopVisit(tx, 't10', 'c1');
+        await send(tx, 'ARRIVED_AT_FINAL_DELIVERY');
+        assert.ok(at('a1').actual_arrival);
+        await send(tx, 'COMPLETED');
+        assert.ok(at('a1').actual_departure);
+        assert.equal(getEffectiveWorkflowState(trip(state, 'COMPLETED')), 'COMPLETED');
+      });
+
+      it('resolves a stuck trip (stale ARRIVED_AT_PICKUP after the delivery) to the return leg and completes it', async () => {
+        const state = stops();
+        const tx = mockTx(state);
+        const at = (id: string) => state.find((s) => s.id === id)!;
+        const done = '2026-09-13T08:00:00Z';
+        Object.assign(at('a0'), { actual_arrival: done, actual_departure: done });
+        Object.assign(at('b0'), { actual_arrival: done, actual_departure: done });
+        // Old server behaviour: return pickup stamped as arrived at delivery time.
+        at('b1').actual_arrival = done;
+
+        const stuck = trip(state, 'ARRIVED_AT_PICKUP');
+        assert.equal(getEffectiveWorkflowState(stuck), 'RETURN_LOADING');
+        // Even with the return pickup unstamped, the stale state still reads as the return leg.
+        at('b1').actual_arrival = null;
+        assert.equal(getEffectiveWorkflowState(stuck), 'RETURN_LOADING');
+
+        assert.equal(await send(tx, 'ARRIVED_AT_PICKUP'), 'RETURN_LOADING');
+        assert.ok(at('b1').actual_arrival, 'return pickup arrival stamped');
+        await send(tx, 'GOING_TO_RETURN_STOP');
+        await send(tx, 'ARRIVED_AT_FINAL_DELIVERY');
+        await send(tx, 'COMPLETED');
+        assert.ok(at('a1').actual_departure);
+      });
+
+      it('isReturnLoadingPhase is true for a stale round-1 state after the delivery, false before it', () => {
+        const state = stops();
+        assert.equal(isReturnLoadingPhase(trip(state, 'ARRIVED_AT_PICKUP')), false, 'still at round-1 pickup');
+        assert.equal(isReturnLoadingPhase(trip(state, 'ARRIVED_AT_DELIVERY')), false);
+        const done = '2026-09-13T08:00:00Z';
+        for (const id of ['a0', 'b0']) Object.assign(state.find((s) => s.id === id)!, { actual_arrival: done, actual_departure: done });
+        for (const ws of ['ARRIVED_AT_PICKUP', 'LOADING', 'RETURN_LOADING']) {
+          assert.equal(isReturnLoadingPhase(trip(state, ws)), true, ws);
+        }
+        state.find((s) => s.id === 'b1')!.actual_departure = done;
+        assert.equal(isReturnLoadingPhase(trip(state, 'IN_TRANSIT_RETURN')), false, 'return pickup already left');
+      });
+
+      it('leaves round-1 pickup states alone before the outbound delivery, and on one-way trips', async () => {
+        const state = stops();
+        assert.equal(await resolveIncomingWorkflowState(mockTx(state), 't10', 'ARRIVED_AT_PICKUP'), 'ARRIVED_AT_PICKUP');
+        assert.equal(await resolveIncomingWorkflowState(mockTx(state), 't10', 'LOADING'), 'LOADING');
+        const oneWay = state.slice(0, 2).map((s) => ({ ...s, leg_index: 0 }));
+        oneWay[1].actual_arrival = '2026-09-13T08:00:00Z';
+        assert.equal(await resolveIncomingWorkflowState(mockTx(oneWay), 't10', 'LOADING'), 'LOADING');
+      });
     });
 
     it('supports a round trip whose final drop is not the origin (A → B | B → C → D)', () => {

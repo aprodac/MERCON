@@ -4,7 +4,7 @@ import path from 'path';
 import { prisma } from '../db';
 import { logger } from '../utils/logger';
 import { TripStatus, DocType } from '@prisma/client';
-import { isValidTransition, markOnTrip, completeTripAndInvoice, stampStopTransition, stampWorkflowTransition, stampIntermediateStopVisit, resolveAuthoritativeActiveStop, type DelayDetection } from '../services/tripLifecycle';
+import { isValidTransition, markOnTrip, completeTripAndInvoice, stampStopTransition, stampWorkflowTransition, resolveIncomingWorkflowState, stampIntermediateStopVisit, resolveAuthoritativeActiveStop, type DelayDetection } from '../services/tripLifecycle';
 import { buildTripRouteTimeline, getLegEndpoints } from '../services/tripRouteTimeline';
 import { notifyOperatorsOfDelay } from './notificationController';
 import { recordDriverActivity } from '../services/driverPhone/activity';
@@ -380,10 +380,13 @@ export const updateTripStatus = async (req: Request, res: Response) => {
     // slot (`updateStatus(id, 'Delayed', reason)`), so the reason was saved as
     // the trip's workflow state and lost as a reason. Workflow states are
     // UPPER_SNAKE_CASE; on a Delayed update anything else is the reason.
-    const { workflowState, delayReason } = splitDelayReason(status, driver_workflow_state, reason);
+    const split = splitDelayReason(status, driver_workflow_state, reason);
+    const { delayReason } = split;
 
     let delay: DelayDetection | null = null;
+    let workflowState = split.workflowState;
     const updatedTrip = await prisma.$transaction(async (tx) => {
+      if (workflowState) workflowState = await resolveIncomingWorkflowState(tx, id, workflowState);
       if (typeof completed_stop_id === 'string' && completed_stop_id) {
         await stampIntermediateStopVisit(tx, id, completed_stop_id);
       }
