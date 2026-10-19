@@ -13,11 +13,12 @@ import { GeotagPhotoModal } from '../components/GeotagPhotoModal';
 import { StageHeader, STAGE_THEME } from '../components/StageHeader';
 import { FadedBottomIllustration } from '../components/FadedBottomIllustration';
 import { DelayReportModal } from '../components/DelayReportModal';
-import { ReturnLoadingModal } from '../components/ReturnLoadingModal';
+import { roundTimes } from '../services/roundTimes';
+import { driverWorkflowState, isOnReturnLeg } from '../utils/driverWorkflow';
 import { useCurrentTrip } from '../hooks/use-current-trip';
-import { tripService, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, getLegEndpoints, getEvidencePolicy } from '@mercon/mobile-shared/lib/trips';
+import { tripService, stopAddress, stopLabel, isRoundTrip, getLegEndpoints, getEvidencePolicy } from '@mercon/mobile-shared/lib/trips';
 
-import { pickFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
+import { keepExistingPhotos, pickFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
 import { PhotoCaptureModal } from '../components/PhotoCaptureModal';
 import { UploadProgressBar } from '../components/UploadProgressBar';
 import { usePhotoUploads } from '../hooks/use-photo-uploads';
@@ -99,7 +100,7 @@ const DeliveryVerificationScreen = () => {
   const router = useRouter();
   const { t, language, tr } = useLanguage();
   const { trip, loading, refetch, setTrip } = useCurrentTrip();
-  const ws = getEffectiveWorkflowState(trip);
+  const ws = driverWorkflowState(trip);
   const isRound = isRoundTrip(trip);
   // Once the return-leg dropoff's actual_departure is stamped,
   // getEffectiveWorkflowState() immediately jumps to 'COMPLETED' — it never
@@ -136,22 +137,26 @@ const DeliveryVerificationScreen = () => {
   const [submitting, setSubmitting] = useState(false);
   const [previewPhoto, setPreviewPhoto] = useState<CapturedPhoto | null>(null);
   const [showDelayModal, setShowDelayModal] = useState(false);
-  const [showReturnModal, setShowReturnModal] = useState(false);
 
-  // If this delivery stop is already completed and departed, navigate forward
+  // This delivery is behind the driver: move on. Decided by HIS progress
+  // (driverWorkflowState), never by the stop's departure time — the office can
+  // type that in while he is still here, which used to bounce him off this
+  // screen so he could never press Delivery complete.
+  const pastThisDelivery = isFinalDelivery ? ws === 'COMPLETED' : isOnReturnLeg(ws);
   useEffect(() => {
-    if (loading || !trip || !dropoffStop || showReturnModal) return;
-    if (dropoffStop.actual_departure) {
-      if (isReturnDelivery || !isRound) {
+    if (loading || !trip || !dropoffStop) return;
+    if (pastThisDelivery) {
+      if (isFinalDelivery) {
         router.replace({ pathname: '/trip/completed', params: { tripId: trip.id } } as any);
       } else {
-        router.replace({ pathname: '/trip/pickup', params: { showReturnPrompt: '1' } } as any);
+        router.replace('/trip/round-done' as any);
       }
     }
-  }, [loading, trip?.id, dropoffStop?.id, dropoffStop?.actual_departure, isReturnDelivery, isRound, showReturnModal]);
+  }, [loading, trip?.id, dropoffStop?.id, pastThisDelivery, isFinalDelivery]);
 
   const validPhotosCount = photos.filter((p) => !!p?.uri).length;
-  const hasAllPhotos = validPhotosCount >= need;
+  // Up to `need` boxes, but one photo is enough to continue (getEvidencePolicy).
+  const hasAllPhotos = validPhotosCount >= evidence.min;
 
   // Load draft photos or prefill with already uploaded server documents
   useEffect(() => {
@@ -170,9 +175,13 @@ const DeliveryVerificationScreen = () => {
 
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            markUploaded(parsed.filter((ph: CapturedPhoto) => ph?.uploaded).map((ph: CapturedPhoto) => ph.uri));
-            setPhotos(parsed);
+          // Drop entries whose file Android has since cleared from the cache:
+          // they showed as a "filled" box that opened a blank preview instead
+          // of the camera.
+          const usable = Array.isArray(parsed) ? await keepExistingPhotos(parsed) : [];
+          if (usable.length > 0) {
+            markUploaded(usable.filter((ph: CapturedPhoto) => ph?.uploaded).map((ph: CapturedPhoto) => ph.uri));
+            setPhotos(usable);
             return;
           }
         }
@@ -286,7 +295,7 @@ const DeliveryVerificationScreen = () => {
 
   /** Put a new photo in the next empty box, save the draft, start its upload. */
   const acceptPhoto = (photo: CapturedPhoto) => {
-    const valid = [...photosRef.current, photo].filter(Boolean).slice(0, need);
+    const valid = [...photosRef.current, photo].filter((p) => !!p?.uri).slice(0, need);
     photosRef.current = valid;
     setPhotos(valid);
     savePhotoDrafts(valid);
@@ -299,7 +308,8 @@ const DeliveryVerificationScreen = () => {
    * are taken (it has its own Gallery tab). Long-press: straight to gallery.
    */
   const addPhoto = async (source: 'camera' | 'gallery' = primarySource) => {
-    if (photosRef.current.length >= need) return;
+    // Count real photos only — an empty or broken draft entry must not block the camera.
+    if (photosRef.current.filter((p) => !!p?.uri).length >= need) return;
     if (source === 'camera') {
       setCameraOpen(true);
       return;
@@ -325,14 +335,14 @@ const DeliveryVerificationScreen = () => {
 
   const handleCompleteDelivery = async () => {
     if (!trip || submitting) return;
-    if (validPhotosCount < need) {
+    if (validPhotosCount < evidence.min) {
       Alert.alert(
         evidence.screenshot
           ? t('title_upload_screenshot', 'Upload Customer App Screenshot')
           : isReturnDelivery
           ? t('title_upload_return_delivery_photos', 'Upload Return Delivery Photos')
           : t('title_upload_delivery_photos', 'Upload Delivery Photos'),
-        `${isReturnDelivery ? t('title_upload_return_delivery_photos', 'Upload return delivery photos') : t('title_upload_delivery_photos', 'Upload delivery photos')} (${validPhotosCount}/${need}).`
+        `${isReturnDelivery ? t('title_upload_return_delivery_photos', 'Upload return delivery photos') : t('title_upload_delivery_photos', 'Upload delivery photos')} (${validPhotosCount}/${evidence.min}).`
       );
       return;
     }
@@ -383,7 +393,9 @@ const DeliveryVerificationScreen = () => {
         if (dropoffStop?.id) {
           await SecureStore.deleteItemAsync(`delivery_draft_${trip.id}_${dropoffStop.id}`).catch(() => {});
         }
-        router.replace({ pathname: '/trip/pickup', params: { showReturnPrompt: '1' } } as any);
+        // Round 1 is done: the round page shows its times and the break until Start Round 2.
+        await roundTimes.markRound1Done(trip.id);
+        router.replace('/trip/round-done' as any);
       } else {
         // Final leg delivery completed! Transition to COMPLETED
         if (dropoffStop?.id) {
@@ -439,7 +451,7 @@ const DeliveryVerificationScreen = () => {
           title={isReturnDelivery ? t('title_return_delivery_header', 'Return Delivery') : t('title_delivery_header', 'Delivery')}
           subtitle={evidence.screenshot
             ? t('sub_stage_screenshot', "Add a screenshot of the customer's app")
-            : t('sub_stage_delivery', 'Unload the cargo, then take 3 photos')}
+            : t('sub_stage_delivery', 'Unload the cargo, then take photos (1 is enough, up to 3)')}
           isReturn={isReturnDelivery}
           trip={trip}
           target={{ kind: 'delivery', leg: isReturnDelivery ? 1 : 0 }}
@@ -525,7 +537,7 @@ const DeliveryVerificationScreen = () => {
           </View>
 
           <UploadProgressBar items={uploads.itemsFor(photos)} total={need} accent="#16A34A" />
-          {!hasAllPhotos ? (
+          {validPhotosCount < need ? (
             <TouchableOpacity style={styles.galleryLink} activeOpacity={0.7} onPress={() => addPhoto(otherSource)}>
               <Text style={styles.galleryLinkText}>
                 {evidence.screenshot
@@ -543,7 +555,7 @@ const DeliveryVerificationScreen = () => {
             ]}
             activeOpacity={0.85}
             onPress={handleCompleteDelivery}
-            disabled={!hasAllPhotos || submitting}
+            disabled={submitting}
           >
             <CircleCheckBig size={22} color={hasAllPhotos ? "#FFFFFF" : "#94A3B8"} strokeWidth={2} />
             <Text style={[styles.mainActionBtnText, !hasAllPhotos && styles.mainActionBtnTextDisabled]}>
@@ -581,17 +593,6 @@ const DeliveryVerificationScreen = () => {
         tripId={trip?.id ?? ''}
         onClose={() => setShowDelayModal(false)}
         onSuccess={() => setShowDelayModal(false)}
-      />
-
-      <ReturnLoadingModal
-        visible={showReturnModal}
-        destinationName={stopLabel(dropoffStop) || 'Return Pickup Depot'}
-        destinationAddress={stopAddress(dropoffStop) || undefined}
-        onConfirm={() => {
-          setShowReturnModal(false);
-          router.replace({ pathname: '/trip/pickup', params: { showReturnPrompt: '1' } } as any);
-        }}
-        onClose={() => setShowReturnModal(false)}
       />
     </SafeAreaView>
   );

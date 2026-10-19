@@ -14,6 +14,7 @@ import { DelayReportModal } from '../components/DelayReportModal';
 import { TripProgressStepper } from '../components/TripProgressStepper';
 import { DelayButton } from '../components/DelayButton';
 import { useCurrentTrip } from '../hooks/use-current-trip';
+import { driverWorkflowState, driverIsReturnLoading } from '../utils/driverWorkflow';
 import { tripService, stopAddress, stopLabel, isRoundTrip, resolveAuthoritativeActiveStop, getLegEndpoints } from '@mercon/mobile-shared/lib/trips';
 
 import { targetFromWorkflowState } from '../utils/routeParser';
@@ -68,15 +69,19 @@ const LiveNavigationScreen = () => {
   const [delayModalVisible, setDelayModalVisible] = useState(false);
   const hasArrivedRef = useRef(false);
 
-  const ws = trip?.driver_workflow_state || 'ASSIGNED';
+  // Same state Home and the pickup/delivery screens use. The raw state can be a
+  // stale round-1 one (ARRIVED_AT_PICKUP) on a round trip's return leg, which
+  // sent the driver back to the round-1 origin.
+  const ws = driverWorkflowState(trip);
   const isRound = isRoundTrip(trip);
+  const isReturnPickup = driverIsReturnLoading(trip);
 
   const authActive = React.useMemo(() => {
     return resolveAuthoritativeActiveStop(trip);
   }, [trip]);
 
   // Determine if heading to pickup or delivery directly from workflow state
-  const isHeadingToPickup = ws === 'ASSIGNED' || ws === 'GOING_TO_PICKUP' || ws === 'ARRIVED_AT_PICKUP' || (isRound && ws === 'RETURN_LOADING');
+  const isHeadingToPickup = ws === 'ASSIGNED' || ws === 'GOING_TO_PICKUP' || ws === 'ARRIVED_AT_PICKUP' || isReturnPickup;
 
   // Leg comes from the driver's workflow state. The stop records can't be
   // trusted for this on their own: intermediate stops completed before
@@ -160,7 +165,7 @@ const LiveNavigationScreen = () => {
     setArriving(true);
     try {
       if (isHeadingToPickup) {
-        await tripService.updateStatus(trip.id, 'Loading', 'ARRIVED_AT_PICKUP');
+        await tripService.updateStatus(trip.id, 'Loading', isReturnPickup ? 'RETURN_LOADING' : 'ARRIVED_AT_PICKUP');
         router.replace('/trip/pickup' as any);
       } else {
         const isReturnFinal = isRound && (legIndex === 1 || ws === 'IN_TRANSIT_RETURN');

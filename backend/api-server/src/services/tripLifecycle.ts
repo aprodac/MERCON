@@ -258,6 +258,31 @@ export async function releaseVehiclesIfFree(tx: Prisma.TransactionClient, vehicl
  */
 export const completeTripAndInvoice = completeTrip;
 
+/**
+ * A round trip's driver app can still send the round-1 pickup states
+ * (ARRIVED_AT_PICKUP / LOADING) after the outbound delivery is done — older
+ * builds' map screen does for the return leg's "I've arrived", and the stale
+ * state it leaves behind makes the app loop back to the round-1 origin. Once
+ * the outbound delivery has arrived or departed those states can only mean the
+ * return leg, so they are rewritten to RETURN_LOADING before they are saved
+ * or stamped. Any other state, and any one-way trip, passes through.
+ */
+export async function resolveIncomingWorkflowState(
+  tx: Prisma.TransactionClient,
+  tripId: string,
+  workflowState: string,
+): Promise<string> {
+  if (workflowState !== 'ARRIVED_AT_PICKUP' && workflowState !== 'LOADING') return workflowState;
+  const stops = await tx.tripStop.findMany({
+    where: { tripId, deletedAt: null },
+    orderBy: { stop_sequence: 'asc' },
+  });
+  if (!isRoundTrip({ stops })) return workflowState;
+  const { delivery } = getLegEndpoints({ stops }, 0);
+  if (delivery && (delivery.actual_arrival || delivery.actual_departure)) return 'RETURN_LOADING';
+  return workflowState;
+}
+
 export async function stampWorkflowTransition(
   tx: Prisma.TransactionClient,
   tripId: string,
@@ -299,6 +324,8 @@ export async function stampWorkflowTransition(
   const finalDelivery = returnEndpoints.delivery || outboundDelivery;
 
   const isRound = isRoundTrip({ stops });
+  // Read before the guard below auto-stamps the departure.
+  const deliveryAlreadyDeparted = !!outboundDelivery?.actual_departure;
 
   // STRICT RETURN START GUARD:
   // Cannot start return leg loading before outbound delivery is completed.
@@ -345,13 +372,17 @@ export async function stampWorkflowTransition(
       });
     }
   } else if (workflowState === 'FIRST_DELIVERY_COMPLETED' || workflowState === 'RETURN_LOADING') {
+    // The driver confirming the outbound delivery sends RETURN_LOADING too, so
+    // the first one only closes the delivery: the return pickup is not reached
+    // until the driver says so (often the next morning). A RETURN_LOADING that
+    // comes once the delivery has already departed is that arrival.
     if (outboundDelivery) {
       await tx.tripStop.updateMany({
         where: { id: outboundDelivery.id, actual_departure: null },
         data: { actual_departure: now },
       });
     }
-    if (returnLoading) {
+    if (returnLoading && workflowState === 'RETURN_LOADING' && deliveryAlreadyDeparted) {
       await tx.tripStop.updateMany({
         where: { id: returnLoading.id, actual_arrival: null },
         data: { actual_arrival: now },

@@ -178,9 +178,9 @@ export const TRANSLATIONS: Record<string, TranslationItem> = {
 
   // Pickup & Loading Verification
   title_loading_header: { en: 'Loading', ur: 'لوڈنگ' },
-  sub_stage_loading: { en: 'Load the cargo, then take 3 photos', ur: 'سامان لوڈ کریں، پھر 3 تصاویر لیں' },
-  sub_stage_delivery: { en: 'Unload the cargo, then take 3 photos', ur: 'سامان اتاریں، پھر 3 تصاویر لیں' },
-  sub_stage_stop: { en: 'Take 3 photos at this stop', ur: 'اس اسٹاپ پر 3 تصاویر لیں' },
+  sub_stage_loading: { en: 'Load the cargo, then take photos (1 is enough, up to 3)', ur: 'سامان لوڈ کریں، پھر تصاویر لیں (1 کافی ہے، زیادہ سے زیادہ 3)' },
+  sub_stage_delivery: { en: 'Unload the cargo, then take photos (1 is enough, up to 3)', ur: 'سامان اتاریں، پھر تصاویر لیں (1 کافی ہے، زیادہ سے زیادہ 3)' },
+  sub_stage_stop: { en: 'Take photos at this stop (1 is enough, up to 3)', ur: 'اس اسٹاپ پر تصاویر لیں (1 کافی ہے، زیادہ سے زیادہ 3)' },
   sub_stage_screenshot: { en: "Add a screenshot of the customer's app", ur: 'کسٹمر ایپ کا اسکرین شاٹ لگائیں' },
   label_return: { en: 'Return', ur: 'واپسی' },
   title_return_loading_header: { en: 'Return Loading', ur: 'واپسی لوڈنگ' },
@@ -262,7 +262,22 @@ export const TRANSLATIONS: Record<string, TranslationItem> = {
   // Modals (Return Loading & Delay)
   title_return_modal: { en: 'Delivery Completed!', ur: 'ڈلیوری مکمل ہو گئی!' },
   title_stop_photos_required: { en: 'Stop Photos Required', ur: 'اسٹاپ کی تصاویر ضروری ہیں' },
-  msg_min_stop_photos: { en: 'Please add at least 3 photos for this stop', ur: 'اس اسٹاپ کے لیے کم از کم 3 تصاویر شامل کریں' },
+  msg_min_stop_photos: { en: 'Please add at least 1 photo for this stop', ur: 'اس اسٹاپ کے لیے کم از کم 1 تصویر شامل کریں' },
+
+  // Round trips: round 1 page and trip summary
+  label_rounds: { en: 'Rounds', ur: 'راؤنڈز' },
+  label_round_1: { en: 'Round 1', ur: 'راؤنڈ 1' },
+  label_round_2: { en: 'Round 2', ur: 'راؤنڈ 2' },
+  label_break: { en: 'Break', ur: 'وقفہ' },
+  label_break_since: { en: 'Since {time}', ur: '{time} سے' },
+  action_take_break_home: { en: 'Take a break — go to Home', ur: 'وقفہ لیں — ہوم پر جائیں' },
+  round_step_trip_started: { en: 'Trip started', ur: 'ٹرپ شروع ہوا' },
+  round_step_round2_started: { en: 'Round 2 started', ur: 'راؤنڈ 2 شروع ہوا' },
+  round_step_arrived_loading: { en: 'Arrived at loading', ur: 'لوڈنگ پر پہنچے' },
+  round_step_loading_done: { en: 'Loading done', ur: 'لوڈنگ مکمل' },
+  round_step_stop: { en: 'Stop', ur: 'اسٹاپ' },
+  round_step_arrived_delivery: { en: 'Arrived at delivery', ur: 'ڈیلیوری پر پہنچے' },
+  round_step_delivered: { en: 'Delivered', ur: 'ڈیلیور ہو گیا' },
   title_round_1_done: { en: 'Round 1 of 2 completed', ur: 'راؤنڈ 1 از 2 مکمل' },
   label_next_return_loading: { en: 'Next: return loading at {place}', ur: 'اگلا: {place} پر واپسی لوڈنگ' },
   action_start_round_2: { en: 'Start Round 2 of 2', ur: 'راؤنڈ 2 از 2 شروع کریں' },
@@ -647,5 +662,5 @@ export const TRANSLATIONS: Record<string, TranslationItem> = {
   tlog_finish_confirm: { en: 'Finish this trip? Send the last screenshot first.', ur: 'کیا ٹرپ ختم کریں؟ پہلے آخری اسکرین شاٹ بھیجیں۔' },
   tlog_finish_empty: { en: 'Send at least one screenshot before finishing.', ur: 'ختم کرنے سے پہلے کم از کم ایک اسکرین شاٹ بھیجیں۔' },
   tlog_wait_uploads: { en: 'Wait until all screenshots are sent.', ur: 'تمام اسکرین شاٹس بھیجے جانے تک انتظار کریں۔' },
-  tlog_planned: { en: 'Planned', ur: 'منصوبہ' },
+  tlog_next: { en: 'Next', ur: 'اگلا' },
 };

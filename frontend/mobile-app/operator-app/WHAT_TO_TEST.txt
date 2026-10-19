@@ -10,6 +10,7 @@ FROM YOUR LATEST FEEDBACK (18 Oct morning)
 9. Drivers / Vehicles: download button (top) → spreadsheet through the share sheet.
 10. To do > expiring document: "Add new" opens that folder to upload the new copy.
 11. Date picker: tap "May 2027" for months, tap again for years.
+13. Customer-app trip: only times to check are red; once all the driver's sends are on stops the Driver's log is one line.
 12. Documents: folder shows all its documents under any filter. Names show first two words ("Muhammed Rizwan").
 
 EARLIER FEEDBACK (18 Oct)
