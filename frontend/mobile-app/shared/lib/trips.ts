@@ -265,8 +265,10 @@ export function getMonthlyDriverPayout(trips: (MobileTrip | null | undefined)[],
 export type EvidenceStage = 'loading' | 'stop' | 'delivery';
 
 export interface EvidencePolicy {
-  /** Photos the driver must attach before the step can be confirmed. */
+  /** Photo boxes shown for the step (the driver may fill up to this many). */
   count: number;
+  /** Photos needed before the step can be confirmed — 1 is enough, 3 is the most. */
+  min: number;
   /**
    * true for EXTERNAL_APP trips: the proof is a screenshot of the customer's
    * own app, so the gallery opens first (camera on long-press) and no
@@ -284,8 +286,8 @@ export interface EvidencePolicy {
  * dashboard's time confirmation keeps working whichever screen sent them.
  */
 export function getEvidencePolicy(trip: MobileTrip | null | undefined, stage: EvidenceStage): EvidencePolicy {
-  if (trip?.driver_workflow === 'EXTERNAL_APP') return { count: 1, screenshot: true };
-  return { count: 3, screenshot: false };
+  if (trip?.driver_workflow === 'EXTERNAL_APP') return { count: 1, min: 1, screenshot: true };
+  return { count: 3, min: 1, screenshot: false };
 }
 
 /** "Riyadh → Jeddah → Riyadh": every planned place in order, a repeat in a row shown once. */
