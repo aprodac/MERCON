@@ -68,7 +68,7 @@ export const StageHeader: React.FC<StageHeaderProps> = ({
         </View>
         <View style={styles.titleCol}>
           <Text style={styles.title} numberOfLines={1}>{title}</Text>
-          <Text style={styles.subtitle} numberOfLines={2}>{subtitle}</Text>
+          <Text style={styles.subtitle} numberOfLines={2}>{trip?.ref_id ? `${trip.ref_id} · ${subtitle}` : subtitle}</Text>
         </View>
       </View>
 

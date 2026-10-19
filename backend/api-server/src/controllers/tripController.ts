@@ -600,6 +600,15 @@ export const getTripById = async (req: Request, res: Response) => {
     }
 
     if (!trip) {
+      // Deleted (not just mistyped): say so, so screens don't offer a pointless Retry
+      // (TestFlight feedback: opening a deleted trip's alert showed Retry).
+      const deleted = await prisma.trip.findFirst({
+        where: { ...whereClause, deletedAt: { not: null } },
+        select: { ref_id: true, deletedAt: true },
+      });
+      if (deleted) {
+        return res.status(404).json({ success: false, error: { code: 'TRIP_DELETED', message: `${deleted.ref_id ?? 'This trip'} was deleted on ${deleted.deletedAt!.toISOString().slice(0, 10)}.` } });
+      }
       return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Trip not found' } });
     }
 
@@ -794,6 +803,21 @@ export const createTrip = async (req: Request, res: Response) => {
     const isDispatchingNow = false;
     let targetStatus = requestedStatus || TripStatus.Scheduled;
     targetStatus = resolveInitialTripStatus(targetStatus, requestedStatus, parsedPlannedStart);
+
+    // No double booking — the same rule as bulk import.
+    if (!is_third_party && !CLASH_IGNORED_STATUSES.includes(targetStatus)) {
+      const clash = await findScheduleClash({
+        tripId: null,
+        start: parsedPlannedStart,
+        end: parsedPlannedEnd,
+        driverIds: [driver_id, co_driver_id].filter((x): x is string => typeof x === 'string' && isUuid(x)),
+        vehicleId: typeof vehicle_id === 'string' && isUuid(vehicle_id) ? vehicle_id : null,
+        bufferHours: 0,
+      });
+      if (clash) {
+        return res.status(409).json({ success: false, error: { code: 'SCHEDULE_CLASH', message: clash.message, details: clash } });
+      }
+    }
 
     const carrierName = await getCompanyLegalName();
 
@@ -1223,6 +1247,22 @@ export const bulkImportTrips = async (req: Request, res: Response) => {
           ? row.status
           : TripStatus.Scheduled;
         targetStatus = resolveInitialTripStatus(targetStatus, row.status, parsedPlannedStart);
+
+        // No double booking: the driver, co-driver or truck must not already be
+        // on another open trip at that time (a trip booked over the same hours
+        // was only spotted later as "Overlapped"). A finished trip entered after
+        // the fact isn't checked.
+        if (!row.is_third_party && !CLASH_IGNORED_STATUSES.includes(targetStatus)) {
+          const clash = await findScheduleClash({
+            tripId: null,
+            start: parsedPlannedStart,
+            end: parsedPlannedEnd,
+            driverIds: [driverId, row.co_driver_id].filter((x): x is string => typeof x === 'string' && isUuid(x)),
+            vehicleId,
+            bufferHours: 0,
+          });
+          if (clash) throw new Error(clash.message);
+        }
 
 
         const ref_id = await generateRefId('TRP', () =>
@@ -2445,15 +2485,19 @@ const CLASH_IGNORED_STATUSES: TripStatus[] = [TripStatus.Cancelled, TripStatus.C
  * taken as 4 h long (the ranking's rule).
  */
 export async function findScheduleClash(opts: {
-  tripId: string;
+  /** The trip being moved (left out of the search); null for a new trip. */
+  tripId: string | null;
   start: Date | null;
   end: Date | null;
   driverIds: string[];
   vehicleId: string | null;
+  /** Gap required between trips; DISPATCH_RULES.bufferHours unless given (0 = real overlap only). */
+  bufferHours?: number;
 }): Promise<{ tripId: string; ref: string | null; start: string; end: string | null; by: 'driver' | 'truck'; message: string } | null> {
   if (!opts.start || (!opts.driverIds.length && !opts.vehicleId)) return null;
   const HOUR = 3_600_000;
-  const buffer = DISPATCH_RULES.bufferHours * HOUR;
+  const bufferHours = opts.bufferHours ?? DISPATCH_RULES.bufferHours;
+  const buffer = bufferHours * HOUR;
   const start = opts.start.getTime();
   const end = (opts.end ?? new Date(start + 4 * HOUR)).getTime();
   const people = opts.driverIds.length
@@ -2462,7 +2506,7 @@ export async function findScheduleClash(opts: {
   const candidates = await prisma.trip.findMany({
     where: {
       deletedAt: null,
-      id: { not: opts.tripId },
+      ...(opts.tripId ? { id: { not: opts.tripId } } : {}),
       status: { notIn: CLASH_IGNORED_STATUSES },
       // Anything starting before this trip ends; a trip longer than 30 days is not a thing here.
       planned_start: { lt: new Date(end + buffer), gt: new Date(start - 30 * 24 * HOUR) },
@@ -2491,7 +2535,9 @@ export async function findScheduleClash(opts: {
     start: hit.planned_start!.toISOString(),
     end: hit.planned_end?.toISOString() ?? null,
     by: byDriver ? 'driver' : 'truck',
-    message: `${who} already on ${hit.ref_id ?? 'another trip'} at that time (trips need a ${DISPATCH_RULES.bufferHours} h gap). Pick another date, or change the driver or truck first.`,
+    message: bufferHours > 0
+      ? `${who} already on ${hit.ref_id ?? 'another trip'} at that time (trips need a ${bufferHours} h gap). Pick another date, or change the driver or truck first.`
+      : `${who} already on ${hit.ref_id ?? 'another trip'} at that time. Pick another time, or another driver or truck.`,
   };
 }
 

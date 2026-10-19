@@ -34,6 +34,7 @@ import { StopsTab } from './components/StopsTab';
 import { DetailsTab } from './components/DetailsTab';
 import { ShareSheet, type ShareTarget } from './components/ShareSheet';
 import { MediaViewer, type ViewerItem } from './components/MediaViewer';
+import { DriverLog, LogStopSheet, type LogEntry } from './components/DriverLog';
 import { TripTimesSheet } from './components/TripTimesSheet';
 import { PinSheet } from './components/PinSheet';
 import { ActivitySheet, ChargesSheet, MoreSheet, UploadSheet } from './components/Sheets';
@@ -57,7 +58,7 @@ export default function TripDetailsScreen() {
   // a driver's update (push or Activity) opens on its stop (`stop`) or on the photos it sent (`photo`).
   const params = useLocalSearchParams<{ id: string; tab?: string; share?: string; update?: string; assign?: string; times?: string; stop?: string; photo?: string }>();
   const { id } = params;
-  const { trip, overview, updates, whatsappApi, tz, phase, remaining, tracking, trackingUrl, refreshTracking, loading, refreshing, error, refresh, reload } = useTripDetails(id);
+  const { trip, overview, updates, whatsappApi, tz, phase, remaining, tracking, trackingUrl, refreshTracking, loading, refreshing, error, deleted, refresh, reload } = useTripDetails(id);
   const f = useMemo(() => makeFormatters(tz), [tz]);
   const queryClient = useQueryClient();
 
@@ -66,6 +67,8 @@ export default function TripDetailsScreen() {
   const [share, setShare] = useState<ShareTarget | null>(null);
   const [viewer, setViewer] = useState<{ items: ViewerItem[]; index: number; title: string; update?: DriverUpdate } | null>(null);
   const [checkingTimes, setCheckingTimes] = useState(false);
+  const [timesStop, setTimesStop] = useState<string | null>(null);
+  const [logEntry, setLogEntry] = useState<LogEntry | null>(null);
   const [pinTarget, setPinTarget] = useState<{ stop: Stop; label: string; photoPins?: PhotoPin[]; preselect?: string | null } | null>(null);
   const [sheet, setSheet] = useState<'more' | 'upload' | 'activity' | 'charges' | 'stepback' | null>(null);
   const [fullMap, setFullMap] = useState(false);
@@ -143,11 +146,11 @@ export default function TripDetailsScreen() {
   if (!trip || !phase) {
     return (
       <View style={[s.center, { backgroundColor: PAGE, padding: 24 }]}>
-        <Text style={s.errTitle}>Couldn’t open this trip</Text>
+        <Text style={s.errTitle}>{deleted ? 'This trip was deleted' : 'Couldn’t open this trip'}</Text>
         <Text style={s.errText}>{error ?? 'Trip not found'}</Text>
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
           <TouchableOpacity style={s.errBtn} onPress={() => router.back()}><Text style={s.errBtnText}>Go back</Text></TouchableOpacity>
-          <TouchableOpacity style={[s.errBtn, { backgroundColor: ACTION }]} onPress={refresh}><Text style={[s.errBtnText, { color: Colors.white }]}>Retry</Text></TouchableOpacity>
+          {deleted ? null : <TouchableOpacity style={[s.errBtn, { backgroundColor: ACTION }]} onPress={refresh}><Text style={[s.errBtnText, { color: Colors.white }]}>Retry</Text></TouchableOpacity>}
         </View>
       </View>
     );
@@ -226,18 +229,38 @@ export default function TripDetailsScreen() {
     }
   };
 
-  const applyChange = async (value: string) => {
+  const applyChange = async (value: string, withDriver?: string) => {
     if (!picker) return;
     setBusy(true);
     try {
-      if (picker.kind === 'driver') await operatorService.replaceDriver(trip.id, value);
+      // A trip booked with "Assign later" has no driver to replace: assign one
+      // (replace-driver answered "This trip has no driver yet" — TestFlight feedback).
+      if (picker.kind === 'driver') {
+        if (trip.driver) await operatorService.replaceDriver(trip.id, value);
+        else await operatorService.assignTrip(trip.id, { driver_id: value });
+      } else if (withDriver) await operatorService.assignTrip(trip.id, { vehicle_id: value, driver_id: withDriver });
       else await operatorService.replaceVehicle(trip.id, value);
       reload();
     } catch (e) {
-      Alert.alert(picker.kind === 'driver' ? 'Could not change the driver' : 'Could not change the truck', getApiErrorMessage(e));
+      Alert.alert(picker.kind === 'driver' ? 'Could not assign the driver' : 'Could not assign the truck', getApiErrorMessage(e));
     } finally {
       setBusy(false);
     }
+  };
+
+  /** A truck picked for a trip with no driver: offer the truck's own driver too. */
+  const pickValue = (value: string) => {
+    const truck = picker?.kind === 'truck' ? picker.vehicles?.find((v) => v.id === value) : null;
+    const usual = truck?.assignedDriver;
+    if (picker?.kind === 'truck' && !trip.driver && !trip.is_third_party && usual?.id) {
+      const name = niceName(`${usual.first_name} ${usual.last_name}`);
+      Alert.alert('Add the driver too?', `${name} drives ${truck!.plate_number}. Assign them to this trip as well?`, [
+        { text: 'Truck only', onPress: () => applyChange(value) },
+        { text: `Add ${name}`, onPress: () => applyChange(value, usual.id) },
+      ]);
+      return;
+    }
+    applyChange(value);
   };
 
   const upload = async (kind: TripDocKind) => {
@@ -300,8 +323,12 @@ export default function TripDetailsScreen() {
         sent: u.sent_ids.includes(m.id),
         geo: m.gps ? { lat: m.gps.lat, lng: m.gps.lng, captured_at: m.captured_at, place: name, address: st?.location?.city ?? null, customer: trip.customer?.name ?? null } : null,
         info: facts,
+        timeAction: st && st.actual_arrival ? {
+          label: `Edit ${name}'s time`,
+          onPress: () => { setViewer(null); setTimeout(() => { setTimesStop(st.id); setCheckingTimes(true); }, 300); },
+        } : null,
         pinAction: canPin ? {
-          label: needsPin(st!) ? `Use this photo's GPS as ${name}'s pin` : `Move ${name}'s pin to this photo's GPS`,
+          label: needsPin(st!) ? `Use as ${name}'s pin` : `Move ${name}'s pin here`,
           onPress: () => { setViewer(null); setTimeout(() => openPin(st!, m.id), 300); },
         } : null,
       };
@@ -439,6 +466,17 @@ export default function TripDetailsScreen() {
         {/* 2 · tab body */}
         <View style={{ paddingHorizontal: 16 }} onLayout={(e) => { tabBodyY.current = e.nativeEvent.layout.y; }}>
           {tab === 'stops' ? (
+            <>
+            <DriverLog
+              trip={trip}
+              f={f}
+              onOpen={(e, index) => setViewer({
+                title: `Driver's log · ${f.smart(e.at)}`,
+                index,
+                items: e.docs.map((d) => ({ id: d.id, url: d.file_url, kind: 'photo' as const, caption: [f.smart(e.at), e.place ? `near ${e.place}` : null].filter(Boolean).join(' · ') })),
+              })}
+              onPick={setLogEntry}
+            />
             <StopsTab
               trip={trip}
               phase={phase}
@@ -446,13 +484,14 @@ export default function TripDetailsScreen() {
               f={f}
               onOpenPhotos={openPhotos}
               onSendUpdate={(u) => setShare({ type: 'update', update: u })}
-              onCheckTimes={() => setCheckingTimes(true)}
+              onCheckTimes={(stopId) => { setTimesStop(stopId ?? null); setCheckingTimes(true); }}
               onSetPin={(st) => openPin(st)}
               focusStopId={focusStop}
               onStopLayout={params.stop ? onStopLayout : undefined}
               onStepBack={canStepBack ? () => setSheet('stepback') : undefined}
               onRestorePhotos={restorePhotos}
             />
+            </>
           ) : (
             <DetailsTab
               trip={trip}
@@ -520,12 +559,18 @@ export default function TripDetailsScreen() {
         items={viewer?.items ?? null}
         startIndex={viewer?.index ?? 0}
         title={viewer?.title ?? ''}
+        context={[
+          stops.length > 1 ? `${stopName(stops[0], 0)} → ${stopName(stops[stops.length - 1], stops.length - 1)}` : null,
+          trip.driver ? `${trip.driver.first_name} ${trip.driver.last_name}`.trim() : trip.third_party_driver_name ?? null,
+          trip.vehicle?.plate_number ?? trip.third_party_vehicle_plate ?? null,
+        ].filter(Boolean).join(' · ')}
         onClose={() => setViewer(null)}
         status={viewer?.update ? sendStatus(viewer.update) : undefined}
         onSend={viewer?.update ? () => { const u = viewer.update!; setViewer(null); setTimeout(() => setShare({ type: 'update', update: u }), 250); } : undefined}
       />
       <PinSheet target={pinTarget} tripId={trip.id} timeOf={f.time} onClose={() => setPinTarget(null)} onSaved={reload} />
-      <TripTimesSheet visible={checkingTimes} trip={trip} tz={tz} onClose={() => setCheckingTimes(false)} onDone={reload} />
+      <LogStopSheet trip={trip} entry={logEntry} f={f} onClose={() => setLogEntry(null)} onDone={reload} />
+      <TripTimesSheet visible={checkingTimes} trip={trip} tz={tz} stopId={timesStop} onClose={() => setCheckingTimes(false)} onDone={reload} />
       <MoreSheet
         visible={sheet === 'more'}
         trip={trip}
@@ -545,14 +590,14 @@ export default function TripDetailsScreen() {
       <ChargesSheet visible={sheet === 'charges'} trip={trip} onClose={() => setSheet(null)} onSaved={reload} />
       <PickerSheet
         visible={!!picker}
-        title={picker?.kind === 'driver' ? 'Change driver' : 'Change truck'}
+        title={picker?.kind === 'driver' ? (trip.driver ? 'Change driver' : 'Assign driver') : (trip.vehicle ? 'Change truck' : 'Assign truck')}
         options={
           picker?.kind === 'driver'
             ? (picker.drivers ?? []).map((d) => ({ value: d.id, label: niceName(`${d.first_name} ${d.last_name}`), sub: [d.ref_id, d.phone_primary].filter(Boolean).join(' · ') }))
             : (picker?.vehicles ?? []).map((v) => ({ value: v.id, label: v.plate_number, sub: [v.capacity_kg ? `${Math.round(v.capacity_kg / 1000)} ton` : null, v.asset_type].filter(Boolean).join(' · ') }))
         }
         value={picker?.kind === 'driver' ? trip.driver?.id : trip.vehicle?.id}
-        onSelect={(value) => applyChange(value)}
+        onSelect={pickValue}
         onClose={() => setPicker(null)}
         searchPlaceholder={picker?.kind === 'driver' ? 'Search drivers' : 'Search trucks'}
         emptyText={picker?.kind === 'driver' ? 'No drivers available right now' : 'No trucks available right now'}

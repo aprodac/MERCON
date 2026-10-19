@@ -1,0 +1,28 @@
+FROM YOUR LATEST FEEDBACK (18 Oct morning)
+1. Check times: Najran-type trip (offload then load at the same place) — your times in order now save. Any problem is written in full under the stop.
+2. Check times: wheels go round — from 00:47 roll the hour back to 23. Tap the screenshot to enlarge it while a time is open; pinch to zoom.
+3. Trip > Stops: the real time on the road (e.g. "5h", "2.8h") in the middle of the line between two stops, like iMile; "Time confirmed" / "Time to confirm" next to each stop's photos.
+4. Send to WhatsApp: message has one fact per line (Customer / Route / Truck / Driver / Next).
+5. Notifications > Activity: "Mark read" on each unread one. Bell turns red only for unread notifications.
+6. Extra charges: press None — the next trip shows straight away.
+7. Vehicles: free trucks show where they are and when the last trip ended. On-trip trucks and Home > Live now show the route with one bar per step (green = done).
+8. Vehicle page: "Send to workshop" → truck shows In maintenance; "Back in service" brings it back.
+9. Drivers / Vehicles: download button (top) → spreadsheet through the share sheet.
+10. To do > expiring document: "Add new" opens that folder to upload the new copy.
+11. Date picker: tap "May 2027" for months, tap again for years.
+13. Customer-app trip: only times to check are red; once all the driver's sends are on stops the Driver's log is one line.
+12. Documents: folder shows all its documents under any filter. Names show first two words ("Muhammed Rizwan").
+
+EARLIER FEEDBACK (18 Oct)
+1. To do: Delayed / Not started / No GPS rows show route and driver. Each row (each document too) has its own Read.
+2. Check times: shows the date ("17 Oct · was 00:00") instead of "+1d"; each screenshot shows its number (1 / 6); swiping while editing moves to that stop's time.
+3. Trip photo viewer: "Edit <stop>'s arrived / left time".
+4. Trips > Schedule: only trips still to start. History: filters All / Delivered / Cancelled / Deleted.
+5. Driver's steps: pick any later step to mark every step up to it done.
+6. Create trip: "Same as a recent trip" (last 24 h) fills customer, route, price and truck. When step: Transit time.
+
+NEW: DRIVER'S LOG for customer-app trips
+A. When the driver sends screenshots from the new Trip log, each send arrives in From drivers as "Trip update · near <place>".
+B. Trip > Stops > "Driver's log": every send with time, place and screenshots.
+C. "Make a stop or add to one": type the place, pick Loading / Offloading and "Make it a stop" (put in time order), or "Add" it to a stop the trip already has.
+D. Then Check times and the stop's photos work as usual.

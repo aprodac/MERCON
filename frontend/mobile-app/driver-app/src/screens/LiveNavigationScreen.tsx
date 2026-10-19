@@ -14,13 +14,14 @@ import { DelayReportModal } from '../components/DelayReportModal';
 import { TripProgressStepper } from '../components/TripProgressStepper';
 import { DelayButton } from '../components/DelayButton';
 import { useCurrentTrip } from '../hooks/use-current-trip';
-import { tripService, stopAddress, stopLabel, isRoundTrip, resolveAuthoritativeActiveStop, getLegEndpoints } from '@mercon/mobile-shared/lib/trips';
+import { tripService, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, isReturnLoadingPhase, resolveAuthoritativeActiveStop, getLegEndpoints } from '@mercon/mobile-shared/lib/trips';
 
 import { targetFromWorkflowState } from '../utils/routeParser';
 import { pendingStopFromWorkflow } from '@mercon/shared-types';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
+import { inCompanyZone } from '@mercon/mobile-shared/lib/dates';
 
 /** Great-circle distance between two lat/lng points, in meters. */
 function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -35,7 +36,7 @@ function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number) 
 
 /** Clock time the driver arrives if `secondsLeft` more seconds of driving remain ("14:05"). */
 function arrivalClock(secondsLeft: number): string {
-  return new Date(Date.now() + secondsLeft * 1000).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+  return new Date(Date.now() + secondsLeft * 1000).toLocaleTimeString(undefined, inCompanyZone({ hour: '2-digit', minute: '2-digit', hour12: false }));
 }
 
 const LiveNavigationScreen = () => {
@@ -43,6 +44,12 @@ const LiveNavigationScreen = () => {
   const insets = useSafeAreaInsets();
   const { t, language, tr } = useLanguage();
   const { trip, loading, error, refetch } = useCurrentTrip();
+  // Open on the trip as the server has it now: a copy cached before the office
+  // undid a step sent the driver to the delivery of a trip taken back to "Not started".
+  useEffect(() => {
+    void refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [position, setPosition] = useState<{ lat: number; lng: number; heading?: number | null; speedKph?: number | null } | null>(null);
   // Map camera: follow the truck in a tilted driver view by default; night map after dark.
   const [follow, setFollow] = useState(true);
@@ -61,15 +68,19 @@ const LiveNavigationScreen = () => {
   const [delayModalVisible, setDelayModalVisible] = useState(false);
   const hasArrivedRef = useRef(false);
 
-  const ws = trip?.driver_workflow_state || 'ASSIGNED';
+  // Same state Home and the pickup/delivery screens use. The raw state can be a
+  // stale round-1 one (ARRIVED_AT_PICKUP) on a round trip's return leg, which
+  // sent the driver back to the round-1 origin.
+  const ws = getEffectiveWorkflowState(trip);
   const isRound = isRoundTrip(trip);
+  const isReturnPickup = isReturnLoadingPhase(trip);
 
   const authActive = React.useMemo(() => {
     return resolveAuthoritativeActiveStop(trip);
   }, [trip]);
 
   // Determine if heading to pickup or delivery directly from workflow state
-  const isHeadingToPickup = ws === 'ASSIGNED' || ws === 'GOING_TO_PICKUP' || ws === 'ARRIVED_AT_PICKUP' || (isRound && ws === 'RETURN_LOADING');
+  const isHeadingToPickup = ws === 'ASSIGNED' || ws === 'GOING_TO_PICKUP' || ws === 'ARRIVED_AT_PICKUP' || isReturnPickup;
 
   // Leg comes from the driver's workflow state. The stop records can't be
   // trusted for this on their own: intermediate stops completed before
@@ -153,7 +164,7 @@ const LiveNavigationScreen = () => {
     setArriving(true);
     try {
       if (isHeadingToPickup) {
-        await tripService.updateStatus(trip.id, 'Loading', 'ARRIVED_AT_PICKUP');
+        await tripService.updateStatus(trip.id, 'Loading', isReturnPickup ? 'RETURN_LOADING' : 'ARRIVED_AT_PICKUP');
         router.replace('/trip/pickup' as any);
       } else {
         const isReturnFinal = isRound && (legIndex === 1 || ws === 'IN_TRANSIT_RETURN');
@@ -363,7 +374,7 @@ const LiveNavigationScreen = () => {
               <View style={styles.headerTitleCenter}>
                 <View style={styles.currentStepTagRow}>
                   <View style={styles.coralIndicatorDot} />
-                  <Text style={styles.currentStepTag}>{t('label_current_step', 'CURRENT STEP')}</Text>
+                  <Text style={styles.currentStepTag}>{t('label_current_step', 'CURRENT STEP')}{trip?.ref_id ? ` · ${trip.ref_id}` : ''}</Text>
                 </View>
                 <Text style={styles.headerStateTitle} numberOfLines={1}>
                   {isHeadingToPickup ? t('msg_en_route_pickup', 'On the way to pickup') : t('msg_en_route_delivery', 'On the way to delivery')}

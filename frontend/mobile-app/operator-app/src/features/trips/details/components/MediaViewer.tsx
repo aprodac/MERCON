@@ -3,7 +3,7 @@
  * Each photo says whether the customer has it yet, and the footer says who sent the set and when.
  */
 import React, { useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, FlatList, Image, Linking, useWindowDimensions, StatusBar } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, FlatList, Linking, useWindowDimensions, StatusBar } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CheckCheck, Clock3, Crosshair, ExternalLink, Info, MessageCircle, Play, Route, X } from 'lucide-react-native';
 import { GoogleMapsGeotagPreview } from '@mercon/mobile-shared/components/GoogleMapsGeotagPreview';
@@ -11,6 +11,7 @@ import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import type { SendState } from '../tripDetailsModel';
 import { WA } from './parts';
+import { ZoomableImage } from '../../../../components/ZoomableImage';
 
 export interface ViewerItem {
   id: string;
@@ -25,12 +26,16 @@ export interface ViewerItem {
   info?: string | null;
   /** E.g. "Use as Jeddah's pin" when the stop's pin is a guess and this photo has GPS. */
   pinAction?: { label: string; onPress: () => void } | null;
+  /** "Edit Najran's time": opens Check times on this photo's stop (TestFlight: edit a POD's time from the photo). */
+  timeAction?: { label: string; onPress: () => void } | null;
 }
 
 interface Props {
   items: ViewerItem[] | null;
   startIndex: number;
   title: string;
+  /** Which trip the photos belong to, e.g. "Riyadh → Jeddah · Nouman · KSA-6102". */
+  context?: string | null;
   onClose: () => void;
   /** Shown when the items came from one driver update. */
   onSend?: () => void;
@@ -40,7 +45,7 @@ interface Props {
   onOpenTrip?: () => void;
 }
 
-export function MediaViewer({ items, startIndex, title, onClose, onSend, status, onOpenTrip }: Props) {
+export function MediaViewer({ items, startIndex, title, context, onClose, onSend, status, onOpenTrip }: Props) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [index, setIndex] = useState(startIndex);
@@ -61,6 +66,7 @@ export function MediaViewer({ items, startIndex, title, onClose, onSend, status,
         <View style={s.top}>
           <View style={{ flex: 1 }}>
             <Text style={s.title} numberOfLines={1}>{title}</Text>
+            {context ? <Text style={s.sub} numberOfLines={1}>{context}</Text> : null}
             <Text style={s.sub} numberOfLines={1}>{current?.caption}{items && items.length > 1 ? ` · ${index + 1} of ${items.length}` : ''}</Text>
           </View>
           <TouchableOpacity style={s.close} onPress={onClose} accessibilityLabel="Close">
@@ -94,7 +100,7 @@ export function MediaViewer({ items, startIndex, title, onClose, onSend, status,
                     </TouchableOpacity>
                   ) : uri ? (
                     <View style={{ flex: 1 }}>
-                      <Image source={{ uri }} style={{ width: '100%', flex: 1 }} resizeMode="contain" />
+                      <ZoomableImage uri={uri} style={{ width: '100%', flex: 1 }} />
                       {item.geo ? (
                         <View style={s.geo}>
                           <GoogleMapsGeotagPreview
@@ -122,7 +128,7 @@ export function MediaViewer({ items, startIndex, title, onClose, onSend, status,
           />
         ) : null}
 
-        {current?.info || current?.pinAction ? (
+        {current?.info || current?.pinAction || current?.timeAction ? (
           <View style={s.facts}>
             {current.info ? (
               <View style={s.factRow}>
@@ -130,11 +136,22 @@ export function MediaViewer({ items, startIndex, title, onClose, onSend, status,
                 <Text style={s.factText} numberOfLines={2}>{current.info}</Text>
               </View>
             ) : null}
-            {current.pinAction ? (
-              <TouchableOpacity style={s.pinBtn} activeOpacity={0.85} onPress={current.pinAction.onPress} accessibilityRole="button">
-                <Crosshair size={15} color="#1E3A8A" />
-                <Text style={s.pinBtnText}>{current.pinAction.label}</Text>
-              </TouchableOpacity>
+            {/* Side by side, not stacked: the photo stays the biggest thing on screen. */}
+            {current.timeAction || current.pinAction ? (
+              <View style={s.factBtns}>
+                {current.timeAction ? (
+                  <TouchableOpacity style={[s.pinBtn, s.timeBtn]} activeOpacity={0.85} onPress={current.timeAction.onPress} accessibilityRole="button">
+                    <Clock3 size={15} color="#7C2D12" />
+                    <Text style={[s.pinBtnText, { color: '#7C2D12' }]} numberOfLines={2}>{current.timeAction.label}</Text>
+                  </TouchableOpacity>
+                ) : null}
+                {current.pinAction ? (
+                  <TouchableOpacity style={s.pinBtn} activeOpacity={0.85} onPress={current.pinAction.onPress} accessibilityRole="button">
+                    <Crosshair size={15} color="#1E3A8A" />
+                    <Text style={s.pinBtnText} numberOfLines={2}>{current.pinAction.label}</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
             ) : null}
           </View>
         ) : null}
@@ -178,8 +195,10 @@ const s = StyleSheet.create({
   facts: { marginHorizontal: 16, marginBottom: 10, gap: 8 },
   factRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   factText: { flex: 1, color: '#E4E4E9', fontSize: 13 },
-  pinBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 44, borderRadius: 12, backgroundColor: '#DBEAFE' },
-  pinBtnText: { color: '#1E3A8A', fontSize: 14, fontWeight: '800' },
+  factBtns: { flexDirection: 'row', gap: 8 },
+  pinBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 44, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: '#DBEAFE' },
+  pinBtnText: { flexShrink: 1, color: '#1E3A8A', fontSize: 13, fontWeight: '800', textAlign: 'center' },
+  timeBtn: { backgroundColor: '#FFEDD5' },
   root: { flex: 1, backgroundColor: '#3E3C3D' },
   top: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16 },
   title: { color: Colors.white, fontSize: 15, fontWeight: '800' },

@@ -17,6 +17,7 @@ import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
 import { RoundBreakRow, RoundTimeline } from '../components/RoundTimeline';
 import { buildRoundTripSummary, roundTimes } from '../services/roundTimes';
+import { companyDayKey, inCompanyZone } from '@mercon/mobile-shared/lib/dates';
 
 const FILE_BASE = API_URL ? API_URL.replace(/\/api\/?$/, '') : '';
 
@@ -211,7 +212,7 @@ const TripCompletedScreen = () => {
     + (doneEnds.round ? ` · ${t('label_round_trip_back', 'round trip')}` : '');
 
   const fmtDateTime = (v?: string | null) =>
-    v ? new Date(v).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+    v ? new Date(v).toLocaleString('en-US', inCompanyZone({ month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })) : '—';
   const startIso = (activeTrip as any)?.actual_pickup || activeTrip?.actual_start || null;
   const endIso = activeTrip?.actual_end || null;
   const formattedLoadingDate = fmtDateTime(startIso);
@@ -228,9 +229,9 @@ const TripCompletedScreen = () => {
   const distanceKm = activeTrip?.planned_distance ?? (activeTrip as any)?.distance_km ?? null;
 
   const endDate = endIso ? new Date(endIso) : null;
-  const endTime = endDate ? endDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }) : null;
-  const endIsToday = endDate ? endDate.toDateString() === new Date().toDateString() : false;
-  const dayText = endDate ? endDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : null;
+  const endTime = endDate ? endDate.toLocaleTimeString(undefined, inCompanyZone({ hour: '2-digit', minute: '2-digit', hour12: false })) : null;
+  const endIsToday = endDate ? companyDayKey(endDate) === companyDayKey(Date.now()) : false;
+  const dayText = endDate ? endDate.toLocaleDateString('en-GB', inCompanyZone({ day: 'numeric', month: 'short', year: 'numeric' })) : null;
   const completedPill = endTime
     ? (endIsToday
       ? (language === 'ur' ? `آج ${endTime} پر مکمل` : `Completed today at ${endTime}`)
@@ -251,7 +252,7 @@ const TripCompletedScreen = () => {
     const nextEnds = tripEnds(st as any[], (nextTrip as any).rate_category);
     const to = stopLabel((nextEnds.round ? (nextEnds.to as typeof st[number] | null) : null) ?? st[st.length - 1]) || nextTrip.destination;
     const when = nextTrip.planned_start
-      ? new Date(nextTrip.planned_start).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false })
+      ? new Date(nextTrip.planned_start).toLocaleString(undefined, inCompanyZone({ weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }))
       : null;
     return [from && to ? `${from} → ${to}` : from || to, when].filter(Boolean).join(' · ');
   })();

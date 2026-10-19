@@ -38,6 +38,11 @@ export interface OperatorTrip {
   updatedAt?: string;
   is_third_party?: boolean;
   driver_workflow?: string | null;
+  /** Where the driver's app is in the trip (ASSIGNED until the driver starts). */
+  driver_workflow_state?: string | null;
+  /** The quotation it was priced from (create "same as a recent trip" copies it). */
+  quotationId?: string | null;
+  quotation?: { id: string; name?: string | null } | null;
   customer?: { id?: string; name: string; logo_url?: string | null } | null;
   driver?: { id?: string; first_name: string; last_name: string; avatar_url?: string | null; phone_primary?: string | null } | null;
   vehicle?: { id?: string; plate_number: string; ref_id?: string | null; asset_type?: string } | null;
@@ -182,7 +187,7 @@ export interface OperatorTripCharge {
 
 /** Same shape as the web's `fleetLiveService` types (backend services/fleetLiveMap.ts). */
 export type TripPhase = 'planned' | 'active' | 'done' | 'cancelled';
-export type LiveMediaStage = 'loaded' | 'arrived' | 'stop' | 'delivered' | 'delay' | 'other';
+export type LiveMediaStage = 'loaded' | 'arrived' | 'stop' | 'delivered' | 'delay' | 'log' | 'other';
 
 /** Mirrors `LiveGpsFix` in backend services/fleetLiveMap.ts (field names as the API sends them). */
 export interface LiveGpsFix {
@@ -286,6 +291,8 @@ export interface DriverUpdate {
   vehicle_plate: string | null;
   driver: { name: string; phone: string | null } | null;
   stop: { id: string; name: string; type: string; sequence: number } | null;
+  /** Trip log send (customer-app trip): where the phone was — no stop yet. */
+  place?: string | null;
   stage: LiveMediaStage;
   items: LiveMediaItem[];
   delay_note: string | null;
@@ -293,6 +300,8 @@ export interface DriverUpdate {
   shares: { id: string; recipient: ShareRecipient; channel: 'link' | 'whatsapp_api'; shared_by: string | null; shared_at: string; count: number }[];
   sent_ids: string[];
   unsent_count: number;
+  /** Marked as read without sending (by whom, when); new photos in the set clear it. */
+  marked_read?: { by: string | null; at: string } | null;
 }
 
 /**
@@ -300,7 +309,8 @@ export interface DriverUpdate {
  * one of a set's photos (most have three) reaches the customer; the others
  * stay marked "not sent" on the trip without being asked for again.
  */
-export const needsSending = (u: Pick<DriverUpdate, 'items' | 'sent_ids'>): boolean => u.items.length > 0 && u.sent_ids.length === 0;
+export const needsSending = (u: Pick<DriverUpdate, 'items' | 'sent_ids' | 'marked_read'>): boolean =>
+  u.items.length > 0 && u.sent_ids.length === 0 && !u.marked_read;
 
 export interface ShareResult {
   share_url: string;
@@ -321,6 +331,8 @@ export interface LiveUnit {
     ref_id: string | null;
     status: string;
     phase: 'upcoming' | 'active' | 'delayed';
+    /** False for a late trip that never started; absent from servers older than 2026-10-17. */
+    started?: boolean;
     /** Absent from servers older than the live map's customer link (2026-10). */
     customer_id?: string | null;
     customer_name: string | null;
@@ -341,6 +353,15 @@ export interface LiveUnit {
   /** Since when a running trip's truck has stood within ~300 m of where it is (driver app GPS); null while moving. */
   stopped_since?: string | null;
 }
+
+/**
+ * Late but never started (Delayed, nothing reached): waiting to start, not on
+ * the road. Servers older than 2026-10-17 don't send `started`.
+ */
+export const isLateToStart = (u: LiveUnit) => !!u.trip && u.trip.phase === 'delayed' && u.trip.started === false;
+
+/** The trip is under way: started, or Loading / In transit. */
+export const isOnRoad = (u: LiveUnit) => !!u.trip && u.trip.phase !== 'upcoming' && !isLateToStart(u);
 
 /** What a driver sent from a trip's stops (backend services/fleetLiveMap.ts `LiveTripMedia`). */
 export interface TripMediaItem {
@@ -850,6 +871,12 @@ export const operatorService = {
     return (data.data ?? []) as OperatorDriver[];
   },
 
+  /** Open (not finished) trips planned to start between two instants — for clash checks. */
+  async openTripsBetween(fromIso: string, toIso: string): Promise<OperatorTrip[]> {
+    const { data } = await api.get('/trips', { params: { status: 'Draft,Scheduled,Loading,InTransit,Delayed', start_date: fromIso, end_date: toIso, per_page: 500 } });
+    return (data.data ?? []) as OperatorTrip[];
+  },
+
   async availableVehicles(): Promise<OperatorVehicle[]> {
     const { data } = await api.get('/vehicles', { params: { mode: 'lookup', per_page: 100, status: 'Available' } });
     return (data.data ?? []) as OperatorVehicle[];
@@ -1236,6 +1263,23 @@ export const operatorService = {
     return data.data as StepBackResult;
   },
 
+  /** Move the trip on one step for the driver (POST /trips/:id/step-forward); not the step that finishes it. */
+  /** Trip log (customer-app trip): make a driver's send a stop, or add it to one. */
+  async logEntryToStop(
+    tripId: string,
+    entry: string,
+    body: { action: 'new'; name: string; stop_type: 'Pickup' | 'Dropoff' } | { action: 'attach'; stop_id: string },
+  ): Promise<{ stop_id: string }> {
+    const { data } = await api.post(`/trips/${tripId}/log/${encodeURIComponent(entry)}/stop`, body);
+    return data.data;
+  },
+
+  /** Mark the next step done — or every step up to `toIndex`. */
+  async stepForwardTrip(id: string, toIndex?: number): Promise<{ to: { index: number; label: string; next: string } }> {
+    const { data } = await api.post(`/trips/${id}/step-forward`, toIndex === undefined ? {} : { to_index: toIndex });
+    return data.data;
+  },
+
   /** Bring back the photos a step-back removed. */
   async restoreStepBackPhotos(id: string, removedAt: string): Promise<number> {
     const { data } = await api.post(`/trips/${id}/step-back/restore-photos`, { removed_at: removedAt });
@@ -1339,6 +1383,12 @@ export const operatorService = {
     const { data } = await api.post(`/trips/${id}/dispatch`, body);
     return data.data as OperatorTripDetail;
   },
+  /** Give a trip that has none a driver (and optionally the truck too) — `/dispatch`, the web's assign path. */
+  async assignTrip(id: string, body: { driver_id?: string; vehicle_id?: string }): Promise<OperatorTripDetail> {
+    const { data } = await api.post(`/trips/${id}/dispatch`, body);
+    return data.data as OperatorTripDetail;
+  },
+
   async replaceVehicle(id: string, newVehicleId: string): Promise<OperatorTripDetail> {
     const { data } = await api.post(`/trips/${id}/dispatch`, { vehicle_id: newVehicleId });
     return data.data as OperatorTripDetail;
@@ -1495,6 +1545,12 @@ export const operatorService = {
   }): Promise<ShareResult> {
     const { data } = await api.post('/operator-inbox/driver-updates/share', body);
     return data.data as ShareResult;
+  },
+
+  /** Takes photo sets out of "To send" for everyone without sending them. */
+  async markDriverUpdatesRead(updates: Array<{ trip_id: string; update_key: string }>): Promise<number> {
+    const { data } = await api.post('/operator-inbox/driver-updates/mark-read', { updates });
+    return Number(data.data?.marked ?? 0);
   },
 
   /** The chosen photos combined into one picture (POST /operator-inbox/driver-updates/collage) — its /uploads URL. */

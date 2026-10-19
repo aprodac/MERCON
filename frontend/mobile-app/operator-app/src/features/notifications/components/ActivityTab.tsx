@@ -96,6 +96,9 @@ function NotificationRow({ n, first, now, onOpen, onMarkRead }: {
   const Icon = st.icon;
   const unread = !n.is_read;
   const opens = targetFor(n) != null;
+  // Every unread row has its own "Read" button (TestFlight: "mark as read for each notification") —
+  // the swipe is still there, but nobody finds it. Emergencies clear with Handled on To do instead.
+  const canRead = unread && n.type.toLowerCase() !== 'emergency';
 
   const body = (
     <TouchableOpacity style={[s.row, !first && s.rowBorder]} onPress={() => { tap(); onOpen(n); }} activeOpacity={0.6}
@@ -103,14 +106,21 @@ function NotificationRow({ n, first, now, onOpen, onMarkRead }: {
       <View style={[s.icon, { backgroundColor: tone.bg }]}><Icon size={18} color={tone.fg} strokeWidth={2.2} /></View>
       <View style={{ flex: 1, gap: 2 }}>
         <View style={s.titleRow}>
+          {unread ? <View style={s.dot} /> : null}
           <Text style={[s.title, unread && s.titleUnread]} numberOfLines={1}>{cleanTitle(n.title)}</Text>
           <Text style={[s.time, unread && { color: INK, fontWeight: '600' }]}>{shortTime(n.createdAt, now)}</Text>
         </View>
         <Text style={[s.message, unread && { color: '#52525B' }]} numberOfLines={3}>{n.message}</Text>
+        {canRead ? (
+          <TouchableOpacity style={s.readBtn} onPress={() => { tap(); onMarkRead(n.id); }} hitSlop={8} accessibilityRole="button" accessibilityLabel="Mark as read">
+            <Check size={13} color={INK} strokeWidth={2.6} />
+            <Text style={s.readText}>Mark read</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
-      <View style={s.trail}>
-        {unread ? <View style={s.dot} /> : opens ? <ChevronRight size={16} color="#C4C4CC" /> : null}
-      </View>
+      {!unread && opens ? (
+        <View style={s.trail}><ChevronRight size={16} color="#C4C4CC" /></View>
+      ) : null}
     </TouchableOpacity>
   );
 
@@ -154,7 +164,9 @@ const s = StyleSheet.create({
   time: { fontSize: 12, color: MUTED, fontVariant: ['tabular-nums'] },
   message: { fontSize: 13, color: MUTED, lineHeight: 18 },
   trail: { width: 16, alignItems: 'center', alignSelf: 'center' },
-  dot: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#FA634E' },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FA634E', alignSelf: 'center' },
+  readBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', marginTop: 6, borderWidth: 1, borderColor: '#D4D4D8', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  readText: { fontSize: 12, fontWeight: '700', color: INK },
   markAll: { fontSize: 13, fontWeight: '600', color: INK },
 
   swipe: { width: 88, backgroundColor: '#16A34A', alignItems: 'center', justifyContent: 'center', gap: 4 },

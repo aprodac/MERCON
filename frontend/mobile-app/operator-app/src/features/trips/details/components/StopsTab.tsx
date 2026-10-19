@@ -1,15 +1,15 @@
 /** Every stop in order: planned vs actual time, lateness, delay reason, photos, and screenshots to check. */
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking, Image } from 'react-native';
-import { Check, CheckCheck, Clock3, Image as ImageIcon, ImageOff, MapPin, MessageCircle, Navigation, Play, TriangleAlert, Undo2, Crosshair, ArrowRightLeft } from 'lucide-react-native';
+import { Check, CheckCheck, Clock3, Image as ImageIcon, ImageOff, MapPin, MessageCircle, Navigation, Play, TriangleAlert, Undo2, Crosshair, ArrowRightLeft, CircleCheck } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
-import type { DriverUpdate, LiveMediaItem, OperatorTripDetail, OperatorTripDocument, TripPhase } from '../../../../lib/operator';
+import type { DriverUpdate, LiveMediaItem, OperatorTripDetail, TripPhase } from '../../../../lib/operator';
 import { ON_TIME_GRACE_MIN, TONE, delayText, mapsLink, minutesLate, minutesText, photoPinsForStop, sendStatus, sortedStops, stopName, stopTiming, tripLegsOf, updateTitle, type Formatters, type Stop } from '../tripDetailsModel';
 import { extraStopNote } from '@mercon/shared-types';
 import { liveLegOf } from '../../tripLegs';
 import { Card, Chip, INK, MUTED, WA, WA_INK, WA_LIGHT, tap } from './parts';
-import { isAppScreenshot, pendingTimeCheck } from './TripTimesSheet';
+import { isAppScreenshot, isDropoff, pendingTimeCheck } from './TripTimesSheet';
 
 interface Props {
   trip: OperatorTripDetail;
@@ -21,7 +21,8 @@ interface Props {
   /** Open the share sheet on one photo set. */
   onSendUpdate: (u: DriverUpdate) => void;
   /** Open "Check times" — every stop's real time, copied off the customer-app screenshots. */
-  onCheckTimes: () => void;
+  /** Open "Check times"; from one stop's link, with only that stop's screenshots. */
+  onCheckTimes: (stopId?: string) => void;
   /** Open "Set pin" for a stop still on a guessed location. */
   onSetPin: (stop: Stop) => void;
   /** A stop to highlight — the one a tapped notification is about. */
@@ -33,6 +34,18 @@ interface Props {
   /** Bring back the photos a step-back removed. */
   onRestorePhotos?: (removedAt: string) => void;
 }
+
+/**
+ * Colour roles on this tab: red only where the office has to act (stop times to
+ * check); grey for information (pin hints, "not sent yet"); green when done.
+ * Everything amber made nothing stand out (owner: "clean UI").
+ */
+const ACT = '#B42318';
+const ACT_BG = '#FEF3F2';
+const ACT_LINE = '#FECDCA';
+
+/** "45m", "2.8h", "5h" — short enough to sit on the line between two stops. */
+const shortDuration = (min: number) => (min < 60 ? `${Math.round(min)}m` : `${(min / 60).toFixed(1).replace(/\.0$/, '')}h`);
 
 /** Only an EXACT pin can be trusted for ETA, navigation and arrival — anything else needs one. */
 export const needsPin = (st: Stop) =>
@@ -88,12 +101,6 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
           </View>
         </View>
       ))}
-      {onStepBack ? (
-        <TouchableOpacity style={s.undoBar} activeOpacity={0.75} onPress={onStepBack} accessibilityRole="button" accessibilityLabel="Undo driver's step">
-          <Undo2 size={14} color={INK} />
-          <Text style={s.undoText}>Driver tapped ahead? <Text style={{ fontWeight: '800' }}>Undo a step</Text></Text>
-        </TouchableOpacity>
-      ) : null}
       {purged ? (
         <View style={s.purged}>
           <ImageIcon size={13} color={MUTED} />
@@ -102,13 +109,28 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
           </Text>
         </View>
       ) : null}
-      {shots.length > 0 ? (
-        <TouchableOpacity style={[s.timesBar, pendingShots === 0 && s.timesBarDone]} activeOpacity={0.8} onPress={onCheckTimes}>
-          <Clock3 size={14} color={pendingShots > 0 ? '#8A5200' : MUTED} />
-          <Text style={[s.timesText, pendingShots === 0 && { color: MUTED }]}>
-            {pendingShots > 0 ? `${pendingShots} screenshot${pendingShots === 1 ? '' : 's'} · check the stop times` : 'Stop times checked against screenshots'}
-          </Text>
-          <Text style={[s.timesCta, pendingShots === 0 && { color: MUTED }]}>{pendingShots > 0 ? 'Check' : 'Edit'}</Text>
+      {/* One row of tools instead of stacked bars: fix the driver's steps, or the stop times. */}
+      {onStepBack || stops.some((st) => st.actual_arrival) || shots.length > 0 ? (
+        <View style={s.tools}>
+          {onStepBack ? (
+            <TouchableOpacity style={s.tool} activeOpacity={0.75} onPress={onStepBack} accessibilityRole="button" accessibilityLabel="Driver's steps: undo or mark done">
+              <Undo2 size={15} color={INK} />
+              <Text style={s.toolText} numberOfLines={1}>{"Driver's steps"}</Text>
+            </TouchableOpacity>
+          ) : null}
+          {stops.some((st) => st.actual_arrival) || shots.length > 0 ? (
+            <TouchableOpacity style={s.tool} activeOpacity={0.75} onPress={() => onCheckTimes()} accessibilityRole="button" accessibilityLabel="Edit stop times">
+              <Clock3 size={15} color={INK} />
+              <Text style={s.toolText} numberOfLines={1}>Edit times</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
+      {pendingShots > 0 ? (
+        <TouchableOpacity style={s.timesBar} activeOpacity={0.8} onPress={() => onCheckTimes()}>
+          <Clock3 size={14} color={ACT} />
+          <Text style={s.timesText}>{pendingShots} screenshot{pendingShots === 1 ? '' : 's'} · check the stop times</Text>
+          <Text style={s.timesCta}>Check</Text>
         </TouchableOpacity>
       ) : null}
       {stops.map((st, i) => {
@@ -119,6 +141,15 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
         const delay = delayText(st);
         const sets = updates.filter((u) => u.stop?.id === st.id);
         const check = docs.find((d) => pendingTimeCheck(d) && d.ai_extracted_json?.stop_id === st.id);
+        // Is this stop's time read off the customer's screenshot yet? (TestFlight: "show whether the time is confirmed or needs to confirm")
+        const stopShots = shots.filter((d) => d.ai_extracted_json?.stop_id === st.id);
+        const timeState: TimeState = check ? 'pending' : stopShots.length ? 'confirmed' : null;
+        // Time on the road to the next stop, like the customer's app shows it (TestFlight: "show taken transit time").
+        const nextSt = stops[i + 1];
+        const leftAt = isDropoff(st) ? st.actual_departure ?? st.actual_arrival : st.actual_departure;
+        // Offloading then loading at the same place isn't a drive.
+        const samePlace = !!nextSt && stopName(nextSt, i + 1) === stopName(st, i);
+        const transit = nextSt?.actual_arrival && leftAt && !samePlace ? (Date.parse(nextSt.actual_arrival) - Date.parse(leftAt)) / 60_000 : null;
         const pinNeeded = (phase === 'planned' || phase === 'active') && !st.actual_arrival && needsPin(st);
         // Driver photos at this stop that carry a GPS fix — a better pin than a guessed one.
         const gpsPhotos = photoPinsForStop(updates, st.id).length;
@@ -148,7 +179,16 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
                   <Text style={[s.bubbleText, isNext && { color: Colors.white }, phase === 'planned' && { color: '#5B34B0' }]}>{i + 1}</Text>
                 )}
               </View>
-              {!last ? <View style={[s.line, { backgroundColor: done && phase !== 'cancelled' ? TONE.green.dot : '#DDE0E8' }]} /> : null}
+              {!last ? (
+                <View style={[s.line, { backgroundColor: done && phase !== 'cancelled' ? TONE.green.dot : '#DDE0E8' }]}>
+                  {/* Actual time on the road (left this stop → reached the next), in the middle of the line — as the customer's app (iMile) shows it. */}
+                  {transit != null && transit >= 0 ? (
+                    <View style={s.transitWrap} pointerEvents="none" accessibilityLabel={`${minutesText(transit)} on the road to ${stopName(nextSt, i + 1)}`}>
+                      <Text style={s.transitPill}>{shortDuration(transit)}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
             </View>
 
             <View style={[s.body, !last && { paddingBottom: 16 }]}>
@@ -167,11 +207,11 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
                     <View style={s.timeGrid}>
                       <TimeCell label="PLANNED" f={f} iso={st.planned_arrival} />
                       <TimeCell label="ARRIVED" f={f} iso={st.actual_arrival} tone={lateMin != null && lateMin > ON_TIME_GRACE_MIN ? 'red' : lateMin != null ? 'green' : undefined} />
-                      <TimeCell label="LEFT" f={f} iso={st.actual_departure} empty={phase === 'active' ? 'Still there' : '—'} />
+                      {isDropoff(st) ? null : <TimeCell label="LEFT" f={f} iso={st.actual_departure} empty={phase === 'active' ? 'Still there' : '—'} />}
                     </View>
                     <Text style={s.timeNote}>
                       {lateMin == null ? 'No planned time' : lateMin > ON_TIME_GRACE_MIN ? `${minutesText(lateMin)} late` : lateMin < -ON_TIME_GRACE_MIN ? `${minutesText(lateMin)} early` : 'On time'}
-                      {dwell != null ? ` · ${minutesText(dwell)} at the stop` : ''}
+                      {dwell != null && !isDropoff(st) ? ` · ${minutesText(dwell)} at the stop` : ''}
                     </Text>
                   </>
                 );
@@ -184,25 +224,30 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
                 </View>
               ) : null}
 
-              {pinNeeded || (needsPin(st) && gpsPhotos > 0) ? (
-                <TouchableOpacity style={s.pin} activeOpacity={0.8} onPress={() => onSetPin(st)}>
-                  {gpsPhotos > 0 ? <Crosshair size={13} color="#8A5200" /> : <MapPin size={13} color="#8A5200" />}
-                  <Text style={s.pinText}>
-                    {gpsPhotos > 0
-                      ? `${pinNeeded ? 'Pin needed' : 'Pin is approximate'} · ${gpsPhotos} photo${gpsPhotos === 1 ? ' has' : 's have'} GPS — check & use`
-                      : 'Pin needed · ETA is a guess · tap to set'}
-                  </Text>
-                </TouchableOpacity>
+              {/* Small chips on one line instead of stacked banners. */}
+              {pinNeeded || (needsPin(st) && gpsPhotos > 0) || (check && sets.length === 0) ? (
+                <View style={s.hints}>
+                  {pinNeeded || (needsPin(st) && gpsPhotos > 0) ? (
+                    <TouchableOpacity style={s.hint} activeOpacity={0.8} onPress={() => onSetPin(st)} accessibilityRole="button">
+                      {gpsPhotos > 0 ? <Crosshair size={12} color={MUTED} /> : <MapPin size={12} color={MUTED} />}
+                      <Text style={s.hintText}>
+                        {gpsPhotos > 0 ? (pinNeeded ? 'Set pin from GPS' : 'Pin: use GPS') : 'Set pin'}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  {check && sets.length === 0 ? (
+                    <TouchableOpacity style={[s.hint, s.hintAct]} activeOpacity={0.8} onPress={() => onCheckTimes(st.id)} accessibilityRole="button">
+                      <Clock3 size={12} color={ACT} />
+                      <Text style={[s.hintText, { color: ACT }]}>Check time</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
               ) : null}
 
-              {check ? (
-                <TouchableOpacity style={s.check} activeOpacity={0.8} onPress={onCheckTimes}>
-                  <Clock3 size={13} color="#8A5200" />
-                  <Text style={s.checkText}>Screenshot time needs checking</Text>
-                </TouchableOpacity>
-              ) : null}
-
-              {sets.map((u) => <PhotoSet key={u.key} u={u} f={f} onOpen={(i) => onOpenPhotos(u, i)} onSend={() => onSendUpdate(u)} />)}
+              {sets.map((u, k) => (
+                <PhotoSet key={u.key} u={u} f={f} onOpen={(i) => onOpenPhotos(u, i)} onSend={() => onSendUpdate(u)}
+                  timeState={k === 0 ? timeState : null} onCheckTime={() => onCheckTimes(st.id)} />
+              ))}
 
               <View style={s.links}>
                 {Number.isFinite(st.location_lat) && (st.location_lat || st.location_lng) ? (
@@ -237,8 +282,14 @@ function TimeCell({ label, f, iso, tone, empty = '—' }: { label: string; f: Fo
 const THUMBS = 4;
 const isVideo = (m: LiveMediaItem) => m.kind === 'video' || !!m.mime?.startsWith('video/');
 
+type TimeState = 'confirmed' | 'pending' | null;
+
 /** One photo set at a stop: the pictures themselves, each marked sent or not, and whether the customer has them. */
-function PhotoSet({ u, f, onOpen, onSend }: { u: DriverUpdate; f: Formatters; onOpen: (index: number) => void; onSend: () => void }) {
+function PhotoSet({ u, f, onOpen, onSend, timeState, onCheckTime }: {
+  u: DriverUpdate; f: Formatters; onOpen: (index: number) => void; onSend: () => void;
+  /** Whether the stop's time has been checked against the customer-app screenshot. */
+  timeState?: TimeState; onCheckTime?: () => void;
+}) {
   const status = sendStatus(u);
   // One photo sent is enough: the set is done, the unsent photos keep their "not sent" mark.
   const sent = status.state !== 'unsent';
@@ -246,7 +297,7 @@ function PhotoSet({ u, f, onOpen, onSend }: { u: DriverUpdate; f: Formatters; on
   const extra = u.items.length - shown.length;
   return (
     <View style={[s.set, sent ? s.setSent : s.setUnsent]}>
-      <Text style={s.setTitle}>{updateTitle(u)} · {u.items.length} {u.items.length === 1 ? 'photo' : 'photos'}</Text>
+      <Text style={s.setTitle}>{updateTitle(u)} · {u.items.length}{u.stage === 'log' ? '' : ` ${u.items.length === 1 ? 'photo' : 'photos'}`}</Text>
       {(() => {
         // When they were taken and when they reached us — a big gap means the phone was offline.
         const taken = u.items.map((m) => m.captured_at).sort();
@@ -281,17 +332,29 @@ function PhotoSet({ u, f, onOpen, onSend }: { u: DriverUpdate; f: Formatters; on
                   {isVideo(m) ? <Play size={16} color={Colors.white} fill={Colors.white} /> : <ImageOff size={16} color="#A1A1AA" />}
                 </View>
               )}
-              <View style={[s.tick, { backgroundColor: mSent ? WA : '#B45309' }]}>
+              <View style={[s.tick, { backgroundColor: mSent ? WA : '#A1A1AA' }]}>
                 {mSent ? <CheckCheck size={10} color={Colors.white} strokeWidth={3} /> : <Clock3 size={10} color={Colors.white} strokeWidth={3} />}
               </View>
               {i === shown.length - 1 && extra > 0 ? <View style={s.more}><Text style={s.moreText}>+{extra}</Text></View> : null}
             </TouchableOpacity>
           );
         })}
+        {timeState ? (
+          <TouchableOpacity style={[s.timeState, timeState === 'confirmed' ? s.timeOk : s.timeTodo]} onPress={() => { tap(); onCheckTime?.(); }} activeOpacity={0.8}
+            accessibilityRole="button" accessibilityLabel={timeState === 'confirmed' ? 'Time confirmed. Open Check times' : 'Time needs confirming. Check it'}>
+            {timeState === 'confirmed' ? <CircleCheck size={15} color="#15803D" /> : <Clock3 size={15} color={ACT} />}
+            <View style={{ flexShrink: 1 }}>
+              <Text style={[s.timeStateTitle, { color: timeState === 'confirmed' ? '#15803D' : ACT }]}>
+                {timeState === 'confirmed' ? 'Time confirmed' : 'Time to confirm'}
+              </Text>
+              <Text style={s.timeStateSub}>{timeState === 'confirmed' ? 'Checked on the screenshot' : 'Tap to check it'}</Text>
+            </View>
+          </TouchableOpacity>
+        ) : null}
       </View>
       <View style={s.setFoot}>
-        {sent ? <CheckCheck size={14} color={WA} strokeWidth={2.5} /> : <Clock3 size={14} color="#B45309" strokeWidth={2.4} />}
-        <Text style={[s.setStatus, { color: sent ? WA_INK : '#8A5200' }]} numberOfLines={2}>{status.text}</Text>
+        {sent ? <CheckCheck size={14} color={WA} strokeWidth={2.5} /> : <Clock3 size={14} color={MUTED} strokeWidth={2.4} />}
+        <Text style={[s.setStatus, { color: sent ? WA_INK : MUTED }]} numberOfLines={2}>{status.text}</Text>
         <TouchableOpacity style={[s.setSend, sent && s.setSendAgain]} onPress={() => { tap(); onSend(); }} hitSlop={6}
           accessibilityLabel={status.state === 'partial' ? 'Send more on WhatsApp' : sent ? 'Send again on WhatsApp' : 'Send on WhatsApp'}>
           <MessageCircle size={13} color={sent ? WA_INK : Colors.white} strokeWidth={2.4} />
@@ -317,8 +380,6 @@ const s = StyleSheet.create({
   setMeta: { fontSize: 12, color: MUTED, marginTop: -2, marginBottom: 6 },
   movedTag: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', backgroundColor: '#F5F2FD', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 6 },
   movedTagText: { fontSize: 11, fontWeight: '700', color: '#5B34B0' },
-  undoBar: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginHorizontal: 8, marginTop: 4, marginBottom: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: '#F1F3F7' },
-  undoText: { fontSize: 13, color: INK },
   muted: { fontSize: 12, color: MUTED, marginTop: 2 },
   legHead: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: 2 },
   legHeadGap: { marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#ECECEF' },
@@ -336,24 +397,35 @@ const s = StyleSheet.create({
   name: { flex: 1, fontSize: 14, fontWeight: '700', color: INK },
   delay: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 7, backgroundColor: '#FDEDEB', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6 },
   delayText: { flex: 1, fontSize: 12, fontWeight: '600', color: '#912018' },
-  check: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 7, backgroundColor: '#FFF6E5', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 7 },
-  checkText: { flex: 1, fontSize: 12, fontWeight: '700', color: '#8A5200' },
-  pin: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 7, backgroundColor: '#FFF6E5', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 7, borderWidth: 1, borderColor: '#F5D9A3' },
-  pinText: { flex: 1, fontSize: 12, fontWeight: '700', color: '#8A5200' },
+  hints: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  hint: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#F4F4F5', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: '#E4E4E7' },
+  hintAct: { backgroundColor: ACT_BG, borderColor: ACT_LINE },
+  hintText: { fontSize: 12, fontWeight: '700', color: '#52525B' },
   links: { flexDirection: 'row', gap: 16, marginTop: 7 },
   link: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   linkText: { fontSize: 12, fontWeight: '700', color: '#2449A8' },
-  timesBar: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4, marginBottom: 6, backgroundColor: '#FFF6E5', borderRadius: 12, paddingHorizontal: 11, paddingVertical: 10, borderWidth: 1, borderColor: '#F5D9A3' },
-  timesBarDone: { backgroundColor: '#F2F3F6', borderColor: 'transparent' },
-  timesText: { flex: 1, fontSize: 12.5, fontWeight: '700', color: '#8A5200' },
-  timesCta: { fontSize: 13, fontWeight: '800', color: '#8A5200' },
+  tools: { flexDirection: 'row', gap: 8, marginTop: 4, marginBottom: 8 },
+  tool: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12, backgroundColor: '#F1F3F7' },
+  toolText: { fontSize: 13.5, fontWeight: '700', color: INK },
+  timesBar: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4, marginBottom: 6, backgroundColor: ACT_BG, borderRadius: 12, paddingHorizontal: 11, paddingVertical: 10, borderWidth: 1, borderColor: ACT_LINE },
+  timesText: { flex: 1, fontSize: 12.5, fontWeight: '700', color: ACT },
+  timesCta: { fontSize: 13, fontWeight: '800', color: ACT },
   purged: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 4, marginBottom: 4, backgroundColor: '#F2F3F6', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 7 },
   purgedText: { flex: 1, fontSize: 12, fontWeight: '600', color: MUTED },
   set: { marginTop: 8, borderRadius: 12, padding: 9, gap: 8, borderWidth: 1 },
   setSent: { backgroundColor: '#F4FBF6', borderColor: WA_LIGHT },
-  setUnsent: { backgroundColor: '#FFFAF0', borderColor: '#F5D9A3' },
+  setUnsent: { backgroundColor: Colors.white, borderColor: '#E4E4E7' },
   setTitle: { fontSize: 12, fontWeight: '700', color: INK },
-  thumbs: { flexDirection: 'row', gap: 6 },
+  // Wraps: next to one or two photos the time chip fills the space beside them; with more it drops to its own line.
+  thumbs: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
+  timeState: { flexGrow: 1, flexBasis: 150, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 7, borderWidth: 1 },
+  timeOk: { backgroundColor: '#ECFDF3', borderColor: '#ABEFC6' },
+  timeTodo: { backgroundColor: ACT_BG, borderColor: ACT_LINE },
+  timeStateTitle: { fontSize: 12.5, fontWeight: '800' },
+  timeStateSub: { fontSize: 11, color: MUTED, marginTop: 1 },
+  transitWrap: { position: 'absolute', top: '50%', left: -24, width: 50, alignItems: 'center', marginTop: -11 },
+  // Plain grey text breaking the line, like iMile's "2.8h".
+  transitPill: { fontSize: 12, fontWeight: '600', color: '#8A8A96', backgroundColor: Colors.white, paddingHorizontal: 2, paddingVertical: 3, fontVariant: ['tabular-nums'] },
   thumb: { width: 60, height: 60, borderRadius: 10, overflow: 'hidden', backgroundColor: '#E4E7EE' },
   thumbEmpty: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#E4E7EE' },
   tick: { position: 'absolute', right: 4, bottom: 4, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: Colors.white },

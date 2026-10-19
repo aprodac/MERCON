@@ -1,12 +1,13 @@
 /**
  * GET  /trips/:id/progress-steps — the trip's steps, which are done, and how many photos each
  *                                  "go back to here" would affect.
+ * POST /trips/:id/step-forward    — move the trip on one step for the driver (not the finishing step).
  * POST /trips/:id/step-back       — { to_index, photos: 'move' | 'remove' | 'keep' }: take the trip
  *                                  back to that step (services/tripStepBack.ts). Audited, and the
  *                                  driver is told where their app now is.
  */
 import { Request, Response } from 'express';
-import { StepBackError, getTripProgressSteps, restoreStepBackPhotos, stepBackTrip } from '../services/tripStepBack';
+import { StepBackError, getTripProgressSteps, restoreStepBackPhotos, stepBackTrip, stepForwardTrip } from '../services/tripStepBack';
 import { createDriverNotification } from './notificationController';
 import { logAuditEvent } from '../services/auditService';
 import { logger } from '../utils/logger';
@@ -54,6 +55,29 @@ export const stepBack = async (req: Request, res: Response) => {
     res.json({ success: true, data: result });
   } catch (error) {
     fail(res, error, 'take the trip back');
+  }
+};
+
+export const stepForward = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id ?? null;
+    const toIndex = Number.isInteger(req.body?.to_index) ? Number(req.body.to_index) : undefined;
+    const result = await stepForwardTrip(req.params.id as string, userId, toIndex);
+    void logAuditEvent({ req, action: 'TRIP_STEPPED_FORWARD', entityType: 'Trip', entityId: result.trip_id, metadata: { from: result.from, to: result.to } });
+    if (result.driver_id) {
+      void createDriverNotification(
+        result.driver_id,
+        'Trip moved on by the office',
+        `The office marked: ${result.to.label}. Next: ${result.to.next}.`,
+        // Same type as a step-back: driver apps already refresh and reopen the right screen on it.
+        'TripSteppedBack',
+        'Trip',
+        result.trip_id,
+      );
+    }
+    res.json({ success: true, data: result });
+  } catch (error) {
+    fail(res, error, 'move the trip on');
   }
 };
 

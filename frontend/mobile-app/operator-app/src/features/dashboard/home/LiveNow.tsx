@@ -1,7 +1,7 @@
 /**
  * "Live now": the fleet map and the trips on the road in one card. Late
  * trips first, then trucks with no GPS, then the rest; each row shows the
- * truck, customer, how far along its stops it is, the driver and the next
+ * truck, customer, its route with one segment per step (green when done), the driver and the next
  * stop with its planned time ("All stops done" + "Confirm delivery" when every
  * stop is reached but the trip isn't closed). The map opens the full Fleet map; a row opens
  * the trip.
@@ -10,12 +10,13 @@ import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { ChevronRight, Maximize2 } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
-import type { LiveUnit } from '../../../lib/operator';
+import { isOnRoad, type LiveUnit } from '../../../lib/operator';
 import { FleetMap } from '../../fleet/FleetMap';
 import { isDelayed, isSilent } from '../../fleet/fleetModel';
 import { niceName } from '../../trips/create/components/ui';
 import { durationText } from '../actions/actionModel';
 import { INK, LINE, MUTED, tap } from '../../notifications/components/parts';
+import { TripStepBar } from '@/components/TripStepBar';
 
 const RED = '#D92D20';
 const AMBER = '#B54708';
@@ -51,7 +52,7 @@ export function LiveNow({ units, tz, now, onOpenMap, onOpenTrip, onAll }: {
   onOpenTrip: (id: string) => void;
   onAll: () => void;
 }) {
-  const onRoad = useMemo(() => units.filter((u) => u.trip && u.trip.phase !== 'upcoming'), [units]);
+  const onRoad = useMemo(() => units.filter(isOnRoad), [units]);
   const rows = useMemo<Row[]>(
     () => onRoad
       .map((u) => ({ unit: u, trip: u.trip!, rank: isDelayed(u) ? 0 : isSilent(u, now) ? 1 : 2 }))
@@ -93,9 +94,6 @@ export function LiveNow({ units, tz, now, onOpenMap, onOpenTrip, onAll }: {
         ) : (
           rows.slice(0, SHOWN).map(({ unit: u, trip: t }) => {
             const st = statusOf(u, t, now);
-            const total = t.stops.length;
-            const passed = t.stops.filter((x) => x.actual_departure || x.actual_arrival).length;
-            const pct = total ? Math.max(6, Math.round((passed / total) * 100)) : 6;
             const next = t.next_stop_index != null ? t.stops[t.next_stop_index] : null;
             // A next stop without a saved name still says which stop it is; none left → say the trip is waiting to be closed.
             const nextName = next ? niceName(next.name) || `Stop ${t.next_stop_index! + 1}` : null;
@@ -110,7 +108,7 @@ export function LiveNow({ units, tz, now, onOpenMap, onOpenTrip, onAll }: {
                   <Text style={s.customer} numberOfLines={1}>· {niceName(t.customer_name) || t.ref_id}</Text>
                   <Text style={[s.status, { color: st.color }]}>{st.text}</Text>
                 </View>
-                <View style={s.track}><View style={[s.fill, { width: `${pct}%`, backgroundColor: st.color === RED ? RED : INK }]} /></View>
+                <TripStepBar stops={t.stops} late={st.color === RED} caption={false} />
                 <View style={s.rowBottom}>
                   <Text style={s.meta} numberOfLines={1}>{u.driver ? niceName(u.driver.name) : 'No driver'}</Text>
                   <Text style={[s.meta, !nextName && allStopsDone(t) && { color: AMBER, fontWeight: '600' }]} numberOfLines={1}>{nextText}</Text>
@@ -144,8 +142,6 @@ const s = StyleSheet.create({
   plate: { fontSize: 15, fontWeight: '700', color: INK },
   customer: { flex: 1, fontSize: 13, color: MUTED },
   status: { fontSize: 12, fontWeight: '700' },
-  track: { height: 5, borderRadius: 3, backgroundColor: '#F1F1F3', overflow: 'hidden' },
-  fill: { height: 5, borderRadius: 3 },
   rowBottom: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
   meta: { fontSize: 12, color: MUTED, flexShrink: 1 },
 });

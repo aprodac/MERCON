@@ -15,7 +15,7 @@ import { FadedBottomIllustration } from '../components/FadedBottomIllustration';
 import { DelayReportModal } from '../components/DelayReportModal';
 import { roundTimes } from '../services/roundTimes';
 import { useCurrentTrip } from '../hooks/use-current-trip';
-import { tripService, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, getLegEndpoints, getEvidencePolicy } from '@mercon/mobile-shared/lib/trips';
+import { tripService, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, isReturnLoadingPhase, getLegEndpoints, getEvidencePolicy } from '@mercon/mobile-shared/lib/trips';
 
 import { keepExistingPhotos, pickFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
 import { PhotoCaptureModal } from '../components/PhotoCaptureModal';
@@ -101,7 +101,7 @@ const PickupVerificationScreen = () => {
   const { trip, loading, refetch, setTrip } = useCurrentTrip();
   const ws = getEffectiveWorkflowState(trip);
   const isRound = isRoundTrip(trip);
-  const isReturnLoading = isRound && (ws === 'RETURN_LOADING' || ws === 'FIRST_DELIVERY_COMPLETED');
+  const isReturnLoading = isReturnLoadingPhase(trip);
   const isStarted = ws === 'LOADING' || ws === 'ARRIVED_AT_PICKUP' || isReturnLoading;
 
   const legIndex = isReturnLoading ? 1 : 0;
@@ -342,7 +342,7 @@ const PickupVerificationScreen = () => {
     if (!trip || submitting) return;
     setSubmitting(true);
     try {
-      const updated = await tripService.updateStatus(trip.id, 'Loading', 'LOADING');
+      const updated = await tripService.updateStatus(trip.id, 'Loading', isReturnLoading ? 'RETURN_LOADING' : 'LOADING');
       setTrip(updated);
       triggerGPayHapticsAndSound();
     } catch (err) {

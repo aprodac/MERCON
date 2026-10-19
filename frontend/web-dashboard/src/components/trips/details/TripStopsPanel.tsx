@@ -267,7 +267,11 @@ export default function TripStopsPanel({ trip, phase, documents, tz, formatTime,
 
         {unplaced.length > 0 && (
           <div className="border-t border-black/[0.06] px-4 py-3 dark:border-white/10">
-            <p className="mb-1 text-xs font-medium text-muted-foreground">Other uploads from this trip</p>
+            <p className="mb-1 text-xs font-medium text-muted-foreground">
+              {unplaced.some((u) => u.stage === 'log')
+                ? "Driver's log: screenshots sent without a stop (make them stops in the operator app)"
+                : 'Other uploads from this trip'}
+            </p>
             {unplaced.map((u) => (
               <MediaRow key={u.key} update={u} formatTime={formatTime} onOpen={(idx) => openViewer(u, idx, undefined, trip.ref_id)} onSend={() => setSharing(u)} />
             ))}

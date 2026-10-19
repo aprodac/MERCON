@@ -93,6 +93,8 @@ export const DRIVER_WORKFLOW_STATES = [
   'RETURN_DELIVERY_COMPLETED',
   'REVIEW_COMPLETE',
   'COMPLETED',
+  // Customer-app trip run as a trip log (tripLog.ts): started, screenshots only.
+  'TRIP_LOG',
 ] as const;
 
 export type DriverWorkflowState = (typeof DRIVER_WORKFLOW_STATES)[number];
@@ -103,6 +105,27 @@ export const STOPS_FROZEN_IN: string[] = ['Completed', 'Invoiced', 'Cancelled'];
 export function isRouteEditable(status?: string | null): boolean {
   if (!status) return true;
   return ROUTE_EDITABLE_STATUSES.includes(status);
+}
+
+/**
+ * Delayed only because it is late to start: nothing reached, never left, the
+ * driver hasn't tapped Start. Such a trip is still fully editable (TestFlight
+ * feedback: a late trip's Edit page said "on the road" and locked its times).
+ */
+export function isDelayedNotStarted(trip?: {
+  status?: string | null;
+  actual_start?: unknown;
+  driver_workflow_state?: string | null;
+  stops?: Array<{ actual_arrival?: unknown; actual_departure?: unknown }> | null;
+} | null): boolean {
+  if (!trip || trip.status !== 'Delayed' || trip.actual_start) return false;
+  if (trip.driver_workflow_state && trip.driver_workflow_state !== 'ASSIGNED') return false;
+  return !(trip.stops ?? []).some((s) => isStopReached(s));
+}
+
+/** Times and every stop can change: Draft / Scheduled, or late but not started. */
+export function isTripRouteEditable(trip?: Parameters<typeof isDelayedNotStarted>[0]): boolean {
+  return isRouteEditable(trip?.status) || isDelayedNotStarted(trip);
 }
 
 export function isRouteLocked(status?: string | null): boolean {
@@ -560,6 +583,22 @@ export function getEffectiveWorkflowState(trip: Partial<TripLike> | null | undef
   }
 
   return ws || 'ASSIGNED';
+}
+
+/**
+ * True while a round trip is at its return pickup (arriving there or loading).
+ * Also true for a trip stuck on the round-1 states ARRIVED_AT_PICKUP / LOADING
+ * after its outbound delivery was done, which older app builds left behind —
+ * those screens would otherwise resolve to the round-1 origin and loop.
+ */
+export function isReturnLoadingPhase(trip: Partial<TripLike> | null | undefined): boolean {
+  if (!trip || !isRoundTrip(trip)) return false;
+  const ws = getEffectiveWorkflowState(trip);
+  if (ws === 'RETURN_LOADING' || ws === 'FIRST_DELIVERY_COMPLETED') return true;
+  const raw = trip.driver_workflow_state;
+  if (raw !== 'ARRIVED_AT_PICKUP' && raw !== 'LOADING') return false;
+  const delivery = getLegEndpoints(trip, 0).delivery;
+  return !!(delivery && delivery.actual_departure);
 }
 
 export interface AuthoritativeActiveStop {

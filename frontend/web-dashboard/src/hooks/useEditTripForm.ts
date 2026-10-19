@@ -19,7 +19,7 @@ import {
   normalizeVehicleClass,
 } from '@/utils/taxonomyRegistry';
 import { formatDriverDetails } from '@/utils/driverStatusUtils';
-import { isRoundTripCategory, getLegEndpoints, isRouteLocked as isSharedRouteLocked, STOPS_FROZEN_IN, stopsEditMode, isStopReached, findExtraStopRule } from '@mercon/shared-types';
+import { isRoundTripCategory, getLegEndpoints, isTripRouteEditable, STOPS_FROZEN_IN, stopsEditMode, isStopReached, findExtraStopRule } from '@mercon/shared-types';
 import { formatInDeploymentTz, localDateTimeToUtcIso, useDeploymentTimezone } from '@/lib/datetime';
 import { buildStopsFromSlot } from '@/utils/tripStopsHelper';
 
@@ -299,7 +299,8 @@ export function useEditTripForm() {
   }, [trip, customers, populateFormWithTrip]);
 
   // Edit Rules based on Trip Status
-  const isRouteLocked = isSharedRouteLocked(status);
+  // A trip only late to start (Delayed, nothing reached) is still fully editable.
+  const isRouteLocked = !isTripRouteEditable({ ...(trip as any), status });
   // Running trips (Loading/InTransit/Delayed) keep the route locked except for
   // stops the driver has not reached yet; Completed/Invoiced/Cancelled stay locked.
   const canEditStops = stopsEditMode(status) !== 'locked';

@@ -17,6 +17,7 @@
  * pin on a city centre.
  */
 import { Prisma, type PrismaClient } from '@prisma/client';
+import { isDelayedNotStarted } from '@mercon/shared-types';
 
 interface LatestTripFix {
   tripId: string;
@@ -95,6 +96,11 @@ export interface LiveUnit {
     ref_id: string | null;
     status: string;
     phase: LiveTripPhase;
+    /**
+     * False for a trip that is late but never started (Delayed, nothing
+     * reached): it is waiting to start, not on the road.
+     */
+    started: boolean;
     customer_id: string | null;
     customer_name: string | null;
     /** The customer's logo (uploads path or URL), for the map's cards. */
@@ -156,6 +162,8 @@ export interface LiveTripRow {
   ref_id: string | null;
   status: string;
   vehicleId: string | null;
+  actual_start?: Date | null;
+  driver_workflow_state?: string | null;
   planned_start: Date | null;
   planned_end: Date | null;
   updatedAt: Date;
@@ -285,6 +293,7 @@ export function tripOut(t: LiveTripRow | undefined): LiveUnit['trip'] {
     ref_id: t.ref_id,
     status: t.status,
     phase: t.status === 'Delayed' ? 'delayed' : t.status === 'Scheduled' ? 'upcoming' : 'active',
+    started: t.status !== 'Scheduled' && !isDelayedNotStarted(t),
     customer_id: t.customerId ?? null,
     customer_name: t.customer?.name ?? null,
     customer_logo_url: t.customer?.logo_url ?? null,
@@ -470,6 +479,8 @@ export async function loadLiveUnits(db: PrismaClient): Promise<LiveUnit[]> {
         status: true,
         vehicleId: true,
         customerId: true,
+        actual_start: true,
+        driver_workflow_state: true,
         planned_start: true,
         planned_end: true,
         updatedAt: true,
@@ -509,7 +520,7 @@ export async function loadLiveUnits(db: PrismaClient): Promise<LiveUnit[]> {
 export type LiveMediaKind = 'pod' | 'photo' | 'video';
 
 /** What the photo is of, from the driver app's `operation` tag. */
-export type LiveMediaStage = 'loaded' | 'arrived' | 'stop' | 'delivered' | 'delay' | 'other';
+export type LiveMediaStage = 'loaded' | 'arrived' | 'stop' | 'delivered' | 'delay' | 'log' | 'other';
 
 export interface LiveMediaItem {
   id: string;
@@ -525,6 +536,9 @@ export interface LiveMediaItem {
   gps?: { lat: number; lng: number } | null;
   /** Set when the office moved it here while taking the trip back a step (services/tripStepBack). */
   moved_at?: string | null;
+  /** Trip log screenshots (shared-types tripLog): which send it came in, and where. */
+  log_entry?: string | null;
+  place?: string | null;
 }
 
 export interface LiveStopMedia {
@@ -573,6 +587,7 @@ function mediaKind(docType: string | null, url: string, mime: string | null): Li
  */
 export function mediaStage(operation: unknown, docType: string | null): LiveMediaStage {
   const op = typeof operation === 'string' ? operation.toLowerCase() : '';
+  if (op === 'log') return 'log';
   if (op.includes('delay')) return 'delay';
   if (op.includes('arrival')) return 'arrived';
   if (op.includes('intermediate') || op === 'stop') return 'stop';
@@ -619,7 +634,7 @@ export function groupTripMedia(stops: TripMediaStopRow[], docs: TripMediaDocRow[
 
   for (const d of [...docs].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())) {
     const meta = (d.ai_extracted_json ?? {}) as {
-      stop_id?: unknown; operation?: unknown;
+      stop_id?: unknown; operation?: unknown; log_entry?: unknown; place?: unknown;
       gps?: { captured_at?: unknown; latitude?: unknown; longitude?: unknown };
       moved_by_step_back?: { at?: unknown };
     };
@@ -632,6 +647,9 @@ export function groupTripMedia(stops: TripMediaStopRow[], docs: TripMediaDocRow[
     const item = (id: string, url: string, mime: string | null): LiveMediaItem => ({
       id, kind: mediaKind(d.doc_type, url, mime), stage, url, mime, captured_at: captured,
       uploaded_at: iso(d.createdAt)!, gps, moved_at: movedAt,
+      ...(stage === 'log' && typeof meta.log_entry === 'string'
+        ? { log_entry: meta.log_entry, place: typeof meta.place === 'string' ? meta.place : null }
+        : {}),
     });
     const items = [item(d.id, d.file_url, d.mime_type), ...d.files.map((f) => item(f.id, f.file_url, f.mime_type))];
 

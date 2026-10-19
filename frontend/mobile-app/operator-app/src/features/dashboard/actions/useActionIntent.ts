@@ -52,6 +52,9 @@ export function useActionIntent() {
         case 'vehicle':
           router.push({ pathname: '/vehicle-details', params: { id: intent.id } });
           return;
+        case 'documents':
+          router.push({ pathname: '/documents', params: { kind: intent.kind, owner: intent.owner } } as any);
+          return;
         case 'customer':
           router.push({ pathname: '/customer-details', params: { id: intent.id } });
           return;

@@ -282,6 +282,12 @@ export const notifyOperatorsOfDelay = async (detection: DelayDetection) => {
 
     const videoBadge = videoDoc ? ' 📹 Video evidence attached.' : '';
     const late = formatDelay(detection.delayMinutes);
+    if (detection.situation === 'not_started') {
+      // Its own alert: a trip that never left is not a late truck on the road.
+      const message = `${trip} has not started — it was due at ${where} ${late} ago. Call the driver, or move or cancel the trip.`;
+      await Promise.all(staff.map((u) => createNotification(u.id, 'Trip not started', message, 'Delay', 'Trip', detection.tripId)));
+      return;
+    }
     const what =
       detection.situation === 'not_arrived' ? `${trip} is ${late} late for ${where} — the driver has not arrived yet.`
       : detection.situation === 'not_departed' ? `${trip} is ${late} late leaving ${where}.`

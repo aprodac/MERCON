@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../db';
-import { parseHealth, upsertDriverDevice } from './mobilePhoneController';
+import { parseHealth, upsertDriverDevice, parseLanguage } from './mobilePhoneController';
 import { visibleNotificationMessage } from '../services/pushNotificationService';
 
 export const getMobileNotifications = async (req: Request, res: Response) => {
@@ -62,6 +62,7 @@ export const registerDeviceToken = async (req: Request, res: Response) => {
       token: hasToken ? token.slice(0, 255) : null,
       platform: typeof platform === 'string' && platform ? platform.slice(0, 16) : 'android',
       health: installId ? parseHealth(req.body) : null,
+      language: parseLanguage(req.body),
     });
 
     res.json({ success: true, data: device });

@@ -3,6 +3,7 @@ import { prisma } from '../../db';
 import { logger } from '../../utils/logger';
 import { DELAY_THRESHOLD_MINUTES } from '../tripLifecycle';
 import { notifyOperatorsOfDelay, createNotification, createDriverNotification } from '../../controllers/notificationController';
+import { TRIP_LOG_STATE } from '@mercon/shared-types';
 
 let monitorInterval: NodeJS.Timeout | null = null;
 /** Trips already marked Delayed still get the driver prompt only this long after the stop was due. */
@@ -193,6 +194,8 @@ export async function checkTripsForDelay(now: Date = new Date()): Promise<number
     });
 
     for (const trip of activeTrips) {
+      // A trip log has no stop times to judge (the office builds the stops afterwards).
+      if (trip.driver_workflow_state === TRIP_LOG_STATE) continue;
       const alreadyDelayed = trip.status === TripStatus.Delayed;
       // A Delayed trip is judged like the stage it is really at.
       const firstPickup = trip.stops.find((s) => s.stop_type === StopType.Pickup) || trip.stops[0];
@@ -207,7 +210,7 @@ export async function checkTripsForDelay(now: Date = new Date()): Promise<number
       let delayMinutes = 0;
       let targetStop: (typeof trip.stops)[number] | null = trip.stops[0] || null;
       // Every case below is "not there yet", except a pickup that was reached but not left.
-      let situation: 'not_arrived' | 'not_departed' = 'not_arrived';
+      let situation: 'not_arrived' | 'not_departed' | 'not_started' = 'not_arrived';
 
       if (stage === TripStatus.Scheduled) {
         const pickupStop = trip.stops.find((s) => s.stop_type === StopType.Pickup) || trip.stops[0];
@@ -221,6 +224,7 @@ export async function checkTripsForDelay(now: Date = new Date()): Promise<number
               isDelayed = true;
               delayMinutes = diffMinutes;
               targetStop = pickupStop || null;
+              if (!trip.actual_start && (!trip.driver_workflow_state || trip.driver_workflow_state === 'ASSIGNED')) situation = 'not_started';
             }
           }
 

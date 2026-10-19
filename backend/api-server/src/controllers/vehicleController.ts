@@ -159,6 +159,7 @@ export const getVehicles = async (req: Request, res: Response) => {
               customer: { select: { name: true } },
               stops: {
                 // leg_index + arrival/departure: a round trip reads "Riyadh → Jeddah ↺ · Leg 2", not Riyadh → Riyadh.
+                where: { deletedAt: null },
                 select: { stop_type: true, location_name: true, location_address: true, stop_sequence: true, leg_index: true, actual_arrival: true, actual_departure: true },
                 orderBy: { stop_sequence: 'asc' },
               },
@@ -209,8 +210,21 @@ export const getVehicles = async (req: Request, res: Response) => {
           records.find((r: any) => r.status === 'Scheduled') ??
           null;
         const { maintenanceRecords: _mr, ...rest } = v;
-        const resolved_location = await resolveVehicleLocation(v, prisma);
-        return { ...rest, active_maintenance: active ?? null, resolved_location };
+        const [resolved_location, last_trip] = await Promise.all([
+          resolveVehicleLocation(v, prisma),
+          // A free truck's last finished trip — the list says when and where it last ran (TestFlight).
+          v.trips?.length
+            ? null
+            : prisma.trip.findFirst({
+                where: { vehicleId: v.id, deletedAt: null, status: { in: ['Completed', 'Invoiced'] as any[] } },
+                orderBy: [{ actual_end: { sort: 'desc', nulls: 'last' } }, { planned_start: 'desc' }],
+                select: {
+                  id: true, ref_id: true, actual_end: true, planned_start: true,
+                  stops: { where: { deletedAt: null }, select: { location_name: true, stop_sequence: true, actual_arrival: true }, orderBy: { stop_sequence: 'asc' } },
+                },
+              }),
+        ]);
+        return { ...rest, active_maintenance: active ?? null, resolved_location, last_trip };
       })
     );
 

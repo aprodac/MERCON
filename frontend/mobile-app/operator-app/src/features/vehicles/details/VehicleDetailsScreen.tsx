@@ -16,13 +16,14 @@ import { truckClassOfVehicle } from '@mercon/shared-types';
 import { DriverAvatar } from '../../drivers/components/DriverAvatar';
 import { DocumentPackSheet } from '../../documents/DocumentPackSheet';
 import { operatorService, type OperatorDriverOption } from '../../../lib/operator';
-import { SAUDI_CITY_COORDS } from '../../trips/services/travelTimeService';
-import { TONE, statusChip, haversineKm, type Tone } from '../../trips/details/tripDetailsModel';
+import { nearestCity, nearestCityWithin } from '../services/place';
+import { TONE, statusChip, type Tone } from '../../trips/details/tripDetailsModel';
 import { Card, Chip, INK, MUTED, PAGE, tap } from '../../trips/details/components/parts';
 import { PickerSheet, SkeletonRows, fmtDay, fmtSar, initialsOf, niceName } from '../../trips/create/components/ui';
 import { VehicleLocationMap, mapsUrl } from './VehicleLocationMap';
 import { daysUntil, slotState, useVehicleDetail } from './useVehicleDetail';
-import type { VehicleDocSlot, VehicleTrip } from './vehicleDetailApi';
+import { vehicleDetailApi, type VehicleDocSlot, type VehicleTrip } from './vehicleDetailApi';
+import { WorkshopSheet } from './WorkshopSheet';
 
 type Tab = 'overview' | 'trips' | 'documents' | 'service';
 
@@ -42,26 +43,6 @@ const waNumber = (p?: string | null) => {
   if (d.startsWith('0')) return `966${d.slice(1)}`;
   return d.length === 9 ? `966${d}` : d;
 };
-
-/** The nearest known city and how far it is. Never invents a street address. */
-function nearestCityWithin(lat: number, lng: number): { name: string; km: number } | null {
-  let best: { name: string; km: number } | null = null;
-  const seen = new Set<string>();
-  for (const [key, [clat, clng]] of Object.entries(SAUDI_CITY_COORDS)) {
-    const id = `${clat},${clng}`;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const km = haversineKm({ lat, lng }, { lat: clat, lng: clng });
-    if (!best || km < best.km) best = { name: niceName(key.replace(/_/g, ' ')), km };
-  }
-  return best;
-}
-
-/** "Near Riyadh" within 80 km — used for the short map pill. */
-function nearestCity(lat: number, lng: number): string | null {
-  const c = nearestCityWithin(lat, lng);
-  return c && c.km <= 80 ? c.name : null;
-}
 
 const routeOf = (t: VehicleTrip) => {
   const stops = [...(t.stops ?? [])].sort((a, b) => (a.stop_sequence ?? 0) - (b.stop_sequence ?? 0));
@@ -84,6 +65,7 @@ export default function VehicleDetailsScreen() {
   const [packOpen, setPackOpen] = useState(false);
   const [drivers, setDrivers] = useState<OperatorDriverOption[] | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [workshopOpen, setWorkshopOpen] = useState(false);
 
   const vehicle = v.vehicle;
 
@@ -150,6 +132,20 @@ export default function VehicleDetailsScreen() {
 
   const goBack = () => (router.canGoBack() ? router.back() : router.replace('/vehicles'));
 
+  const backInService = () => {
+    if (!vehicle) return;
+    Alert.alert('Back in service?', `${vehicle.plate_number} leaves the workshop and can be picked for trips again.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Back in service',
+        onPress: () =>
+          vehicleDetailApi.backInService(vehicle.id)
+            .then(() => { setToast({ message: `${vehicle.plate_number} is back in service.`, type: 'success' }); return v.refresh(); })
+            .catch((e: any) => setToast({ message: e?.response?.data?.error?.message || 'Not saved.', type: 'error' })),
+      },
+    ]);
+  };
+
   if (v.loading || !vehicle) {
     return (
       <View style={[s.page, { paddingTop: insets.top + 8 }]}>
@@ -207,6 +203,15 @@ export default function VehicleDetailsScreen() {
     { key: 'map', label: 'Directions', icon: Navigation, onPress: hasPos ? () => Linking.openURL(mapsUrl(loc!.latitude!, loc!.longitude!)).catch(() => {}) : undefined },
     { key: 'driver', label: driver ? 'Change driver' : 'Assign driver', icon: UserRoundCog, onPress: openDriverSheet },
   ];
+
+  // Workshop: send the truck in, or bring it back (TestFlight: "how to mark the vehicle as gone for maintenance").
+  const inMaintenance = inWorkshop || vehicle.status === 'Maintenance';
+  const workshopButton = (vehicle.status === 'OnTrip' || v.trips.current) && !inMaintenance ? null : (
+    <TouchableOpacity style={[s.workshopBtn, inMaintenance && s.workshopBtnBack]} activeOpacity={0.8} onPress={() => { tap(); if (inMaintenance) backInService(); else setWorkshopOpen(true); }} accessibilityRole="button">
+      <Wrench size={16} color={inMaintenance ? '#fff' : INK} strokeWidth={2.3} />
+      <Text style={[s.workshopBtnText, inMaintenance && { color: '#fff' }]}>{inMaintenance ? 'Back in service' : 'Send to workshop'}</Text>
+    </TouchableOpacity>
+  );
 
   const tabs: { id: Tab; label: string; badge?: number }[] = [
     { id: 'overview', label: 'Overview' },
@@ -344,8 +349,10 @@ export default function VehicleDetailsScreen() {
                     {niceName(workshop.workshop_name)} · since {fmtDay(workshop.start_date.slice(0, 10))}
                     {workshop.end_date ? ` · until ${fmtDay(workshop.end_date.slice(0, 10))}` : ''}
                   </Text>
+                  {workshopButton}
                 </Card>
               ) : null}
+              {!(inWorkshop && workshop) ? workshopButton : null}
               {liveTrip ? <TripNow trip={liveTrip} upcoming={!v.trips.current} onOpen={() => openTrip(liveTrip.id)} /> : null}
 
               {/* This month */}
@@ -452,6 +459,8 @@ export default function VehicleDetailsScreen() {
           ) : null}
 
           {tab === 'service' ? (
+            <>
+            {workshopButton}
             <Card style={s.listCard}>
               {v.maintenanceLoading ? (
                 <View style={s.listEmpty}><SkeletonRows rows={2} height={32} /></View>
@@ -478,9 +487,18 @@ export default function VehicleDetailsScreen() {
                 })
               )}
             </Card>
+            </>
           ) : null}
         </View>
       </ScrollView>
+      <WorkshopSheet
+        visible={workshopOpen}
+        vehicleId={vehicle.id}
+        plate={vehicle.plate_number}
+        odometer={vehicle.current_odometer ?? 0}
+        onClose={() => setWorkshopOpen(false)}
+        onDone={(message) => { setToast({ message, type: 'success' }); v.refresh(); }}
+      />
       {vehicle && packOpen ? (
         <DocumentPackSheet visible onClose={() => setPackOpen(false)} kind="Vehicle" ownerId={vehicle.id} ownerName={vehicle.plate_number || 'Truck'} />
       ) : null}
@@ -640,6 +658,9 @@ const s = StyleSheet.create({
   link: { fontSize: 13, fontWeight: '700', color: Colors.primary },
 
   accentCard: { overflow: 'hidden', gap: 8 },
+  workshopBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 46, borderRadius: 14, borderWidth: 1, borderColor: '#D4D4D8', backgroundColor: Colors.white },
+  workshopBtnBack: { backgroundColor: '#15803D', borderColor: '#15803D' },
+  workshopBtnText: { fontSize: 14.5, fontWeight: '800', color: INK },
   accent: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4 },
   steps: { flexDirection: 'row', gap: 3 },
   step: { width: 14, height: 5, borderRadius: 3 },

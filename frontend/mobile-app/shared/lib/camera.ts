@@ -9,6 +9,8 @@ export interface LocationTag {
   longitude: number;
   timestamp: string;
   address?: string | null;
+  /** Town or city only ("Taif"), for short labels like a trip log entry. */
+  city?: string | null;
 }
 
 export async function getDeviceLocationTag(): Promise<LocationTag | null> {
@@ -22,6 +24,7 @@ export async function getDeviceLocationTag(): Promise<LocationTag | null> {
     if (!pos) return null;
 
     let address: string | null = null;
+    let city: string | null = null;
     try {
       // The street address is a nice-to-have: never hold the photo up for it.
       const geocoded = await withTimeout(
@@ -39,6 +42,7 @@ export async function getDeviceLocationTag(): Promise<LocationTag | null> {
         if (placeParts.length > 0) {
           address = placeParts.join(', ');
         }
+        city = item.city || item.subregion || item.district || null;
       }
     } catch (_) {}
 
@@ -47,6 +51,7 @@ export async function getDeviceLocationTag(): Promise<LocationTag | null> {
       longitude: pos.coords.longitude,
       timestamp: new Date().toISOString(),
       address,
+      city,
     };
   } catch (e) {
     // Silently fall back if GPS location is unavailable on device/simulator
@@ -176,6 +181,21 @@ export async function pickFromGallery(): Promise<CapturedPhoto | null> {
   });
 
   return toPhoto(result, location);
+}
+
+/** Several screenshots at once from the gallery (trip log), each compressed and tagged with where the phone is now. */
+export async function pickManyFromGallery(): Promise<CapturedPhoto[]> {
+  const location = getDeviceLocationTag();
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: 'images',
+    quality: 1,
+    exif: false,
+    allowsMultipleSelection: true,
+    selectionLimit: 0,
+    orderedSelection: true,
+  });
+  if (result.canceled || !result.assets?.length) return [];
+  return Promise.all(result.assets.map((a) => compressPhoto(a.uri, location)));
 }
 
 export interface CapturedMedia {

@@ -16,18 +16,19 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CalendarClock, Clock, Lock, MapPin, Plus, Route, Wallet, X } from 'lucide-react-native';
-import { dateInZone, extraStopNote, findExtraStopRule, isRouteEditable, isStopReached, stopsEditMode, zonedWallTimeToUtcIso } from '@mercon/shared-types';
+import { dateInZone, extraStopNote, findExtraStopRule, isStopReached, isTripRouteEditable, stopsEditMode, zonedWallTimeToUtcIso } from '@mercon/shared-types';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import {
   operatorService, invalidateOperatorTrips,
-  type OperatorLocation, type OperatorTripDetail, type UpdateTripRouteInput,
+  type OperatorLocation, type OperatorTrip, type OperatorTripDetail, type UpdateTripRouteInput,
 } from '../../../lib/operator';
 import { Field, FormHeader, SaveBar, Section, formStyles } from '@/features/users/components/FormKit';
 import { PickerSheet, ValueTile, fmtDay, niceName, tap } from '../create/components/ui';
 import { WhenSheet, type WhenValue } from '../create/components/WhenSheet';
 import { deltaText, moveTrips, tripsMadeWith } from './movePlan';
 import { ExtraStopSheet, type ExtraStopSheetValue } from './ExtraStopSheet';
+import { MovePlanSheet } from './MovePlanSheet';
 import { isMonthly, sortedStops, stopName } from '../details/tripDetailsModel';
 
 interface StopDraft {
@@ -102,22 +103,23 @@ export default function EditTripScreen() {
   );
 }
 
-/** A two-button question; resolves true for `yes`. */
-const ask = (title: string, message: string, yes: string, no: string) =>
-  new Promise<boolean>((resolve) =>
-    Alert.alert(title, message, [
-      { text: no, style: 'cancel', onPress: () => resolve(false) },
-      { text: yes, onPress: () => resolve(true) },
-    ], { cancelable: false }),
-  );
-
 const isoMs = (w: WhenValue, tz: string) => (w.date && w.time ? Date.parse(zonedWallTimeToUtcIso(w.date, w.time, tz)) : null);
 const shiftIso = (iso: string | null, deltaMs: number) => (iso && deltaMs ? new Date(Date.parse(iso) + deltaMs).toISOString() : iso);
+
+/** "8 h 30 m" for a transit time in minutes. */
+const transitText = (min: number) => {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return h && m ? `${h} h ${m} m` : h ? `${h} h` : `${m} m`;
+};
+/** Transit times offered: every 30 minutes up to two days. */
+const TRANSIT_CHOICES = Array.from({ length: 96 }, (_, i) => (i + 1) * 30);
 
 function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; onDone: () => void }) {
   const queryClient = useQueryClient();
   const status = trip.status as string;
-  const routeOpen = isRouteEditable(status);
+  // Late but never started counts as not started: times and stops stay open.
+  const routeOpen = isTripRouteEditable(trip as never);
   // A running trip still takes stops the driver has not reached yet; finished trips take none.
   const stopsOpen = stopsEditMode(status) !== 'locked';
   const monthly = isMonthly(trip);
@@ -165,12 +167,20 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
 
   const [locations, setLocations] = useState<OperatorLocation[]>([]);
   const [when, setWhen] = useState<'start' | 'end' | null>(null);
+  // Transit time = delivery − pickup; picking one moves the delivery (TestFlight feedback).
+  const [transitPicker, setTransitPicker] = useState(false);
+  const startMs = isoMs(start, tz);
+  const endMs = isoMs(end, tz);
+  const transitMin = startMs != null && endMs != null && endMs > startMs ? Math.round((endMs - startMs) / 60000) : null;
   const [stopWhen, setStopWhen] = useState<string | null>(null);
   const [stopPicker, setStopPicker] = useState<string | null>(null);
   const [errors, setErrors] = useState<Errors>({});
   const [saving, setSaving] = useState(false);
   const [extra, setExtra] = useState<null | { added: number; rate: number | null; ruleId: string | null; unit: string | null; chargeType: string }>(null);
   const [extraSaving, setExtraSaving] = useState(false);
+  // "Move the other trips too?" — resolves with the ids picked ([] = only this trip).
+  const [movePick, setMovePick] = useState<null | { others: OperatorTrip[]; delta: number; resolve: (ids: string[]) => void }>(null);
+  const pickToMove = (others: OperatorTrip[], delta: number) => new Promise<string[]>((resolve) => setMovePick({ others, delta, resolve }));
 
   const customerId = trip.customer?.id;
   useEffect(() => {
@@ -281,14 +291,11 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
           })),
         };
         // A month plan / bulk booking: offer to move the trips made with this one by the same amount.
-        const others = startDelta ? await tripsMadeWith(trip).catch(() => []) : [];
-        const all = others.length > 0 && await ask(
-          `Move the other ${others.length} ${others.length === 1 ? 'trip' : 'trips'} too?`,
-          `${others.length === 1 ? 'It was' : 'They were'} created together with this one (same customer and driver). Move ${others.length === 1 ? 'it' : 'them'} ${deltaText(startDelta)} as well?`,
-          `Move all ${others.length + 1}`,
-          'Only this trip',
-        );
-        if (all) {
+        const madeWith = startDelta ? await tripsMadeWith(trip).catch(() => []) : [];
+        // Pick which of them move too — all, from this trip on, or some (not all-or-nothing).
+        const pickedIds = madeWith.length > 0 ? await pickToMove(madeWith, startDelta) : [];
+        const others = madeWith.filter((t) => pickedIds.includes(t.id));
+        if (others.length) {
           const r = await moveTrips(others, startDelta, { trip, payload });
           if (!r.editedSaved) {
             if (r.moved) refreshLists();
@@ -378,6 +385,13 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
               placeholder="Not set"
               error={!!errors.schedule}
               onPress={() => routeOpen && setWhen('end')}
+            />
+            <ValueTile
+              style={(!routeOpen || startMs == null) && s.off}
+              caption="Transit time"
+              value={transitMin != null ? transitText(transitMin) : undefined}
+              placeholder={startMs == null ? 'Set the pickup first' : 'Not set'}
+              onPress={() => routeOpen && startMs != null && setTransitPicker(true)}
             />
           </View>
           {errors.schedule ? <Text style={s.error}>{errors.schedule}</Text> : null}
@@ -478,6 +492,15 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
 
       <SaveBar label="Save changes" onPress={handleSave} saving={saving} disabled={!dirty} />
 
+      <MovePlanSheet
+        visible={!!movePick}
+        others={movePick?.others ?? []}
+        editedStart={trip.planned_start ?? null}
+        shiftText={movePick ? deltaText(movePick.delta) : ''}
+        tz={tz}
+        onMove={(ids) => { movePick?.resolve(ids); setMovePick(null); }}
+        onOnlyThis={() => { movePick?.resolve([]); setMovePick(null); }}
+      />
       <ExtraStopSheet
         visible={!!extra}
         added={extra?.added ?? 0}
@@ -529,6 +552,24 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
         tz={tz}
         onDone={(v) => { setEnd(v); setEndTouched(true); clear('schedule'); setWhen(null); }}
         onClose={() => setWhen(null)}
+      />
+      <PickerSheet
+        visible={transitPicker}
+        title="Transit time"
+        options={TRANSIT_CHOICES.map((m) => ({
+          value: String(m),
+          label: transitText(m),
+          sub: startMs != null ? `Delivery ${whenText(wallOf(new Date(startMs + m * 60000).toISOString(), tz))}` : undefined,
+        }))}
+        value={transitMin != null ? String(Math.round(transitMin / 30) * 30) : null}
+        onSelect={(value) => {
+          if (startMs == null) return;
+          setEnd(wallOf(new Date(startMs + Number(value) * 60000).toISOString(), tz));
+          setEndTouched(true);
+          clear('schedule');
+        }}
+        onClose={() => setTransitPicker(false)}
+        searchPlaceholder="Hours, e.g. 8"
       />
       <PickerSheet
         visible={!!stopPicker}

@@ -8,6 +8,7 @@ import { Platform } from 'react-native';
 import { api } from '@mercon/mobile-shared/lib/api';
 import { getInstallId } from '@mercon/mobile-shared/lib/install-id';
 import type { AppNotification } from '@mercon/mobile-shared/lib/notifications';
+import { getCurrentLanguage } from '@mercon/mobile-shared/lib/language-context';
 
 let Notifications: typeof import('expo-notifications') | null = null;
 try {
@@ -126,6 +127,8 @@ export async function registerPushDeviceWithBackend(token: string): Promise<void
       token,
       platform: Platform.OS,
       install_id: await getInstallId(),
+      // Pushes to this phone are written in the app's language.
+      language: getCurrentLanguage(),
     });
   } catch (error) {
     console.warn('[Push] Failed to register device token with backend:', error);

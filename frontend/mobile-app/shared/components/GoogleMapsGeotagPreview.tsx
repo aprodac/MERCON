@@ -7,6 +7,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Platform, Image } from 'react-native';
 import { Calendar, Globe, MapPin, Building2 } from 'lucide-react-native';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
+import { inCompanyZone } from '../lib/dates';
 
 const merconLogo = require('@mercon/mobile-shared/assets/images/merconclosed-logo.webp');
 
@@ -45,17 +46,17 @@ export const GoogleMapsGeotagPreview: React.FC<GoogleMapsGeotagProps> = ({
 
   const dateObj = timestamp ? new Date(timestamp) : new Date();
   
-  const formattedDate = dateObj.toLocaleDateString('en-US', {
+  const formattedDate = dateObj.toLocaleDateString('en-US', inCompanyZone({
     month: 'short',
     day: '2-digit',
     year: 'numeric',
-  });
+  }));
 
-  const formattedTime = dateObj.toLocaleTimeString('en-US', {
+  const formattedTime = dateObj.toLocaleTimeString('en-US', inCompanyZone({
     hour: '2-digit',
     minute: '2-digit',
     hour12: true,
-  });
+  }));
 
   const latStr = `${latitude.toFixed(4)}°N`;
   const lngStr = `${longitude.toFixed(4)}°E`;

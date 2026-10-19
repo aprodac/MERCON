@@ -209,8 +209,11 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
   const caption = update
     ? [
         `*${[trip.ref_id, updateTitle(update)].filter(Boolean).join(' · ')}${update.stop ? ` · ${update.stop.name}` : ''}*`,
-        [trip.customer?.name, update.trip.route].filter(Boolean).join(' · '),
-        [update.vehicle_plate ? `Truck ${update.vehicle_plate}` : '', update.driver?.name ? `Driver ${update.driver.name}` : ''].filter(Boolean).join(' · '),
+        // One labelled fact per line (TestFlight: "make the message aligned, it's mixed").
+        trip.customer?.name ? `Customer: ${trip.customer.name}` : null,
+        update.trip.route ? `Route: ${update.trip.route}` : null,
+        update.vehicle_plate ? `Truck: ${update.vehicle_plate}` : null,
+        update.driver?.name ? `Driver: ${update.driver.name}` : null,
         update.delay_note ? `Reason: ${update.delay_note}` : null,
         withNext && nextLine ? nextLine : null,
         trackingUrl ? `\nTrack live: ${trackingUrl}` : null,

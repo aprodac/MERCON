@@ -1279,3 +1279,5 @@ export * from './saudiPlate';
 export * from './quotationRef';
 export * from './statusMessage';
 export * from './fleetRules';
+export * from './driverNotificationText';
+export * from './tripLog';

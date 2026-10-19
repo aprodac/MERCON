@@ -38,7 +38,16 @@ const valid = (s: Stop) =>
   Number.isFinite(s.location_lat) && Number.isFinite(s.location_lng) && !(s.location_lat === 0 && s.location_lng === 0);
 
 export function TripMap({ stops, overview, phase, height, interactive = false, padding = { top: 60, bottom: 40 } }: Props) {
-  const points = useMemo(() => stops.filter(valid), [stops]);
+  // A round trip goes out and back over the same places, so stop 4 sat on top of
+  // stop 1 and stop 3 on stop 2: on leg 1 the map showed "3" and "4" and the line
+  // back home (TestFlight feedback). Until it is done, show only the leg under way.
+  const all = useMemo(() => stops.filter(valid).map((s, i) => ({ s, n: i + 1 })), [stops]);
+  const leg = useMemo(() => {
+    if (phase === 'done' || phase === 'cancelled' || !all.some(({ s }) => (s.leg_index ?? 0) === 1)) return null;
+    return all.find(({ s }) => !s.actual_arrival)?.s.leg_index ?? 1;
+  }, [all, phase]);
+  const shown = useMemo(() => (leg == null ? all : all.filter(({ s }) => (s.leg_index ?? 0) === leg)), [all, leg]);
+  const points = useMemo(() => shown.map(({ s }) => s), [shown]);
   const truck = overview?.unit?.position ?? null;
   const path = useMemo(() => overview?.path ?? [], [overview?.path]);
   const nextIdx = phase === 'active' ? points.findIndex((s) => !s.actual_arrival) : -1;
@@ -149,7 +158,7 @@ export function TripMap({ stops, overview, phase, height, interactive = false, p
           return (
             <ViewAnnotation key={s.id} id={`stop-${s.id}`} lngLat={[s.location_lng, s.location_lat]} anchor="center">
               <View style={[styles.stop, done ? styles.stopDone : isNext ? styles.stopNext : phase === 'planned' ? styles.stopPlanned : null]}>
-                <Text style={[styles.stopText, (done || isNext) && { color: Colors.white }, phase === 'planned' && !done && { color: '#5B34B0' }]}>{i + 1}</Text>
+                <Text style={[styles.stopText, (done || isNext) && { color: Colors.white }, phase === 'planned' && !done && { color: '#5B34B0' }]}>{shown[i].n}</Text>
               </View>
             </ViewAnnotation>
           );

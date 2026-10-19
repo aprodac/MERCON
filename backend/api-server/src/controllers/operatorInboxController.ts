@@ -5,7 +5,7 @@ import { logger } from '../utils/logger';
 import { whatsappService } from '../services/whatsappService';
 import { MAX_COLLAGE_PHOTOS, writeCollage } from '../services/shareCollage';
 import {
-  SHARE_LINK_TTL_DAYS, buildShareMessage, loadDocumentExpiries, loadDriverUpdates, loadTripDriverUpdates,
+  MARKED_READ_CHANNEL, SHARE_LINK_TTL_DAYS, buildShareMessage, loadDocumentExpiries, loadDriverUpdates, loadTripDriverUpdates,
   newShareToken, updateHeadline,
 } from '../services/operatorInbox';
 
@@ -66,6 +66,13 @@ export const shareDriverUpdateBody = z.object({
   caption: z.string().trim().max(1024).optional().nullable(),
   /** Send 2–4 photos as one combined picture (one image + the message under it). */
   combine: z.boolean().optional(),
+});
+
+export const markDriverUpdatesReadBody = z.object({
+  updates: z.array(z.object({
+    trip_id: z.string().uuid(),
+    update_key: z.string().min(1).max(120),
+  })).min(1).max(100),
 });
 
 export const driverUpdateCollageBody = z.object({
@@ -179,6 +186,45 @@ export const shareDriverUpdate = async (req: Request, res: Response) => {
 };
 
 /**
+ * POST /operator-inbox/driver-updates/mark-read
+ *
+ * "Mark as read": the sets leave "To send" for every operator without being
+ * sent to anyone. Logged in the share log (channel `marked_read`) with the
+ * items they held, so photos the driver adds later bring the set back.
+ */
+export const markDriverUpdatesRead = async (req: Request, res: Response) => {
+  const body = req.body as z.infer<typeof markDriverUpdatesReadBody>;
+  try {
+    const userId = (req as { user?: { id?: unknown } }).user?.id;
+    const byTrip = new Map<string, string[]>();
+    for (const u of body.updates) byTrip.set(u.trip_id, [...(byTrip.get(u.trip_id) ?? []), u.update_key]);
+    let marked = 0;
+    for (const [tripId, keys] of byTrip) {
+      const updates = (await loadTripDriverUpdates(prisma, tripId)).filter((u) => keys.includes(u.key));
+      for (const u of updates) {
+        await prisma.tripUpdateShare.create({
+          data: {
+            tripId,
+            update_key: u.key,
+            media_ids: u.items.map((i) => i.id),
+            token: newShareToken(),
+            channel: MARKED_READ_CHANNEL,
+            recipient: 'internal',
+            shared_by: typeof userId === 'string' ? userId : null,
+            expiresAt: new Date(),
+          },
+        });
+        marked += 1;
+      }
+    }
+    res.json({ success: true, data: { marked } });
+  } catch (error) {
+    logger.error({ err: error }, 'mark driver updates read failed');
+    res.status(500).json({ success: false, error: { message: 'Could not mark as read' } });
+  }
+};
+
+/**
  * GET /public/shares/:token — the photo page behind a forwarded link. No login:
  * the unguessable token is the permission, and it shows only the items chosen
  * for that forward, until the link expires.
@@ -189,7 +235,7 @@ export const getPublicShare = async (req: Request, res: Response) => {
     const share = token.length >= 16 && token.length <= 64
       ? await prisma.tripUpdateShare.findUnique({ where: { token } })
       : null;
-    if (!share) return res.status(404).json({ success: false, error: { message: 'This link is not valid' } });
+    if (!share || share.channel === MARKED_READ_CHANNEL) return res.status(404).json({ success: false, error: { message: 'This link is not valid' } });
     if (share.expiresAt < new Date()) return res.status(410).json({ success: false, error: { message: 'This link has expired' } });
 
     const update = (await loadTripDriverUpdates(prisma, share.tripId)).find((u) => u.key === share.update_key);

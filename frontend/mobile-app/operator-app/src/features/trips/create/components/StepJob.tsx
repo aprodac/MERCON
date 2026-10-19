@@ -6,6 +6,7 @@ import { Colors, Spacing, Radius } from '@mercon/mobile-shared/theme/tokens';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { TRUCK_CLASSES, lineTypeLabel, filterQuotationsBySearch, pricingFromQuotation } from '@mercon/shared-types';
 import { PriceHistory } from './PriceHistory';
+import { RecentTripPicker } from './RecentTripPicker';
 import { PinPickerSheet, type PickedPin } from '../../details/components/PinSheet';
 import { getQuotationRoute, type OperatorQuotation, type OperatorSurchargeRule } from '../../../../lib/operator';
 import { quotationBilling, quotationClass, quotationLineType, type CreateTripForm, type LocationPick } from '../useCreateTrip';
@@ -176,9 +177,13 @@ export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors
     >
       <View style={styles.chipRow}>
         <InfoChip label={lineTypeLabel(form.rateCategory)} />
-        <InfoChip label={form.vehicleType} />
+        {/* The truck type can still change with a quotation picked (TestFlight feedback); the price stays the quotation's. */}
+        <SelectChip label={form.vehicleType} onPress={() => setSheet('class')} />
         <InfoChip label={form.isMonthly ? 'Monthly' : 'Extra'} />
       </View>
+      {applied && quotationClass(applied) && quotationClass(applied) !== form.vehicleType ? (
+        <Text style={styles.note}>{`The quotation is for ${quotationClass(applied)}. Its price is kept — tap Edit price if the ${form.vehicleType} rate differs.`}</Text>
+      ) : null}
 
       {editingPrice ? (
         <>
@@ -252,6 +257,7 @@ export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors
 
   return (
     <View style={{ gap: Spacing.sm }}>
+      {!form.customerId ? <RecentTripPicker onPick={form.copyTrip} /> : null}
       <Section icon={Building2} tone="blue" title="Customer">
         <FieldButton
           icon={form.selectedCustomer ? <CompanyAvatar name={form.selectedCustomer.name} url={form.selectedCustomer.logo_url || form.selectedCustomer.avatar_url} size={28} /> : undefined}
@@ -793,12 +799,23 @@ function QuotationSheet({
   onClose: () => void;
 }) {
   const [search, setSearch] = useState('');
+  // From / To match the route's two ends separately — one search box couldn't
+  // tell "Riyadh → Jeddah" from "Jeddah → Riyadh" (TestFlight feedback).
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const [type, setType] = useState('ALL');
   const list = useMemo(() => {
     const byBilling = billing === 'ALL' ? quotations : quotations.filter((q) => quotationBilling(q) === billing);
     const byType = type === 'ALL' ? byBilling : byBilling.filter((q) => quotationLineType(q) === type);
-    return search.trim() ? (filterQuotationsBySearch(byType as any[], search) as OperatorQuotation[]) : byType;
-  }, [quotations, billing, search, type]);
+    const has = (place: string, typed: string) => !typed.trim() || place.toLowerCase().includes(typed.trim().toLowerCase());
+    const byRoute = from.trim() || to.trim()
+      ? byType.filter((q) => {
+        const r = getQuotationRoute(q);
+        return has(r.origin, from) && has(r.dest, to);
+      })
+      : byType;
+    return search.trim() ? (filterQuotationsBySearch(byRoute as any[], search) as OperatorQuotation[]) : byRoute;
+  }, [quotations, billing, search, type, from, to]);
   return (
     <AppModal visible={visible} onClose={onClose} type="bottom-sheet" title="Quotations" maxHeight="90%">
       <View style={ui.searchBar}>
@@ -809,6 +826,19 @@ function QuotationSheet({
             <X size={16} color={Colors.gray500} />
           </TouchableOpacity>
         ) : null}
+      </View>
+      <View style={styles.fromToRow}>
+        {([['From', from, setFrom], ['To', to, setTo]] as const).map(([label, value, set]) => (
+          <View key={label} style={[ui.searchBar, styles.fromToField]}>
+            <Text style={styles.fromToLabel}>{label}</Text>
+            <TextInput style={ui.searchInput} value={value} onChangeText={set} placeholder="Any city" placeholderTextColor={Colors.gray400} autoCorrect={false} />
+            {value ? (
+              <TouchableOpacity onPress={() => set('')} hitSlop={8} accessibilityLabel={`Clear ${label}`}>
+                <X size={14} color={Colors.gray500} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ))}
       </View>
       <BillingFilterChips quotations={quotations} value={billing} onChange={onBillingChange} />
       <View style={styles.typeRow}>
@@ -1048,6 +1078,9 @@ const styles = StyleSheet.create({
   sectionHint: { fontSize: 12, color: Colors.gray600, lineHeight: 17, marginTop: 2 },
   warnNote: { fontSize: 12, color: Colors.warning, fontWeight: '600', marginTop: 6 },
   note: { fontSize: 12, color: Colors.gray600, marginTop: Spacing.sm },
+  fromToRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  fromToField: { flex: 1, marginTop: 0 },
+  fromToLabel: { fontSize: 12, fontWeight: '700', color: Colors.gray600 },
   chargeRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -8,6 +8,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 
 import { AuthProvider, useAuth } from '@mercon/mobile-shared/lib/auth-context';
 import { queryClient } from '@mercon/mobile-shared/lib/query-client';
+import { loadCompanyTimeZone } from '@mercon/mobile-shared/lib/dates';
 import { DriverBottomNav } from '@/navigation/DriverBottomNav';
 
 import { LanguageProvider, type LanguageMode } from '@mercon/mobile-shared/lib/language-context';
@@ -33,6 +34,11 @@ function RootNavigator() {
   const router = useRouter();
   const { isLoggedIn, isLoading } = useAuth();
   const pathname = usePathname();
+
+  // Trip times show in the company's time zone; Riyadh until this answers.
+  useEffect(() => {
+    void loadCompanyTimeZone();
+  }, []);
 
   // Keep the native splash visible until the session is restored,
   // so the user never sees a flash of the wrong screen.

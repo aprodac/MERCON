@@ -22,6 +22,11 @@ const MAX_UPDATES = 80;
 
 export type ShareRecipient = 'customer_contact' | 'customer_group' | 'internal' | 'other';
 export type ShareChannel = 'link' | 'whatsapp_api';
+/**
+ * A share-log row with this channel is not a forward: an operator marked the
+ * set as read without sending it (TestFlight feedback "Add mark as read").
+ */
+export const MARKED_READ_CHANNEL = 'marked_read';
 
 export interface InboxCustomer {
   name: string;
@@ -42,7 +47,7 @@ export interface DriverUpdateShare {
 }
 
 export interface DriverUpdate {
-  /** `<stop id | trip>:<stage>` — stable across refreshes. */
+  /** `<stop id | trip>:<stage>`, or `log:<entry>` for a trip log send — stable across refreshes. */
   key: string;
   trip: { id: string; ref_id: string | null; status: string; route: string };
   customer: InboxCustomer | null;
@@ -58,6 +63,10 @@ export interface DriverUpdate {
   sent_ids: string[];
   /** Items not included in any forward yet. */
   unsent_count: number;
+  /** Marked as read without sending — every item in the set at the time (new photos bring it back). */
+  marked_read: { by: string | null; at: string } | null;
+  /** Trip log send: where the phone was (no stop yet). */
+  place?: string | null;
 }
 
 interface TripRowForUpdates {
@@ -111,7 +120,8 @@ export function routeOf(stops: TripRowForUpdates['stops']): string {
  * one photo of a set reaches the customer; the rest are kept (and shown as
  * not sent on the trip) without asking again.
  */
-export const needsSending = (u: Pick<DriverUpdate, 'items' | 'sent_ids'>): boolean => u.items.length > 0 && u.sent_ids.length === 0;
+export const needsSending = (u: Pick<DriverUpdate, 'items' | 'sent_ids'> & { marked_read?: DriverUpdate['marked_read'] }): boolean =>
+  u.items.length > 0 && u.sent_ids.length === 0 && !u.marked_read;
 
 /**
  * Turns trips + their recent uploads + the share log into one row per batch
@@ -157,12 +167,22 @@ export function buildDriverUpdates(
     ];
 
     for (const b of batches) {
-      const byStage = new Map<LiveMediaStage, LiveMediaItem[]>();
-      for (const it of b.items) byStage.set(it.stage, [...(byStage.get(it.stage) ?? []), it]);
-      for (const [stage, items] of byStage) {
-        const key = `${b.stopId ?? 'trip'}:${stage}`;
-        const rows = sharesByKey.get(`${t.id}|${key}`) ?? [];
+      // One row per step; a trip log's sends are one row each, keyed by the send
+      // (not the stop) so a row the office already sent stays sent once it becomes a stop.
+      const byStage = new Map<string, LiveMediaItem[]>();
+      for (const it of b.items) {
+        const g = it.stage === 'log' && it.log_entry ? `log:${it.log_entry}` : it.stage;
+        byStage.set(g, [...(byStage.get(g) ?? []), it]);
+      }
+      for (const [group, items] of byStage) {
+        const stage: LiveMediaStage = items[0].stage;
+        const key = group.startsWith('log:') ? group : `${b.stopId ?? 'trip'}:${stage}`;
+        const all = sharesByKey.get(`${t.id}|${key}`) ?? [];
+        const rows = all.filter((r) => r.channel !== MARKED_READ_CHANNEL);
         const sent = new Set(rows.flatMap((r) => r.media_ids));
+        const readMark = all
+          .filter((r) => r.channel === MARKED_READ_CHANNEL && items.every((i) => r.media_ids.includes(i.id)))
+          .sort((a, z) => new Date(z.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
         const s = b.stopId ? stopById.get(b.stopId) : undefined;
         out.push({
           ...base,
@@ -184,6 +204,10 @@ export function buildDriverUpdates(
             })),
           sent_ids: items.filter((i) => sent.has(i.id)).map((i) => i.id),
           unsent_count: items.filter((i) => !sent.has(i.id)).length,
+          marked_read: readMark
+            ? { by: readMark.sharedBy?.name || readMark.sharedBy?.username || null, at: new Date(readMark.createdAt).toISOString() }
+            : null,
+          ...(stage === 'log' ? { place: items.find((i) => i.place)?.place ?? null } : {}),
         });
       }
     }
@@ -204,10 +228,12 @@ const STAGE_PHRASE: Record<LiveMediaStage, string> = {
   stop: 'Stop at',
   delivered: 'Delivered at',
   delay: 'Delay on the way to',
+  log: 'Trip update at',
   other: 'Photos from',
 };
 
-export function updateHeadline(u: Pick<DriverUpdate, 'stage' | 'stop'>): string {
+export function updateHeadline(u: Pick<DriverUpdate, 'stage' | 'stop' | 'place'>): string {
+  if (u.stage === 'log' && !u.stop) return u.place ? `Trip update near ${u.place}` : 'Trip update';
   return u.stop ? `${STAGE_PHRASE[u.stage]} ${u.stop.name}` : u.stage === 'delay' ? 'Delay reported' : 'Trip photos';
 }
 
@@ -218,11 +244,12 @@ export function buildShareMessage(u: DriverUpdate, items: LiveMediaItem[], share
   const what = [photos ? `${photos} photo${photos > 1 ? 's' : ''}` : '', videos ? `${videos} video${videos > 1 ? 's' : ''}` : '']
     .filter(Boolean)
     .join(' + ');
+  // One fact per labelled line — run together, they wrapped into a jumble on a phone (TestFlight).
   const lines = [`*${[u.trip.ref_id, updateHeadline(u)].filter(Boolean).join(' · ')}*`];
-  const sub = [u.customer?.name, u.trip.route].filter(Boolean).join(' · ');
-  if (sub) lines.push(sub);
-  const who = [u.vehicle_plate ? `Truck ${u.vehicle_plate}` : '', u.driver?.name ? `Driver ${u.driver.name}` : ''].filter(Boolean).join(' · ');
-  if (who) lines.push(who);
+  if (u.customer?.name) lines.push(`Customer: ${u.customer.name}`);
+  if (u.trip.route) lines.push(`Route: ${u.trip.route}`);
+  if (u.vehicle_plate) lines.push(`Truck: ${u.vehicle_plate}`);
+  if (u.driver?.name) lines.push(`Driver: ${u.driver.name}`);
   if (u.delay_note) lines.push(`Reason: ${u.delay_note}`);
   lines.push('', `${what || 'Media'}: ${shareUrl}`);
   return lines.join('\n');

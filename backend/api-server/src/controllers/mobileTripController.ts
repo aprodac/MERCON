@@ -4,7 +4,7 @@ import path from 'path';
 import { prisma } from '../db';
 import { logger } from '../utils/logger';
 import { TripStatus, DocType } from '@prisma/client';
-import { isValidTransition, markOnTrip, completeTripAndInvoice, stampStopTransition, stampWorkflowTransition, stampIntermediateStopVisit, resolveAuthoritativeActiveStop, type DelayDetection } from '../services/tripLifecycle';
+import { isValidTransition, markOnTrip, completeTripAndInvoice, stampStopTransition, stampWorkflowTransition, resolveIncomingWorkflowState, stampIntermediateStopVisit, resolveAuthoritativeActiveStop, type DelayDetection } from '../services/tripLifecycle';
 import { buildTripRouteTimeline, getLegEndpoints } from '../services/tripRouteTimeline';
 import { notifyOperatorsOfDelay } from './notificationController';
 import { recordDriverActivity } from '../services/driverPhone/activity';
@@ -17,6 +17,7 @@ import { calculateBackendTripFinancials } from '../utils/tripFinancials';
 import { splitDelayReason } from '../utils/delayReason';
 import { isUuid } from '../utils/uuid';
 import { deliveryPunctuality, historyFinishedAt } from '../services/driverPerformance';
+import { TRIP_LOG_OPERATION, TRIP_LOG_STATE, TRIP_LOG_UNDO_MINUTES, canUndoTripLogEntry, tripLogEntries, usesTripLog } from '@mercon/shared-types';
 import { DAY_QUEUE_STATUSES, deploymentTimezone, findTripAhead, orderDriverQueue, tripAheadIn } from '../services/sameDayTrips';
 
 /**
@@ -379,10 +380,13 @@ export const updateTripStatus = async (req: Request, res: Response) => {
     // slot (`updateStatus(id, 'Delayed', reason)`), so the reason was saved as
     // the trip's workflow state and lost as a reason. Workflow states are
     // UPPER_SNAKE_CASE; on a Delayed update anything else is the reason.
-    const { workflowState, delayReason } = splitDelayReason(status, driver_workflow_state, reason);
+    const split = splitDelayReason(status, driver_workflow_state, reason);
+    const { delayReason } = split;
 
     let delay: DelayDetection | null = null;
+    let workflowState = split.workflowState;
     const updatedTrip = await prisma.$transaction(async (tx) => {
+      if (workflowState) workflowState = await resolveIncomingWorkflowState(tx, id, workflowState);
       if (typeof completed_stop_id === 'string' && completed_stop_id) {
         await stampIntermediateStopVisit(tx, id, completed_stop_id);
       }
@@ -514,12 +518,16 @@ export const uploadTripPhoto = async (req: Request, res: Response) => {
     // picking up ordinary NATIVE-workflow cargo/POD photos.
     const isExternalAppEvidence = trip.driver_workflow === 'EXTERNAL_APP';
 
-    const { location_lat, location_lng, captured_at, leg_index, operation, stop_id } = req.body || {};
+    const { location_lat, location_lng, captured_at, leg_index, operation, stop_id, log_entry, place } = req.body || {};
+    // Trip log entry (customer-app trips, shared-types tripLog): a group of
+    // screenshots with no stop — the office makes stops from them later.
+    const logEntry = operation === TRIP_LOG_OPERATION && typeof log_entry === 'string' && /^[\w-]{6,64}$/.test(log_entry) ? log_entry : null;
+    const logPlace = logEntry && typeof place === 'string' && place.trim() ? place.trim().slice(0, 120) : null;
     const notes = (location_lat && location_lng)
       ? `📍 [GPS: ${location_lat}, ${location_lng}] Captured: ${captured_at || new Date().toISOString()}`
       : undefined;
 
-    const resolvedStopId = resolveTripPhotoStopId(trip, stop_id);
+    const resolvedStopId = logEntry ? undefined : resolveTripPhotoStopId(trip, stop_id);
 
     // Compress image to save disk space & mobile data bandwidth
     await compressUploadedImage(req.file.path);
@@ -549,6 +557,8 @@ export const uploadTripPhoto = async (req: Request, res: Response) => {
           operation: operation || undefined,
           stop_id: resolvedStopId,
           source: isExternalAppEvidence ? 'external_app_screenshot' : undefined,
+          log_entry: logEntry ?? undefined,
+          place: logPlace ?? undefined,
         },
         created_by: isValidUuid ? userId : undefined,
       },
@@ -563,7 +573,7 @@ export const uploadTripPhoto = async (req: Request, res: Response) => {
       lng: location_lng,
       metadata: { kind: isVideo ? 'video' : kind, operation: operation || null, documentId: document.id },
     });
-    void notifyStaffOfTripPhoto(driverId, id, { kind, isVideo, operation: operation || null, stopId: resolvedStopId ?? null, documentId: document.id }, publicBaseUrl(req));
+    void notifyStaffOfTripPhoto(driverId, id, { kind, isVideo, operation: operation || null, stopId: resolvedStopId ?? null, documentId: document.id, place: logPlace }, publicBaseUrl(req));
 
     res.status(201).json({ success: true, data: document });
   } catch (error: any) {
@@ -769,5 +779,94 @@ export const recordDriverLocation = async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.error({ err: error }, 'recordDriverLocation error:');
     return res.status(500).json({ success: false, error: { message: error?.message || 'Failed to record driver location' } });
+  }
+};
+
+/**
+ * Start a customer-app trip as a trip log (shared-types tripLog): the driver
+ * then only sends screenshots, as often as the trip needs. No stop is stamped
+ * here — the stops aren't known yet; the office builds them from the log.
+ */
+export const startTripLog = async (req: Request, res: Response) => {
+  const driverId = (req as any).user?.driver_id;
+  const id = req.params.id as string;
+  if (!driverId) return res.status(403).json({ success: false, error: { message: 'Driver not authenticated' } });
+
+  try {
+    const trip = await prisma.trip.findFirst({ where: { id, driverId, deletedAt: null } });
+    if (!trip) return res.status(404).json({ success: false, error: { message: 'Trip not found or not assigned to you' } });
+    if (trip.driver_workflow_state === TRIP_LOG_STATE) {
+      const full = await prisma.trip.findUnique({ where: { id }, include: tripInclude });
+      return res.json({ success: true, data: await attachTripDocuments(full) });
+    }
+    if (!usesTripLog(trip)) {
+      return res.status(409).json({ success: false, error: { code: 'NOT_TRIP_LOG', message: 'This trip uses the step-by-step screens' } });
+    }
+    const startable: TripStatus[] = [TripStatus.Draft, TripStatus.Scheduled, TripStatus.Delayed];
+    if (!startable.includes(trip.status)) {
+      return res.status(409).json({ success: false, error: { message: `This trip is already ${trip.status === TripStatus.Cancelled ? 'cancelled' : 'finished'}` } });
+    }
+    const ahead = await findTripAhead(trip, driverId);
+    if (ahead) {
+      return res.status(409).json({
+        success: false,
+        error: { code: 'TRIP_WAITING', message: `Finish ${ahead.ref_id ?? 'your earlier trip today'} first — this trip starts after it.` },
+      });
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      await markOnTrip(tx, trip);
+      return tx.trip.update({
+        where: { id },
+        data: {
+          // A trip the office already sees as late stays Delayed.
+          status: trip.status === TripStatus.Delayed ? TripStatus.Delayed : TripStatus.InTransit,
+          driver_workflow_state: TRIP_LOG_STATE,
+          actual_start: trip.actual_start ?? new Date(),
+        },
+        include: tripInclude,
+      });
+    });
+
+    void notifyStaffOfTripStatus(driverId, id, {
+      fromStatus: trip.status,
+      toStatus: updated.status,
+      fromWorkflow: trip.driver_workflow_state,
+      toWorkflow: TRIP_LOG_STATE,
+    }, publicBaseUrl(req));
+    void recordDriverActivity(driverId, 'TripStatusChanged', {
+      tripId: id,
+      metadata: { from: trip.status, to: updated.status, workflow: TRIP_LOG_STATE },
+    });
+    res.json({ success: true, data: await attachTripDocuments(updated) });
+  } catch (error: any) {
+    logger.error({ err: error }, 'startTripLog error:');
+    res.status(500).json({ success: false, error: { message: 'Failed to start the trip' } });
+  }
+};
+
+/** Take back a trip log entry sent by mistake — only shortly after sending, and only before the office used it. */
+export const undoTripLogEntry = async (req: Request, res: Response) => {
+  const driverId = (req as any).user?.driver_id;
+  const { id, entry } = req.params as { id: string; entry: string };
+  if (!driverId) return res.status(403).json({ success: false, error: { message: 'Driver not authenticated' } });
+
+  try {
+    const trip = await prisma.trip.findFirst({ where: { id, driverId, deletedAt: null }, select: { id: true } });
+    if (!trip) return res.status(404).json({ success: false, error: { message: 'Trip not found or not assigned to you' } });
+    const docs = await prisma.document.findMany({
+      where: { entity_type: 'Trip', entity_id: id, deletedAt: null, ai_extracted_json: { path: ['log_entry'], equals: entry } },
+      select: { id: true, file_url: true, createdAt: true, ai_extracted_json: true },
+    });
+    const [e] = tripLogEntries(docs);
+    if (!e) return res.status(404).json({ success: false, error: { message: 'That update is already gone' } });
+    if (!canUndoTripLogEntry(e)) {
+      return res.status(409).json({ success: false, error: { code: 'TOO_LATE', message: `Updates can only be taken back within ${TRIP_LOG_UNDO_MINUTES} minutes. Call the office.` } });
+    }
+    await prisma.document.updateMany({ where: { id: { in: e.docs.map((d) => d.id) } }, data: { deletedAt: new Date() } });
+    res.json({ success: true, data: { removed: e.docs.length } });
+  } catch (error: any) {
+    logger.error({ err: error }, 'undoTripLogEntry error:');
+    res.status(500).json({ success: false, error: { message: 'Failed to take the update back' } });
   }
 };
