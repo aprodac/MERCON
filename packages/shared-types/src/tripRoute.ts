@@ -585,6 +585,22 @@ export function getEffectiveWorkflowState(trip: Partial<TripLike> | null | undef
   return ws || 'ASSIGNED';
 }
 
+/**
+ * True while a round trip is at its return pickup (arriving there or loading).
+ * Also true for a trip stuck on the round-1 states ARRIVED_AT_PICKUP / LOADING
+ * after its outbound delivery was done, which older app builds left behind —
+ * those screens would otherwise resolve to the round-1 origin and loop.
+ */
+export function isReturnLoadingPhase(trip: Partial<TripLike> | null | undefined): boolean {
+  if (!trip || !isRoundTrip(trip)) return false;
+  const ws = getEffectiveWorkflowState(trip);
+  if (ws === 'RETURN_LOADING' || ws === 'FIRST_DELIVERY_COMPLETED') return true;
+  const raw = trip.driver_workflow_state;
+  if (raw !== 'ARRIVED_AT_PICKUP' && raw !== 'LOADING') return false;
+  const delivery = getLegEndpoints(trip, 0).delivery;
+  return !!(delivery && delivery.actual_departure);
+}
+
 export interface AuthoritativeActiveStop {
   activeStop: TripStopLike | null;
   activeStopId: string | null;
