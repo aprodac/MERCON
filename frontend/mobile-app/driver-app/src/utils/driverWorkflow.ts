@@ -14,7 +14,7 @@
  * - Only without one (old trips) fall back to stop times, and even then never
  *   to "completed": he lands on the final delivery and can press Complete.
  */
-import { getEffectiveWorkflowState, isReturnLoadingPhase, isRoundTrip } from '@mercon/shared-types';
+import { findTimelineIndex, getEffectiveWorkflowState, getTimelineProgress, isReturnLoadingPhase, isRoundTrip, targetFromWorkflowState, type TimelineStop, type TimelineStopProgress } from '@mercon/shared-types';
 import type { MobileTrip } from '@mercon/mobile-shared/lib/trips';
 
 export function driverWorkflowState(trip: MobileTrip | null | undefined): string {
@@ -64,4 +64,18 @@ const AT_OUTBOUND_LOADING = new Set(['ASSIGNED', 'GOING_TO_PICKUP', 'ARRIVED_AT_
 
 export function isAtOutboundLoading(ws: string): boolean {
   return AT_OUTBOUND_LOADING.has(ws);
+}
+
+/**
+ * Home's stop list, never ahead of the driver: stop times alone mark a stop
+ * done, so office-typed times showed his return loading "Done" while he was
+ * still loading. Capped at his loading / delivery step.
+ */
+export function driverTimelineProgress(trip: MobileTrip, nodes: TimelineStop[]): TimelineStopProgress[] {
+  const progress = getTimelineProgress(nodes, false);
+  const target = targetFromWorkflowState(driverWorkflowState(trip), isRoundTrip(trip));
+  if (target.kind !== 'pickup' && target.kind !== 'delivery') return progress;
+  const at = findTimelineIndex(nodes, target);
+  if (progress.indexOf('current') <= at) return progress;
+  return nodes.map((_, i) => (i < at ? 'completed' : i === at ? 'current' : 'upcoming'));
 }

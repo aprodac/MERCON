@@ -3,9 +3,9 @@
  * Cases are the two live round trips a driver could not finish (Oct 2026):
  * the office typed in a stop's departure time while he was still on that step.
  */
-import { getEffectiveWorkflowState } from '@mercon/shared-types';
+import { getEffectiveWorkflowState, parseTripRouteNodes } from '@mercon/shared-types';
 import type { MobileTrip } from '@mercon/mobile-shared/lib/trips';
-import { driverIsReturnLoading, driverWorkflowState, isAtOutboundLoading, isOnReturnLeg } from './driverWorkflow';
+import { driverIsReturnLoading, driverTimelineProgress, driverWorkflowState, isAtOutboundLoading, isOnReturnLeg } from './driverWorkflow';
 
 let failed = 0;
 function check(name: string, ok: boolean, detail?: unknown) {
@@ -60,6 +60,13 @@ const trp38 = {
 check('TRP-0038: stale round-1 loading → return loading', driverWorkflowState(trp38) === 'RETURN_LOADING' && driverIsReturnLoading(trp38));
 const fresh = { ...trp38, stops: [stop(1, 0, 'Pickup', 'x', null), stop(2, 0, 'Dropoff', null, null), stop(3, 1, 'Pickup', null, null), stop(4, 1, 'Dropoff', null, null)] } as unknown as MobileTrip;
 check('round 1 loading stays round 1 loading', driverWorkflowState(fresh) === 'ARRIVED_AT_PICKUP' && !driverIsReturnLoading(fresh));
+
+// Home stop list (TRP-0024 on the phone): return loading not "Done" while he is still loading.
+const nodes18 = parseTripRouteNodes(trp18 as any);
+const prog18 = driverTimelineProgress(trp18, nodes18);
+check('Home list: return loading is current, not done', nodes18.length === 4 && prog18.join() === 'completed,completed,current,upcoming', prog18);
+const nodes17 = parseTripRouteNodes(trp17 as any);
+check('Home list: final delivery is current', driverTimelineProgress(trp17, nodes17).join() === 'completed,completed,completed,current');
 
 // Finished only when the server says so.
 check('server Completed → COMPLETED', driverWorkflowState({ ...trp17, status: 'Completed' } as MobileTrip) === 'COMPLETED');

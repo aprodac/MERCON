@@ -11,7 +11,7 @@ import {
   MapPin, Globe, Clock, ChevronRight, ChevronDown, Building2, Navigation,
   Play, CheckCircle2, Wallet, MoreVertical, ArrowRight, ArrowLeft, Route, House, Camera, Settings, RotateCcw, Check,
 } from 'lucide-react-native';
-import { getTimelineProgress, tripEnds, tripLogEntries, usesTripLog, TRIP_LOG_STATE } from '@mercon/shared-types';
+import { tripEnds, tripLogEntries, usesTripLog, TRIP_LOG_STATE } from '@mercon/shared-types';
 import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
 import { Badge } from '@mercon/mobile-shared/components/Badge';
 import { DelayReportModal } from '../components/DelayReportModal';
@@ -20,7 +20,7 @@ import { NotificationBell } from '../components/NotificationBell';
 import { showToast } from '../components/AppToast';
 import { BilingualText } from '@mercon/mobile-shared/components/BilingualText';
 import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
-import { driverWorkflowState } from '../utils/driverWorkflow';
+import { driverTimelineProgress, driverWorkflowState } from '../utils/driverWorkflow';
 import { useCurrentTrip } from '../hooks/use-current-trip';
 import { useScheduledTrips } from '../hooks/use-scheduled-trips';
 import { tripService, plannedRouteText, statusLabel, stopAddress, stopLabel, isRoundTrip, parseStopWorkflowState, getTripChargeValue, getMonthlyDriverPayout, DRIVER_WORKFLOW_STATES, type TripStatus, type MobileTrip } from '@mercon/mobile-shared/lib/trips';
@@ -649,10 +649,11 @@ const HomeScreen = () => {
 
                 // Same progress rule as the web trip page: a stop is done once the
                 // driver has left it; the current one is next (or "here" once arrived).
-                const progress = getTimelineProgress(timelineStops, false);
+                // Never ahead of his own step (the office can type times in early).
+                const progress = driverTimelineProgress(displayTrip, timelineStops);
                 const currentIdx = Math.max(0, progress.indexOf('current'));
                 const nextStop = timelineStops[currentIdx];
-                const atNextStop = !!nextStop.actualArrival && !nextStop.actualDeparture;
+                const atNextStop = !!nextStop.actualArrival;
                 const stopType = (st: TimelineStop) => (language === 'ur' ? st.typeUrdu : st.typeEn);
                 const plannedAt = fmtTime(nextStop.plannedArrival);
                 const scrollStops = timelineStops.length > 4;
