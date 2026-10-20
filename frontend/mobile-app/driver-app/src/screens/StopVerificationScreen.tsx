@@ -13,11 +13,12 @@ import { GeotagPhotoModal } from '../components/GeotagPhotoModal';
 import { StageHeader, STAGE_THEME } from '../components/StageHeader';
 import { BilingualText } from '@mercon/mobile-shared/components/BilingualText';
 import { DelayReportModal } from '../components/DelayReportModal';
+import { PhotoCaptureModal } from '../components/PhotoCaptureModal';
 import { FadedBottomIllustration } from '../components/FadedBottomIllustration';
 import { useCurrentTrip } from '../hooks/use-current-trip';
 import { tripService, stopAddress, isRoundTrip, getLegIntermediateDbStops, getEvidencePolicy } from '@mercon/mobile-shared/lib/trips';
 import { parseTripRouteNodes, parseStopWorkflowState, TimelineStop } from '../utils/routeParser';
-import { takePhoto, pickFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
+import { pickFromGallery, keepExistingPhotos, recoverPendingPhoto, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { safeSecureStore as SecureStore } from '@mercon/mobile-shared/lib/secure-store';
 import { openInGoogleMaps } from '../services/maps';
@@ -103,7 +104,9 @@ export default function StopVerificationScreen() {
   const isRound = isRoundTrip(trip);
   // 3 geotagged photos, or 1 customer-app screenshot on EXTERNAL_APP trips.
   const evidence = getEvidencePolicy(trip, 'stop');
+  /** Photo boxes shown (up to 3); one photo is enough to continue (getEvidencePolicy). */
   const MIN_STOP_PHOTOS = evidence.count;
+  const minStopPhotos = evidence.min;
   const primarySource: 'camera' | 'gallery' = evidence.screenshot ? 'gallery' : 'camera';
   const otherSource: 'camera' | 'gallery' = evidence.screenshot ? 'camera' : 'gallery';
   const isReturnLeg = isRound && (paramLegIndex === '1' || (trip?.driver_workflow_state || '').includes('RETURN'));
@@ -146,13 +149,22 @@ export default function StopVerificationScreen() {
   useEffect(() => {
     if (!trip?.id || !activeStop?.id) return;
     const storeKey = `stop_photos_${trip.id}_${activeStop.id}`;
-    SecureStore.getItemAsync(storeKey).then((saved) => {
+    (async () => {
+      let restored: CapturedPhoto[] = [];
+      const saved = await SecureStore.getItemAsync(storeKey).catch(() => null);
       if (saved) {
         try {
-          setPhotos(JSON.parse(saved));
+          restored = await keepExistingPhotos(JSON.parse(saved));
         } catch {}
       }
-    });
+      // A photo taken just before Android closed the app while the camera was open.
+      const pending = await recoverPendingPhoto();
+      if (pending) {
+        restored = [...restored, pending];
+        SecureStore.setItemAsync(storeKey, JSON.stringify(restored)).catch(() => {});
+      }
+      setPhotos(restored);
+    })();
   }, [trip?.id, activeStop?.id]);
 
   const savePhotosState = (newPhotos: CapturedPhoto[]) => {
@@ -162,19 +174,36 @@ export default function StopVerificationScreen() {
     }
   };
 
+  // Latest photos for the camera callbacks (the in-app camera stays open between shots).
+  const photosRef = useRef<CapturedPhoto[]>([]);
+  useEffect(() => { photosRef.current = photos; }, [photos]);
+  const [cameraOpen, setCameraOpen] = useState(false);
+
+  const realPhotoCount = (list: CapturedPhoto[]) => list.filter((p) => !!p?.uri).length + uploadedCountRef.current;
+
+  /** A photo from the in-app camera or the gallery: next empty box, saved as a draft. */
+  const acceptPhoto = (photo: CapturedPhoto) => {
+    const list = [...photosRef.current.filter((p) => !!p?.uri), photo].slice(0, MIN_STOP_PHOTOS);
+    photosRef.current = list;
+    savePhotosState(list);
+    if (realPhotoCount(list) >= MIN_STOP_PHOTOS) setCameraOpen(false);
+  };
+
   /**
-   * Camera opens straight away and continues until the stop has enough photos
-   * (cancel stops). Long-press: gallery. Screenshot trips swap the two.
+   * Tap an empty box: the same in-app camera as loading/delivery opens and
+   * stays open between shots (it has its own Gallery tab, and "Use phone
+   * camera" if the camera won't start). Stops used to open the phone's own
+   * camera app, which on some phones never came up — the driver could not
+   * take stop photos at all. Long-press: gallery. Screenshot trips swap the two.
    */
   const handleAddPhoto = async (source: 'camera' | 'gallery' = primarySource) => {
-    let list = [...photos];
-    for (;;) {
-      const photo = source === 'gallery' ? await pickFromGallery().catch(() => null) : await takePhoto();
-      if (!photo) return;
-      list = [...list, photo];
-      savePhotosState(list);
-      if (source === 'gallery' || list.filter((p) => !!p?.uri).length + uploadedCountRef.current >= MIN_STOP_PHOTOS) return;
+    if (realPhotoCount(photosRef.current) >= MIN_STOP_PHOTOS) return;
+    if (source === 'camera') {
+      setCameraOpen(true);
+      return;
     }
+    const photo = await pickFromGallery().catch(() => null);
+    if (photo) acceptPhoto(photo);
   };
 
   const handleRemovePhoto = (id: string) => {
@@ -186,12 +215,12 @@ export default function StopVerificationScreen() {
     if (!trip || submitting) return;
     // Same rule as loading/delivery (see getEvidencePolicy).
     const totalPhotos = photos.filter((p) => !!p?.uri).length + uploadedCountRef.current;
-    if (totalPhotos < MIN_STOP_PHOTOS) {
+    if (totalPhotos < minStopPhotos) {
       Alert.alert(
         t('title_stop_photos_required', 'Stop Photos Required'),
         evidence.screenshot
-          ? `${t('hint_upload_screenshot', "Attach a screenshot of the customer's app showing this update. Hold to use the camera instead.")} (${totalPhotos}/${MIN_STOP_PHOTOS})`
-          : `${t('msg_min_stop_photos', 'Please add at least 3 photos for this stop')} (${totalPhotos}/${MIN_STOP_PHOTOS}).`,
+          ? `${t('hint_upload_screenshot', "Attach a screenshot of the customer's app showing this update. Hold to use the camera instead.")} (${totalPhotos}/${minStopPhotos})`
+          : `${t('msg_min_stop_photos', 'Please add at least 1 photo for this stop')} (${totalPhotos}/${minStopPhotos}).`,
       );
       return;
     }
@@ -275,7 +304,7 @@ export default function StopVerificationScreen() {
           title={stopHeaderTitle}
           subtitle={evidence.screenshot
             ? t('sub_stage_screenshot', "Add a screenshot of the customer's app")
-            : t('sub_stage_stop', 'Take 3 photos at this stop')}
+            : t('sub_stage_stop', 'Take photos at this stop (1 is enough, up to 3)')}
           isReturn={isReturnLeg}
           trip={trip}
           target={{ kind: 'stop', leg: isReturnLeg ? 1 : 0, stopIndex: parsedIndex }}
@@ -340,15 +369,18 @@ export default function StopVerificationScreen() {
           <View style={styles.photosGrid}>
             {Array.from({ length: MIN_STOP_PHOTOS }, (_, i) => i).map((i) => (
               <TouchableOpacity
-                key={i}
-                style={[photos[i] ? styles.photoSlotFilled : styles.addPhotoCardSlot, MIN_STOP_PHOTOS === 1 && styles.photoSlotWide]}
+                // Remount the box when its photo changes or the camera closes: a box
+                // updated while the in-app camera covered the screen stayed a blank
+                // grey square on Android (no image, no delete button).
+                key={`${i}-${photos[i]?.uri ?? 'empty'}-${cameraOpen ? 'cam' : 'page'}`}
+                style={[styles.photoSlot, photos[i] ? styles.photoSlotFilled : styles.addPhotoCardSlot, MIN_STOP_PHOTOS === 1 && styles.photoSlotWide]}
                 activeOpacity={0.8}
                 onPress={photos[i] ? () => setPreviewPhoto(photos[i]) : () => handleAddPhoto()}
                 onLongPress={photos[i] ? undefined : () => handleAddPhoto(otherSource)}
               >
                 {photos[i] ? (
                   <>
-                    <Image source={{ uri: photos[i].uri }} style={styles.photoThumb} resizeMode={evidence.screenshot ? 'contain' : 'cover'} />
+                    <Image source={{ uri: photos[i].uri }} style={StyleSheet.absoluteFill} resizeMode={evidence.screenshot ? 'contain' : 'cover'} />
                     <TouchableOpacity
                       style={styles.removePhotoBtn}
                       activeOpacity={0.7}
@@ -403,6 +435,16 @@ export default function StopVerificationScreen() {
           onClose={() => setPreviewPhoto(null)}
         />
       )}
+
+      <PhotoCaptureModal
+        visible={cameraOpen}
+        photos={photos.filter((p) => !!p?.uri)}
+        uploads={[]}
+        total={MIN_STOP_PHOTOS}
+        accent={STAGE_THEME.stop.main}
+        onPhoto={acceptPhoto}
+        onClose={() => setCameraOpen(false)}
+      />
 
       {/* Delay Modal */}
       <DelayReportModal
@@ -541,12 +583,17 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 16,
   },
-  photoSlotFilled: {
+  // Same base for empty and filled boxes (as on the loading screen), so a
+  // box never swaps its whole layout when a photo lands in it.
+  photoSlot: {
     flex: 1,
     aspectRatio: 1.1,
     borderRadius: 14,
     overflow: 'hidden',
-    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoSlotFilled: {
     backgroundColor: '#F1F5F9',
   },
   photoSlotWide: {
@@ -557,11 +604,6 @@ const styles = StyleSheet.create({
     color: '#64748B',
     lineHeight: 17,
     marginBottom: 10,
-  },
-  photoThumb: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 14,
   },
   removePhotoBtn: {
     position: 'absolute',
@@ -575,9 +617,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addPhotoCardSlot: {
-    flex: 1,
-    aspectRatio: 1.1,
-    borderRadius: 14,
     borderWidth: 1.5,
     borderColor: '#FCA5A5',
     borderStyle: 'dashed',

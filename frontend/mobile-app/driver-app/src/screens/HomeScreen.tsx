@@ -11,7 +11,7 @@ import {
   MapPin, Globe, Clock, ChevronRight, ChevronDown, Building2, Navigation,
   Play, CheckCircle2, Wallet, MoreVertical, ArrowRight, ArrowLeft, Route, House, Camera, Settings, RotateCcw, Check,
 } from 'lucide-react-native';
-import { getTimelineProgress, tripEnds, tripLogEntries, usesTripLog, TRIP_LOG_STATE } from '@mercon/shared-types';
+import { tripEnds, tripLogEntries, usesTripLog, TRIP_LOG_STATE } from '@mercon/shared-types';
 import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
 import { Badge } from '@mercon/mobile-shared/components/Badge';
 import { DelayReportModal } from '../components/DelayReportModal';
@@ -20,9 +20,10 @@ import { NotificationBell } from '../components/NotificationBell';
 import { showToast } from '../components/AppToast';
 import { BilingualText } from '@mercon/mobile-shared/components/BilingualText';
 import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
+import { driverTimelineProgress, driverWorkflowState } from '../utils/driverWorkflow';
 import { useCurrentTrip } from '../hooks/use-current-trip';
 import { useScheduledTrips } from '../hooks/use-scheduled-trips';
-import { tripService, plannedRouteText, statusLabel, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, parseStopWorkflowState, getTripChargeValue, getMonthlyDriverPayout, DRIVER_WORKFLOW_STATES, type TripStatus, type MobileTrip } from '@mercon/mobile-shared/lib/trips';
+import { tripService, plannedRouteText, statusLabel, stopAddress, stopLabel, isRoundTrip, parseStopWorkflowState, getTripChargeValue, getMonthlyDriverPayout, DRIVER_WORKFLOW_STATES, type TripStatus, type MobileTrip } from '@mercon/mobile-shared/lib/trips';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useLanguage, getLocalizedStatus, bilingual, translate } from '@mercon/mobile-shared/lib/language-context';
 import { parseTripRouteNodes, getIntermediateStops, getOutboundIntermediateStops, getReturnIntermediateStops, targetFromWorkflowState, type TimelineStop } from '../utils/routeParser';
@@ -122,7 +123,7 @@ function fmtTime(value?: Date | string | null): string | null {
 
 /** Minutes the pickup is overdue (planned start passed, driver not there yet), else 0. */
 function minutesLate(trip: MobileTrip): number {
-  const ws = getEffectiveWorkflowState(trip);
+  const ws = driverWorkflowState(trip);
   if (ws !== 'ASSIGNED' && ws !== 'GOING_TO_PICKUP') return 0;
   if (!trip.planned_start) return 0;
   const due = new Date(trip.planned_start).getTime();
@@ -267,7 +268,7 @@ const HomeScreen = () => {
         },
       };
     }
-    const ws = getEffectiveWorkflowState(t);
+    const ws = driverWorkflowState(t);
     const isRound = isRoundTrip(t);
     const outboundStops = getOutboundIntermediateStops(t);
     const returnStops = getReturnIntermediateStops(t);
@@ -316,7 +317,11 @@ const HomeScreen = () => {
         return {
           badgeLabel: 'Round 1 of 2 completed',
           btnLabel: 'Start Round 2 of 2',
-          onPress: () => router.push('/trip/pickup'),
+          // The server is already in RETURN_LOADING here, whose Urdu label reads
+          // "complete return loading" — wrong while the driver is on a break.
+          urLabel: 'راؤنڈ 2 از 2 شروع کریں',
+          // Round 1 page (times, break, Start Round 2); it forwards to loading once round 2 has started.
+          onPress: () => router.push('/trip/round-done' as any),
         };
       }
       if (ws === 'ARRIVED_AT_PICKUP' || ws === 'LOADING') {
@@ -503,8 +508,8 @@ const HomeScreen = () => {
               <View style={styles.cardHeaderRow}>
                 <View style={styles.cardTitleCol}>
                   <BilingualText
-                    ur={getEffectiveWorkflowState(displayTrip) === 'ASSIGNED' || displayTrip.status === 'Draft' ? 'اگلا شیڈول شدہ ٹرپ' : 'موجودہ ٹرپ'}
-                    en={getEffectiveWorkflowState(displayTrip) === 'ASSIGNED' || displayTrip.status === 'Draft' ? 'Next Scheduled Trip' : 'Ongoing Trip'}
+                    ur={driverWorkflowState(displayTrip) === 'ASSIGNED' || displayTrip.status === 'Draft' ? 'اگلا شیڈول شدہ ٹرپ' : 'موجودہ ٹرپ'}
+                    en={driverWorkflowState(displayTrip) === 'ASSIGNED' || displayTrip.status === 'Draft' ? 'Next Scheduled Trip' : 'Ongoing Trip'}
                     primaryStyle={styles.cardTitleUrduPrimary}
                     subStyle={styles.cardTitleSubEn}
                   />
@@ -644,10 +649,11 @@ const HomeScreen = () => {
 
                 // Same progress rule as the web trip page: a stop is done once the
                 // driver has left it; the current one is next (or "here" once arrived).
-                const progress = getTimelineProgress(timelineStops, false);
+                // Never ahead of his own step (the office can type times in early).
+                const progress = driverTimelineProgress(displayTrip, timelineStops);
                 const currentIdx = Math.max(0, progress.indexOf('current'));
                 const nextStop = timelineStops[currentIdx];
-                const atNextStop = !!nextStop.actualArrival && !nextStop.actualDeparture;
+                const atNextStop = !!nextStop.actualArrival;
                 const stopType = (st: TimelineStop) => (language === 'ur' ? st.typeUrdu : st.typeEn);
                 const plannedAt = fmtTime(nextStop.plannedArrival);
                 const scrollStops = timelineStops.length > 4;
@@ -766,7 +772,7 @@ const HomeScreen = () => {
                           <BilingualText
                             // Same state as the button's action: after the office undoes a step the stored
                             // state and the stop times can differ, and the label said "Start" while the tap did more.
-                            ur={info.urLabel || WORKFLOW_URDU_LABEL[getEffectiveWorkflowState(displayTrip)] || 'ٹرپ شروع کریں'}
+                            ur={info.urLabel || WORKFLOW_URDU_LABEL[driverWorkflowState(displayTrip)] || 'ٹرپ شروع کریں'}
                             en={info.btnLabel || 'Start Trip'}
                             align="center"
                             primaryStyle={styles.ctaUrduPrimary}

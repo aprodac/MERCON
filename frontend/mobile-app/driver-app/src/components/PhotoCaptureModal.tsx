@@ -3,13 +3,19 @@
  * own camera it stays open between shots, shows "Photo 2 of 3", the upload
  * bar, the photos taken so far, and a small Gallery tab next to the shutter.
  * Closes itself once all photos are in (the parent sets `visible`).
+ *
+ * Never a dead end: while permission loads a spinner shows; a refused
+ * permission offers phone Settings; and if the live camera hasn't started
+ * within a few seconds (some Android phones never report "ready", or another
+ * app holds the camera) the driver gets "Try again" and "Use phone camera".
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Linking, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { Images, X } from 'lucide-react-native';
+import { Camera, Images, RotateCcw, X } from 'lucide-react-native';
 import {
+  capturePhoto,
   getDeviceLocationTag,
   pickFromGallery,
   preparePhoto,
@@ -36,14 +42,60 @@ export function PhotoCaptureModal({ visible, photos, uploads, total = 3, accent,
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [cameraFailed, setCameraFailed] = useState(false);
+  // Shown when the live camera hasn't started in time.
+  const [slowStart, setSlowStart] = useState(false);
+  // Bumped by "Try again" to mount a fresh camera.
+  const [cameraKey, setCameraKey] = useState(0);
 
   useEffect(() => {
     if (visible && permission && !permission.granted && permission.canAskAgain) requestPermission();
   }, [visible, permission, requestPermission]);
 
+  // Each opening starts clean — an earlier failure or "ready" must not stick
+  // (the parent also closes this by setting `visible`, not only via handleClose).
+  const [wasVisible, setWasVisible] = useState(visible);
+  if (visible !== wasVisible) {
+    setWasVisible(visible);
+    if (visible) {
+      setReady(false);
+      setCameraFailed(false);
+      setSlowStart(false);
+    }
+  }
+
+  const canUseCamera = !!permission?.granted && !cameraFailed;
+
+  // Watchdog: no "camera ready" within 5 s → offer the way out.
+  useEffect(() => {
+    if (!visible || !canUseCamera || ready) return;
+    const id = setTimeout(() => setSlowStart(true), 5000);
+    return () => clearTimeout(id);
+  }, [visible, canUseCamera, ready, cameraKey]);
+
   const handleClose = () => {
     setReady(false);
     onClose();
+  };
+
+  const retryCamera = () => {
+    setReady(false);
+    setCameraFailed(false);
+    setSlowStart(false);
+    setCameraKey((k) => k + 1);
+  };
+
+  /** The phone's own camera app — works when the in-app camera won't start. */
+  const openPhoneCamera = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const photo = await capturePhoto();
+      if (photo) onPhoto(photo);
+    } catch (err: any) {
+      Alert.alert(ur ? 'کیمرہ' : 'Camera', err?.message ?? (ur ? 'کیمرہ نہیں کھل سکا' : "Couldn't open the camera"));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const shoot = async () => {
@@ -74,35 +126,77 @@ export function PhotoCaptureModal({ visible, photos, uploads, total = 3, accent,
   };
 
   const shotNumber = Math.min(photos.length + 1, total);
-  const canUseCamera = !!permission?.granted && !cameraFailed;
+  const permissionBlocked = !!permission && !permission.granted && !permission.canAskAgain;
+  const showRescue = (slowStart && !ready) || cameraFailed;
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={handleClose} statusBarTranslucent>
       <View style={styles.root}>
         {canUseCamera && visible ? (
           <CameraView
+            key={cameraKey}
             ref={cameraRef}
             style={StyleSheet.absoluteFill}
             facing="back"
-            onCameraReady={() => setReady(true)}
+            onCameraReady={() => {
+              setReady(true);
+              setSlowStart(false);
+            }}
             onMountError={() => setCameraFailed(true)}
           />
         ) : (
           <View style={styles.noCamera}>
-            <Text style={styles.noCameraText}>
-              {permission && !permission.granted
-                ? (ur ? 'تصاویر لینے کے لیے کیمرے کی اجازت دیں' : 'Allow camera access to take trip photos')
-                : cameraFailed
-                  ? (ur ? 'کیمرہ نہیں کھل سکا — گیلری سے تصویر لیں' : "Camera couldn't start — use the gallery")
-                  : ''}
-            </Text>
+            {!permission ? (
+              <ActivityIndicator color="#FFFFFF" size="large" />
+            ) : (
+              <Text style={styles.noCameraText}>
+                {!permission.granted
+                  ? permissionBlocked
+                    ? (ur
+                      ? 'کیمرے کی اجازت بند ہے۔ سیٹنگز میں MERCON → اجازتیں → کیمرہ → اجازت دیں'
+                      : 'Camera is turned off for MERCON. Open Settings → Permissions → Camera → Allow')
+                    : (ur ? 'تصاویر لینے کے لیے کیمرے کی اجازت دیں' : 'Allow camera access to take trip photos')
+                  : cameraFailed
+                    ? (ur ? 'کیمرہ نہیں کھل سکا' : "The camera couldn't start")
+                    : ''}
+              </Text>
+            )}
             {permission && !permission.granted && permission.canAskAgain ? (
               <TouchableOpacity style={[styles.permBtn, { backgroundColor: accent }]} onPress={requestPermission}>
                 <Text style={styles.permBtnText}>{ur ? 'اجازت دیں' : 'Allow camera'}</Text>
               </TouchableOpacity>
             ) : null}
+            {permissionBlocked ? (
+              <TouchableOpacity
+                style={[styles.permBtn, { backgroundColor: accent }]}
+                onPress={() => void Linking.openSettings().catch(() => {})}
+              >
+                <Text style={styles.permBtnText}>{ur ? 'سیٹنگز کھولیں' : 'Open Settings'}</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         )}
+
+        {/* Camera slow or failed: never leave the driver stuck on a black screen */}
+        {showRescue && permission?.granted ? (
+          <View style={styles.rescue} pointerEvents="box-none">
+            <View style={styles.rescueCard}>
+              <Text style={styles.rescueText}>
+                {ur ? 'کیمرہ شروع نہیں ہو رہا؟' : 'Camera not starting?'}
+              </Text>
+              <View style={styles.rescueRow}>
+                <TouchableOpacity style={styles.rescueBtnGhost} onPress={retryCamera} disabled={busy}>
+                  <RotateCcw size={16} color="#FFFFFF" strokeWidth={2.4} />
+                  <Text style={styles.rescueBtnText}>{ur ? 'دوبارہ کوشش' : 'Try again'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.rescueBtn, { backgroundColor: accent }]} onPress={openPhoneCamera} disabled={busy}>
+                  <Camera size={16} color="#FFFFFF" strokeWidth={2.4} />
+                  <Text style={styles.rescueBtnText}>{ur ? 'فون کا کیمرہ' : 'Use phone camera'}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        ) : null}
 
         <SafeAreaView style={styles.overlay} edges={['top', 'bottom']} pointerEvents="box-none">
           {/* Top: close + counter */}
@@ -178,6 +272,16 @@ const styles = StyleSheet.create({
   noCameraText: { color: '#E2E8F0', fontSize: 16, fontWeight: '600', textAlign: 'center' },
   permBtn: { paddingHorizontal: 22, paddingVertical: 12, borderRadius: 12 },
   permBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  rescue: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  rescueCard: { backgroundColor: 'rgba(0,0,0,0.75)', borderRadius: 16, padding: 18, gap: 14, alignItems: 'center' },
+  rescueText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800', textAlign: 'center' },
+  rescueRow: { flexDirection: 'row', gap: 10 },
+  rescueBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12 },
+  rescueBtnGhost: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12,
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.6)',
+  },
+  rescueBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
 
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 },
   roundBtn: {

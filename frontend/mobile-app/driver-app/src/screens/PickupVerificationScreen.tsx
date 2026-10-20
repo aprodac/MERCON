@@ -4,7 +4,7 @@ import {
   StatusBar, Image, Alert, Linking, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter } from 'expo-router';
 import Svg, { Path, Rect, Circle, Line, G, Polygon, Ellipse } from 'react-native-svg';
 import { Info, Camera, MapPin, Trash2, PackagePlus, ArrowRight, Clock, FileText, Check, Navigation, Send, RotateCcw } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
@@ -13,11 +13,12 @@ import { GeotagPhotoModal } from '../components/GeotagPhotoModal';
 import { StageHeader, STAGE_THEME } from '../components/StageHeader';
 import { FadedBottomIllustration } from '../components/FadedBottomIllustration';
 import { DelayReportModal } from '../components/DelayReportModal';
-import { ReturnLoadingModal } from '../components/ReturnLoadingModal';
+import { roundTimes } from '../services/roundTimes';
+import { driverWorkflowState, driverIsReturnLoading, isAtOutboundLoading, isOnReturnLeg } from '../utils/driverWorkflow';
 import { useCurrentTrip } from '../hooks/use-current-trip';
-import { tripService, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, isReturnLoadingPhase, getLegEndpoints, getEvidencePolicy } from '@mercon/mobile-shared/lib/trips';
+import { tripService, stopAddress, stopLabel, isRoundTrip, getLegEndpoints, getEvidencePolicy } from '@mercon/mobile-shared/lib/trips';
 
-import { pickFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
+import { keepExistingPhotos, pickFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
 import { PhotoCaptureModal } from '../components/PhotoCaptureModal';
 import { UploadProgressBar } from '../components/UploadProgressBar';
 import { usePhotoUploads } from '../hooks/use-photo-uploads';
@@ -26,7 +27,7 @@ import { isValidCoordinate } from '../utils/geo';
 import { API_URL, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { safeSecureStore as SecureStore } from '@mercon/mobile-shared/lib/secure-store';
 import { triggerGPayHapticsAndSound } from '../services/sound';
-import { getIntermediateStops, getOutboundIntermediateStops, getReturnIntermediateStops } from '../utils/routeParser';
+import { parseStopWorkflowState, getIntermediateStops, getOutboundIntermediateStops, getReturnIntermediateStops } from '../utils/routeParser';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
 
@@ -99,9 +100,9 @@ const PickupVerificationScreen = () => {
   const router = useRouter();
   const { t, language, tr } = useLanguage();
   const { trip, loading, refetch, setTrip } = useCurrentTrip();
-  const ws = getEffectiveWorkflowState(trip);
+  const ws = driverWorkflowState(trip);
   const isRound = isRoundTrip(trip);
-  const isReturnLoading = isReturnLoadingPhase(trip);
+  const isReturnLoading = driverIsReturnLoading(trip);
   const isStarted = ws === 'LOADING' || ws === 'ARRIVED_AT_PICKUP' || isReturnLoading;
 
   const legIndex = isReturnLoading ? 1 : 0;
@@ -122,20 +123,21 @@ const PickupVerificationScreen = () => {
   const [previewPhoto, setPreviewPhoto] = useState<CapturedPhoto | null>(null);
   const [showDelayModal, setShowDelayModal] = useState(false);
 
-  // Return Loading Announcement Modal state
-  const { showReturnPrompt } = useLocalSearchParams<{ showReturnPrompt?: string }>();
-  const [showReturnModal, setShowReturnModal] = useState(showReturnPrompt === '1');
-
+  // Round 2 not started yet (driver came here from Home, a notification or
+  // a restart): show the Round 1 completed page first, where the break is
+  // counted and Start Round 2 is tapped. Skipped once round 2 is under way.
   useEffect(() => {
-    if (showReturnPrompt === '1') {
-      setShowReturnModal(true);
-    }
-  }, [showReturnPrompt]);
-
-  const handleConfirmReturnLoading = () => {
-    setShowReturnModal(false);
-    triggerGPayHapticsAndSound();
-  };
+    // (Older servers stamped the return loading's arrival the moment round 1
+    // was delivered, so that time can't tell whether round 2 has started.)
+    if (loading || !trip?.id || !isReturnLoading || !pickupStop || pickupStop.actual_departure) return;
+    let cancelled = false;
+    roundTimes.get(trip.id).then(({ round2StartedAt }) => {
+      if (!cancelled && !round2StartedAt) router.replace('/trip/round-done' as any);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, trip?.id, isReturnLoading, pickupStop, router]);
 
   // If this pickup stop is already completed and departed, navigate forward to the next stage
   useEffect(() => {
@@ -150,27 +152,27 @@ const PickupVerificationScreen = () => {
       router.replace({ pathname: '/trip/completed', params: { tripId: trip.id } } as any);
       return;
     }
-    if (pickupStop.actual_departure) {
-      const outStops = getOutboundIntermediateStops(trip);
-      const retStops = getReturnIntermediateStops(trip);
-      if (isReturnLoading) {
-        if (retStops.length > 0) {
-          router.replace({ pathname: '/trip/stop', params: { legIndex: '1', stopIndex: '0' } } as any);
-        } else {
-          router.replace('/trip/navigate');
-        }
+    // Loading is behind the driver: move on. Decided by HIS progress, never by
+    // the stop's departure time (the office can type that in while he is
+    // still loading, which bounced him off this screen for good).
+    const pastThisPickup = isReturnLoading ? false : !isAtOutboundLoading(ws);
+    if (pastThisPickup) {
+      const onReturn = isOnReturnLeg(ws);
+      const legStops = onReturn ? getReturnIntermediateStops(trip) : getOutboundIntermediateStops(trip);
+      if (legStops.length > 0 && parseStopWorkflowState(ws)) {
+        // At a stop on this leg: the stop screen picks the right one from the state.
+        router.replace({ pathname: '/trip/stop', params: { legIndex: onReturn ? '1' : '0' } } as any);
+      } else if (legStops.length > 0 && (ws === 'GOING_TO_STOP' || ws === 'GOING_TO_RETURN_STOP')) {
+        router.replace({ pathname: '/trip/stop', params: { legIndex: onReturn ? '1' : '0', stopIndex: '0' } } as any);
       } else {
-        if (outStops.length > 0) {
-          router.replace({ pathname: '/trip/stop', params: { legIndex: '0', stopIndex: '0' } } as any);
-        } else {
-          router.replace('/trip/navigate');
-        }
+        router.replace('/trip/navigate');
       }
     }
-  }, [loading, trip?.id, pickupStop?.id, pickupStop?.actual_departure, isReturnLoading]);
+  }, [loading, trip?.id, pickupStop?.id, ws, isReturnLoading]);
 
   const validPhotosCount = photos.filter((p) => !!p?.uri).length;
-  const hasAllPhotos = validPhotosCount >= need;
+  // Up to `need` boxes, but one photo is enough to continue (getEvidencePolicy).
+  const hasAllPhotos = validPhotosCount >= evidence.min;
 
   // Load draft photos or prefill with already uploaded server documents
   useEffect(() => {
@@ -189,9 +191,13 @@ const PickupVerificationScreen = () => {
 
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            markUploaded(parsed.filter((ph: CapturedPhoto) => ph?.uploaded).map((ph: CapturedPhoto) => ph.uri));
-            setPhotos(parsed);
+          // Drop entries whose file Android has since cleared from the cache:
+          // they showed as a "filled" box that opened a blank preview instead
+          // of the camera.
+          const usable = Array.isArray(parsed) ? await keepExistingPhotos(parsed) : [];
+          if (usable.length > 0) {
+            markUploaded(usable.filter((ph: CapturedPhoto) => ph?.uploaded).map((ph: CapturedPhoto) => ph.uri));
+            setPhotos(usable);
             return;
           }
         }
@@ -296,7 +302,7 @@ const PickupVerificationScreen = () => {
 
   /** Put a new photo in the next empty box, save the draft, start its upload. */
   const acceptPhoto = (photo: CapturedPhoto) => {
-    const valid = [...photosRef.current, photo].filter(Boolean).slice(0, need);
+    const valid = [...photosRef.current, photo].filter((p) => !!p?.uri).slice(0, need);
     photosRef.current = valid;
     setPhotos(valid);
     savePhotoDrafts(valid);
@@ -309,7 +315,8 @@ const PickupVerificationScreen = () => {
    * are taken (it has its own Gallery tab). Long-press: straight to gallery.
    */
   const addPhoto = async (source: 'camera' | 'gallery' = primarySource) => {
-    if (photosRef.current.length >= need) return;
+    // Count real photos only — an empty or broken draft entry must not block the camera.
+    if (photosRef.current.filter((p) => !!p?.uri).length >= need) return;
     if (source === 'camera') {
       setCameraOpen(true);
       return;
@@ -349,14 +356,14 @@ const PickupVerificationScreen = () => {
 
   const handleCompletePickup = async () => {
     if (!trip || submitting) return;
-    if (validPhotosCount < need) {
+    if (validPhotosCount < evidence.min) {
       Alert.alert(
         evidence.screenshot
           ? t('title_upload_screenshot', 'Upload Customer App Screenshot')
           : isReturnLoading
           ? t('title_upload_return_loading_photos', 'Upload Return Loading Photos')
           : t('title_upload_loading_photos', 'Upload Loading Photos'),
-        `${isReturnLoading ? t('title_upload_return_loading_photos', 'Upload return loading photos') : t('title_upload_loading_photos', 'Upload loading photos')} (${validPhotosCount}/${need}).`
+        `${isReturnLoading ? t('title_upload_return_loading_photos', 'Upload return loading photos') : t('title_upload_loading_photos', 'Upload loading photos')} (${validPhotosCount}/${evidence.min}).`
       );
       return;
     }
@@ -464,7 +471,7 @@ const PickupVerificationScreen = () => {
           title={isReturnLoading ? t('title_return_loading_header', 'Return Loading') : t('title_loading_header', 'Loading')}
           subtitle={evidence.screenshot
             ? t('sub_stage_screenshot', "Add a screenshot of the customer's app")
-            : t('sub_stage_loading', 'Load the cargo, then take 3 photos')}
+            : t('sub_stage_loading', 'Load the cargo, then take photos (1 is enough, up to 3)')}
           isReturn={isReturnLoading}
           trip={trip}
           target={{ kind: 'pickup', leg: isReturnLoading ? 1 : 0 }}
@@ -546,7 +553,7 @@ const PickupVerificationScreen = () => {
           </View>
 
           <UploadProgressBar items={uploads.itemsFor(photos)} total={need} accent="#2563EB" />
-          {!hasAllPhotos ? (
+          {validPhotosCount < need ? (
             <TouchableOpacity style={styles.galleryLink} activeOpacity={0.7} onPress={() => addPhoto(otherSource)}>
               <Text style={styles.galleryLinkText}>
                 {evidence.screenshot
@@ -564,7 +571,7 @@ const PickupVerificationScreen = () => {
             ]}
             activeOpacity={0.85}
             onPress={handleCompletePickup}
-            disabled={!hasAllPhotos || submitting}
+            disabled={submitting}
           >
             <PackagePlus size={22} color={hasAllPhotos ? "#FFFFFF" : "#94A3B8"} strokeWidth={2} />
             <Text style={[styles.mainActionBtnText, !hasAllPhotos && styles.mainActionBtnTextDisabled]}>
@@ -602,14 +609,6 @@ const PickupVerificationScreen = () => {
         tripId={trip?.id ?? ''}
         onClose={() => setShowDelayModal(false)}
         onSuccess={() => setShowDelayModal(false)}
-      />
-
-      <ReturnLoadingModal
-        visible={showReturnModal}
-        destinationName={pickupLocationName}
-        destinationAddress={pickupLocationAddr}
-        onConfirm={handleConfirmReturnLoading}
-        onClose={() => setShowReturnModal(false)}
       />
     </SafeAreaView>
   );
