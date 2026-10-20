@@ -5,7 +5,7 @@
  * then sit on that stop, so Check times and the stop's photos work as usual.
  */
 import { Request, Response } from 'express';
-import { Prisma, StopType } from '@prisma/client';
+import { DocStatus, Prisma, StopType } from '@prisma/client';
 import { tripLogEntries } from '@mercon/shared-types';
 import { prisma } from '../db';
 import { logger } from '../utils/logger';
@@ -22,8 +22,9 @@ export const logEntryToStop = async (req: Request, res: Response) => {
     const entry = req.params.entry as string;
     const tripId = isUuid(raw) ? raw : await resolveTripId(raw);
     if (!tripId) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Trip not found' } });
-    const { action, stop_id, stop_type, name } = req.body as {
+    const { action, stop_id, stop_type, name, arrive_at, depart_at, needs_check } = req.body as {
       action: 'new' | 'attach'; stop_id?: string; stop_type?: 'Pickup' | 'Dropoff'; name?: string;
+      arrive_at?: string; depart_at?: string; needs_check?: boolean;
     };
 
     const trip = await prisma.trip.findFirst({
@@ -46,18 +47,31 @@ export const logEntryToStop = async (req: Request, res: Response) => {
     const [e] = tripLogEntries(docs);
     if (!e) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'That update is not on this trip' } });
     const at = new Date(e.at);
+    // Times the operator confirmed from the read: they replace the send time.
+    const arrival = arrive_at ? new Date(arrive_at) : null;
+    const departure = depart_at ? new Date(depart_at) : null;
+    if (arrival && departure && departure < arrival) {
+      return res.status(400).json({ success: false, error: { code: 'DEPARTURE_BEFORE_ARRIVAL', message: 'Left is before arrived' } });
+    }
+    const placedAt = arrival ?? at;
 
+    const verifiedBy = isUuid((req as any).user?.id) ? (req as any).user.id : null;
     const stopId = await prisma.$transaction(async (tx) => {
       let target: string;
       if (action === 'attach') {
         const stop = trip.stops.find((s) => s.id === stop_id);
         if (!stop) throw new Error('UNKNOWN_STOP');
-        // Only fills an empty arrival — a time already set (or corrected) wins.
-        await tx.tripStop.updateMany({ where: { id: stop.id, actual_arrival: null }, data: { actual_arrival: at } });
+        if (arrival || departure) {
+          // The operator confirmed these times: they are what gets saved.
+          await tx.tripStop.update({ where: { id: stop.id }, data: { ...(arrival ? { actual_arrival: arrival } : {}), ...(departure ? { actual_departure: departure } : {}) } });
+        } else {
+          // Only fills an empty arrival — a time already set (or corrected) wins.
+          await tx.tripStop.updateMany({ where: { id: stop.id, actual_arrival: null }, data: { actual_arrival: at } });
+        }
         target = stop.id;
       } else {
         // In time order: before the first stop that comes later than this entry.
-        const later = trip.stops.findIndex((s) => { const w = whenOf(s); return w != null && w > at.getTime(); });
+        const later = trip.stops.findIndex((s) => { const w = whenOf(s); return w != null && w > placedAt.getTime(); });
         const pos = later === -1 ? trip.stops.length : later;
         const created = await tx.tripStop.create({
           data: {
@@ -68,7 +82,8 @@ export const logEntryToStop = async (req: Request, res: Response) => {
             location_name: (name?.trim() || e.place || 'Stop').slice(0, 120),
             location_lat: e.gps?.lat ?? null,
             location_lng: e.gps?.lng ?? null,
-            actual_arrival: at,
+            actual_arrival: placedAt,
+            ...(departure ? { actual_departure: departure } : {}),
           },
           select: { id: true },
         });
@@ -80,7 +95,14 @@ export const logEntryToStop = async (req: Request, res: Response) => {
       }
       for (const d of e.docs) {
         const meta = (d.ai_extracted_json ?? {}) as Record<string, unknown>;
-        await tx.document.update({ where: { id: d.id }, data: { ai_extracted_json: { ...meta, stop_id: target } as Prisma.InputJsonValue } });
+        await tx.document.update({
+          where: { id: d.id },
+          data: {
+            ai_extracted_json: { ...meta, stop_id: target } as Prisma.InputJsonValue,
+            // A sure read, confirmed by the operator, is a checked time; an unsure one stays "to confirm".
+            ...((arrival || departure) && !needs_check ? { status: DocStatus.Verified, verified_by: verifiedBy } : {}),
+          },
+        });
       }
       return target;
     });

@@ -476,6 +476,7 @@ export default function TripDetailsScreen() {
                 items: e.docs.map((d) => ({ id: d.id, url: d.file_url, kind: 'photo' as const, caption: [f.smart(e.at), e.place ? `near ${e.place}` : null].filter(Boolean).join(' · ') })),
               })}
               onPick={setLogEntry}
+              onDone={reload}
             />
             <StopsTab
               trip={trip}

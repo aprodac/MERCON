@@ -841,4 +841,9 @@ export const logEntryToStopBody = z.object({
   stop_id: z.string().uuid().optional(),
   stop_type: z.enum(['Pickup', 'Dropoff']).optional(),
   name: z.string().max(120).optional(),
+  // Times read off the screenshots, saved when the operator taps Confirm.
+  arrive_at: z.string().datetime({ offset: true }).optional(),
+  depart_at: z.string().datetime({ offset: true }).optional(),
+  /** The read was not sure: the times are saved but still shown as "to confirm". */
+  needs_check: z.boolean().optional(),
 }).refine((b) => b.action !== 'attach' || !!b.stop_id, { message: 'stop_id is needed to add to a stop', path: ['stop_id'] });
