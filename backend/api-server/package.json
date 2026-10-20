@@ -59,7 +59,7 @@
     "test:assignment-notice": "node -r ts-node/register --test src/services/driverPhone/assignmentNotice.test.ts",
     "test:trip-stops-edit": "node -r ts-node/register --test src/tests/tripStopsEdit.test.ts",
     "test:same-day-trips": "node -r ts-node/register --test src/tests/sameDayTrips.test.ts",
-    "test:trip-log": "node -r ts-node/register --test src/tests/tripLog.test.ts",
+    "test:trip-log": "node -r ts-node/register --test src/tests/tripLog.test.ts src/tests/tripLogRead.test.ts",
     "test:stop-times": "node -r ts-node/register --test src/tests/stopTimes.test.ts"
   },
   "prisma": {

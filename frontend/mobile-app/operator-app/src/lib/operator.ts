@@ -1268,7 +1268,8 @@ export const operatorService = {
   async logEntryToStop(
     tripId: string,
     entry: string,
-    body: { action: 'new'; name: string; stop_type: 'Pickup' | 'Dropoff' } | { action: 'attach'; stop_id: string },
+    body: ({ action: 'new'; name: string; stop_type: 'Pickup' | 'Dropoff' } | { action: 'attach'; stop_id: string })
+      & { arrive_at?: string; depart_at?: string; needs_check?: boolean },
   ): Promise<{ stop_id: string }> {
     const { data } = await api.post(`/trips/${tripId}/log/${encodeURIComponent(entry)}/stop`, body);
     return data.data;
