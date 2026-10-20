@@ -1,0 +1,73 @@
+{
+  "01-imile-riyadh.png": {
+    "app": "iMile",
+    "name": "Riyadh DC",
+    "arrive": "06:10:42",
+    "depart": "06:55:03",
+    "stop": "Riyadh",
+    "type": "Pickup",
+    "suggest": true,
+    "send": "07:00",
+    "gps": [
+      24.7136,
+      46.6753
+    ]
+  },
+  "02-imile-taif.png": {
+    "app": "iMile",
+    "name": "Taif Station",
+    "arrive": "12:04:51",
+    "depart": "12:40:10",
+    "stop": "Taif",
+    "type": "Dropoff",
+    "suggest": true,
+    "send": "12:45",
+    "gps": [
+      21.2703,
+      40.4158
+    ]
+  },
+  "03-jdl-jeddah.png": {
+    "app": "JD",
+    "name": "Jeddah Hub",
+    "arrive": "18:22:00",
+    "depart": null,
+    "stop": "Jeddah",
+    "type": "Dropoff",
+    "suggest": true,
+    "send": "18:30",
+    "gps": [
+      21.5433,
+      39.1728
+    ]
+  },
+  "04-imile-dark-cut.png": {
+    "app": "iMile",
+    "name": "Riyadh DC",
+    "arrive": "06:10:42",
+    "depart": null,
+    "stop": "Riyadh",
+    "type": "Pickup",
+    "suggest": true,
+    "send": "12:50",
+    "gps": [
+      24.7136,
+      46.6753
+    ],
+    "note": "dark mode; screen cut off before depart time; resend of the Riyadh stop"
+  },
+  "05-imile-no-times.png": {
+    "app": "iMile",
+    "name": "Taif Station",
+    "arrive": null,
+    "depart": null,
+    "stop": null,
+    "type": null,
+    "suggest": false,
+    "send": "12:55",
+    "gps": [
+      21.2703,
+      40.4158
+    ]
+  }
+}
