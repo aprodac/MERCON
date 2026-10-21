@@ -10,14 +10,18 @@
  *
  *   node dist/scripts/tripLogReadDevTest.js            run the test
  *   node dist/scripts/tripLogReadDevTest.js --cleanup  soft-delete the TEST records
+ *   --fill-from <json>  skip Gemini: store the reads from <json> (file name → {stops, app, confidence})
+ *                       on the documents, exactly as the background reader would
+ *   --no-confirm        stop before the Confirm step, leaving the suggestions for the UI
  *
  * Refuses to run unless the database is mercon_dev_db.
  */
 import fs from 'fs';
 import path from 'path';
 import { Request, Response } from 'express';
-import { AssetType, DriverWorkflow, StopType, TripStatus } from '@prisma/client';
+import { Prisma, AssetType, DriverWorkflow, StopType, TripStatus } from '@prisma/client';
 import { placeSimilarity, suggestForEntry, tripLogEntries, zonedWallTimeToUtcIso, type TripLogSuggestion } from '@mercon/shared-types';
+import { resolveReadTimes, type TripLogRead } from '@mercon/shared-types';
 import { prisma } from '../db';
 import { deploymentTimezone } from '../services/sameDayTrips';
 import { getUploadDir } from '../middlewares/upload';
@@ -77,7 +81,11 @@ async function main() {
     process.exit(2);
   }
   if (process.argv.includes('--cleanup')) return cleanup();
-  if (!process.env.GEMINI_API_KEY) {
+  const fillIdx = process.argv.indexOf('--fill-from');
+  const fillFile = fillIdx >= 0 ? process.argv[fillIdx + 1] : undefined;
+  if (fillIdx >= 0 && !fillFile) { console.error('--fill-from needs a json file path'); process.exit(2); }
+  const noConfirm = process.argv.includes('--no-confirm');
+  if (!fillFile && !process.env.GEMINI_API_KEY) {
     console.error('GEMINI_API_KEY is not set in this container: the read cannot run.');
     process.exit(3);
   }
@@ -148,6 +156,17 @@ async function main() {
     entryIds[f] = entry;
   }
   console.log(`Sent ${files.length} screenshots; waiting for the read…`);
+
+  if (fillFile) {
+    const filled = JSON.parse(fs.readFileSync(fillFile, 'utf8')) as Record<string, TripLogRead>;
+    for (const f of files) {
+      if (!filled[f]) continue;
+      const doc = await prisma.document.findUniqueOrThrow({ where: { id: docIds[f] }, select: { ai_extracted_json: true } });
+      const read = resolveReadTimes(filled[f], at(expected[f].send), tz);
+      await prisma.document.update({ where: { id: docIds[f] }, data: { ai_extracted_json: { ...((doc.ai_extracted_json ?? {}) as object), read: { ...read, model: 'claude-read' } } as unknown as Prisma.InputJsonValue } });
+    }
+    console.log('Stored the supplied reads (no Gemini).');
+  }
 
   const deadline = Date.now() + 120_000;
   const pending = new Set(files);
@@ -232,6 +251,7 @@ async function main() {
   console.log(`COST (estimate, Gemini flash list price, $1=₹${INR_PER_USD}): ₹${(tripInr / files.length).toFixed(3)} per screenshot, ₹${tripInr.toFixed(3)} for this trip (${inTok} in / ${outTok} out tokens)`);
 
   // ---- Confirm (what the operator app's Confirm button calls) ---------------
+  if (noConfirm) { console.log(`\n--no-confirm: suggestions left for the UI.\nTEST trip left on dev: ${ref}\nURL: ${WEB_BASE}/trips/${ref}`); return; }
   console.log('\n=== CONFIRM ===');
   for (const f of files) {
     const e = expected[f];
