@@ -21,7 +21,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  Building2, CalendarDays, CircleCheckBig, History, AlertTriangle, MessageCircle, Phone, Plus, Radio, Search, Send, Trash2, Truck, UserRound, X, ArrowUpRight, type LucideIcon,
+  BookOpen, Building2, CalendarDays, CircleCheckBig, History, AlertTriangle, MessageCircle, Phone, Plus, Radio, Search, Send, Trash2, Truck, UserRound, X, ArrowUpRight, type LucideIcon,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
@@ -30,6 +30,7 @@ import type { OperatorTrip } from '../../../lib/operator';
 import { TripCard } from './TripCard';
 import { AppTopBar } from '@/components/AppTopBar';
 import { Chips } from '@/features/notifications/components/parts';
+import { TripLedger } from './TripLedger';
 import { useNow, useTripList, HISTORY_DAYS, SCHEDULE_AFTER, type View as ListView } from './useTripList';
 import { askDeleteTrip, canDeleteTrip } from '../edit/movePlan';
 import {
@@ -56,7 +57,7 @@ export default function TripsScreen() {
   );
   const [view, setView] = useState<ListView>(
     params.vehicleId || params.customerId ? 'history'
-      : params.view === 'delayed' || params.view === 'schedule' || params.view === 'history' ? params.view
+      : params.view === 'delayed' || params.view === 'schedule' || params.view === 'history' || params.view === 'ledger' ? params.view
       : 'now',
   );
   const [query, setQuery] = useState('');
@@ -184,6 +185,7 @@ export default function TripsScreen() {
     { id: 'delayed', label: 'Delayed', icon: AlertTriangle, badge: delayedTrips.length || undefined },
     { id: 'schedule', label: 'Schedule', icon: CalendarDays },
     { id: 'history', label: 'History', icon: History },
+    { id: 'ledger', label: 'Ledger', icon: BookOpen },
   ];
 
   const refreshControl = <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={Colors.primary} />;
@@ -282,6 +284,8 @@ export default function TripsScreen() {
               ItemSeparatorComponent={Gap}
               ListEmptyComponent={data.openLoading ? <Loading /> : <Empty icon={CircleCheckBig} title="Nothing on the road" text="Trips show here once they start. Upcoming trips are in Schedule." good />}
             />
+          ) : view === 'ledger' ? (
+            <TripLedger f={f} todayKey={todayKey} scope={scope?.filter} onOpen={open} />
           ) : view === 'schedule' ? (
             <FlatList
               data={dayTrips}

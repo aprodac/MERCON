@@ -34,6 +34,8 @@ export interface OperatorTrip {
   planned_end?: string | null;
   actual_start?: string | null;
   actual_end?: string | null;
+  /** What the customer pays for the trip (SAR). */
+  billing_amount?: number | string | null;
   createdAt?: string;
   updatedAt?: string;
   is_third_party?: boolean;
