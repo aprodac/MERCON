@@ -40,7 +40,8 @@
  * between them in violet, the trucks that matter to the lane framed, and
  * free trucks near A ringed green.
  * Used full-screen on the Fleet map page and as a small, non-interactive
- * preview on Home. Falls back to a plain panel on builds without MapLibre.
+ * preview on Home's trip cards (one truck picked: framed with its stops).
+ * Falls back to a plain panel on builds without MapLibre.
  */
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, View, Text, Image, StyleSheet, useWindowDimensions } from 'react-native';
@@ -310,6 +311,11 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   // The selected truck's trip: its stops (numbered) and where it's heading.
   const stops = useMemo(() => (sel?.trip?.stops ?? []).filter((s) => s.lat != null && s.lng != null && !(s.lat === 0 && s.lng === 0)), [sel]);
   const next = sel?.trip && sel.trip.next_stop_index != null ? sel.trip.stops[sel.trip.next_stop_index] : null;
+  // A static preview with a truck picked (Home's trip cards) frames the truck and its stops, not just the truck.
+  const still = useMemo(
+    () => (!interactive && sel?.position && stops.length ? boundsOf([sel.position, ...stops.map((s) => ({ lat: s.lat!, lng: s.lng! }))], 0.02, 0.05) : bounds),
+    [interactive, sel, stops, bounds],
+  );
   const toNext = useMemo<GeoJSON.Feature | null>(() => {
     if (!sel?.position || !next || next.lat == null || next.lng == null) return null;
     const coords = routeLine && routeLine.length > 1 ? routeLine : [[sel.position.lng, sel.position.lat], [next.lng, next.lat]];
@@ -599,7 +605,7 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
       {interactive ? (
         <Camera ref={camera} initialViewState={initialCamera ? { center: initialCamera.center, zoom: initialCamera.zoom } : { bounds, padding: pad }} />
       ) : (
-        <Camera bounds={bounds} padding={{ top: padding.top, bottom: padding.bottom, left: 30, right: 30 }} duration={0} />
+        <Camera bounds={still ?? bounds} padding={{ top: padding.top, bottom: padding.bottom, left: 30, right: 30 }} duration={0} />
       )}
 
       {/* Breadcrumb trail: where the picked truck has been on this trip, under everything else. */}

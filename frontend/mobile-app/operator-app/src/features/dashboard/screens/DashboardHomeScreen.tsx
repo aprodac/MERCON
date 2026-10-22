@@ -4,7 +4,9 @@
  *   EmergencyStrip  only while a driver emergency is open
  *   TodayCard       ring of done / on the road / to start, and what needs
  *                   you as tiles by kind, most important first
- *   LiveNow         fleet map + the trips on the road, late ones first
+ *   LiveTrips       a card per trip on the road (its own map, status,
+ *                   route, next stop, driver), late ones first
+ *   FleetMapCard    every truck on one small map; opens the Fleet map
  *   FreeTrucks      trucks that can take a job now, by class; Book opens
  *                   Create trip with the truck chosen
  *   FromDrivers     photo sets drivers sent that the customer hasn't had yet
@@ -30,7 +32,8 @@ import { useActionInbox } from '../actions/useActionInbox';
 import { useActionIntent } from '../actions/useActionIntent';
 import { EmergencyStrip } from '../home/EmergencyStrip';
 import { TodayCard } from '../home/TodayCard';
-import { LiveNow } from '../home/LiveNow';
+import { LiveTrips } from '../home/LiveTrips';
+import { FleetMapCard } from '../home/FleetMapCard';
 import { FreeTrucks } from '../home/FreeTrucks';
 import { useTruckDetails } from '../hooks/useTruckDetails';
 import { FromDrivers } from '../home/FromDrivers';
@@ -94,14 +97,16 @@ export default function DashboardHomeScreen() {
 
         {inbox.liveError ? <ErrorState message="Couldn't load live trips." onRetry={inbox.retry} /> : null}
 
-        <LiveNow
+        <LiveTrips
           units={inbox.units}
           tz={inbox.tz}
           now={now}
-          onOpenMap={() => router.push('/fleet-map')}
           onOpenTrip={(id) => openTrip(id)}
+          onTrack={(trip) => router.push({ pathname: '/fleet-map', params: { trip } })}
           onAll={() => trips('now')}
         />
+
+        <FleetMapCard units={inbox.units} onOpenMap={() => router.push('/fleet-map')} />
 
         <FreeTrucks
           units={inbox.units}
