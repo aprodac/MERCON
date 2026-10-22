@@ -7,8 +7,8 @@
  *   LiveTrips       a card per trip on the road (its own map, status,
  *                   route, next stop, driver), late ones first
  *   FleetMapCard    every truck on one small map; opens the Fleet map
- *   FreeTrucks      trucks that can take a job now, by class; Book opens
- *                   Create trip with the truck chosen
+ *   FleetUtilisation share of trucks that ran a trip today / week / month,
+ *                   the fleet right now (on trip · free · maintenance), by body type
  *   FromDrivers     photo sets drivers sent that the customer hasn't had yet
  * Everything to act on in full lives on Notifications → To do.
  * Composes hooks + components only — no direct API calls here.
@@ -34,8 +34,7 @@ import { EmergencyStrip } from '../home/EmergencyStrip';
 import { TodayCard } from '../home/TodayCard';
 import { LiveTrips } from '../home/LiveTrips';
 import { FleetMapCard } from '../home/FleetMapCard';
-import { FreeTrucks } from '../home/FreeTrucks';
-import { useTruckDetails } from '../hooks/useTruckDetails';
+import { FleetUtilisation } from '../home/FleetUtilisation';
 import { FromDrivers } from '../home/FromDrivers';
 import { dateLabel, greeting, toStartToday } from '../home/today';
 import { needTiles } from '../home/needsTiles';
@@ -52,7 +51,6 @@ export default function DashboardHomeScreen() {
 
   const inbox = useActionInbox();
   const { data: me } = useCurrentUser();
-  const truckDetails = useTruckDetails();
   const { onIntent, openTrip, toast, setToast } = useActionIntent();
 
   const emergencies = useMemo(() => inbox.items.filter((i) => i.kind === 'emergency'), [inbox.items]);
@@ -108,16 +106,7 @@ export default function DashboardHomeScreen() {
 
         <FleetMapCard units={inbox.units} onOpenMap={() => router.push('/fleet-map')} />
 
-        <FreeTrucks
-          units={inbox.units}
-          details={truckDetails.data ?? []}
-          expiries={inbox.expiries}
-          tz={inbox.tz}
-          now={now}
-          onOpenTruck={(id) => router.push({ pathname: '/vehicle-details', params: { id } })}
-          onBook={(vehicleId) => router.push({ pathname: '/create-trip', params: { vehicleId } })}
-          onAll={() => router.push('/vehicles')}
-        />
+        <FleetUtilisation onAll={() => router.push('/vehicles')} />
 
         <FromDrivers updates={inbox.updates} now={now} onSend={(u) => openTrip(u.trip.id, { share: 'update', update: u.key })} />
       </ScrollView>
