@@ -10,7 +10,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl, ActivityIndicator, Alert } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, ChevronLeft, ChevronRight, Trash2, X } from 'lucide-react-native';
+import { ArrowDown, ArrowUp, Check, ChevronLeft, ChevronRight, Trash2, X } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import type { OperatorTrip } from '../../../lib/operator';
@@ -65,6 +65,8 @@ export function TripLedger({ f, todayKey, scope, onOpen }: {
 }) {
   /** 0 = this month, 1 = last month …; null = all time. */
   const [back, setBack] = useState<number | null>(0);
+  /** Trip number order: lowest first (a register), or newest first. */
+  const [order, setOrder] = useState<'asc' | 'desc'>('asc');
   const queryClient = useQueryClient();
   /** Select mode: the trip ids picked for deleting. null = not selecting. */
   const [picked, setPicked] = useState<Set<string> | null>(null);
@@ -137,8 +139,14 @@ export function TripLedger({ f, todayKey, scope, onOpen }: {
         deleted: true,
         trip: null,
       }));
-    return [...live, ...gone].sort((a, b) => (a.no ?? Infinity) - (b.no ?? Infinity) || a.ref.localeCompare(b.ref));
-  }, [trips.data, deleted.data, range, scope]);
+    // By trip number (lowest or highest first); the live trip before deleted ones with the
+    // same number; trips without a number (drafts) always last.
+    const dir = order === 'asc' ? 1 : -1;
+    return [...live, ...gone].sort((a, b) => {
+      if (a.no == null || b.no == null) return a.no == null && b.no == null ? a.ref.localeCompare(b.ref) : a.no == null ? 1 : -1;
+      return (a.no - b.no) * dir || Number(a.deleted) - Number(b.deleted) || a.ref.localeCompare(b.ref);
+    });
+  }, [trips.data, deleted.data, range, scope, order]);
 
   const counts = useMemo(() => {
     const c = new Map<string, { n: number; tone: Row['tone'] }>();
@@ -247,7 +255,10 @@ export function TripLedger({ f, todayKey, scope, onOpen }: {
       ) : null}
       <View style={s.headRow}>
         {picked ? <View style={{ width: 22 }} /> : null}
-        <Text style={[s.h, s.cNo]}>No.</Text>
+        <TouchableOpacity style={[s.cNo, s.sortBtn]} onPress={() => setOrder((o) => (o === 'asc' ? 'desc' : 'asc'))} accessibilityRole="button" accessibilityLabel={order === 'asc' ? 'Trip number, lowest first. Tap for highest first' : 'Trip number, highest first. Tap for lowest first'} hitSlop={8}>
+          <Text style={[s.h, { color: INK }]}>No.</Text>
+          {order === 'asc' ? <ArrowUp size={12} color={INK} strokeWidth={3} /> : <ArrowDown size={12} color={INK} strokeWidth={3} />}
+        </TouchableOpacity>
         <Text style={[s.h, { flex: 1 }]}>Customer · route</Text>
         <Text style={[s.h, s.cAmt]}>SAR</Text>
       </View>
@@ -335,6 +346,7 @@ const s = StyleSheet.create({
   headRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, marginTop: 4 },
   h: { fontSize: 11, fontWeight: '800', color: MUTED, letterSpacing: 0.4, textTransform: 'uppercase' },
   cNo: { width: 74 },
+  sortBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   cAmt: { width: 64, textAlign: 'right' },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: '#fff', paddingHorizontal: 12, paddingVertical: 10 },
   rowAlt: { backgroundColor: '#FAFAFB' },
