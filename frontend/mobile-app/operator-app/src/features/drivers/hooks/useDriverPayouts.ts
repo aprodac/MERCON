@@ -10,6 +10,8 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { driverDetailsApi, type RawDriverTrip } from '../api/driverDetailsApi';
 
+const EARNED = new Set(['Completed', 'Invoiced']);
+
 export interface PayoutRow {
   key: string;
   tripId: string;
@@ -48,12 +50,16 @@ export function useDriverPayouts(driverId: string | undefined, trips: RawDriverT
       }));
     }
     if (!financeOff) return [];
+    // Only finished trips earn — the same rule as the server's (EARNED in
+    // services/driverPayout.ts). Counting scheduled trips showed "447 earned"
+    // for three trips that hadn't run yet (TestFlight 20 Oct).
+    const doneAt = (t: RawDriverTrip) => t.actual_end ?? t.actual_start ?? t.createdAt;
     return trips
-      .filter((t) => t.status !== 'Cancelled' && Number(t.driver_payout) > 0 && (t.planned_start ?? t.createdAt).slice(0, 7) === month)
+      .filter((t) => EARNED.has(t.status) && Number(t.driver_payout) > 0 && doneAt(t).slice(0, 7) === month)
       .map((t) => ({
         key: t.id,
         tripId: t.id,
-        day: (t.planned_start ?? t.createdAt).slice(0, 10),
+        day: doneAt(t).slice(0, 10),
         title: t.customer?.name || t.ref_id || 'Trip',
         sub: t.ref_id ?? '',
         amount: Number(t.driver_payout) || 0,

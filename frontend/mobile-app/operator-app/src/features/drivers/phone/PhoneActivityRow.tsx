@@ -26,6 +26,11 @@ export function PhoneActivityRow({
     ? [LEVEL_LABEL[data.status.level], battery && `${battery} battery`, `seen ${timeAgo(data.status.lastSeenAt)}`].filter(Boolean).join(' · ')
     : isError ? 'Phone status unavailable' : 'Checking phone…';
   const why = data?.status.reasons[0];
+  // Which app build the driver runs (TestFlight 20 Oct: "show the driver's app version").
+  const os = device?.os_name ? [device.os_name, device.os_version].filter(Boolean).join(' ') : null;
+  const version = device?.app_version
+    ? [`App ${device.app_version}${device.build_number ? ` (${device.build_number})` : ''}`, os].filter(Boolean).join(' · ')
+    : data ? 'App version not reported yet' : null;
 
   const open = () => {
     tap();
@@ -42,6 +47,7 @@ export function PhoneActivityRow({
           <Text style={[s.value, compact && s.compactValue, tone && data?.status.level !== 'green' && { color: tone.fg }]} numberOfLines={1}>{line}</Text>
         </View>
         {why ? <Text style={[s.why, tone && { color: tone.fg }]} numberOfLines={1}>{why}</Text> : null}
+        {version ? <Text style={s.why} numberOfLines={1}>{version}</Text> : null}
       </View>
       <Text style={s.link}>{tripId ? 'Trail' : 'Activity'}</Text>
       <ChevronRight size={16} color="#A1A1AA" />

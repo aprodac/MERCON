@@ -18,7 +18,7 @@ import { statusLabel, stopLabel, getTripChargeValue, getMonthlyDriverPayout, typ
 import { matchesSearch } from '@mercon/mobile-shared/lib/search';
 import { useLanguage, formatCurrency, getLocalizedStatus, LanguageMode } from '@mercon/mobile-shared/lib/language-context';
 import { API_URL } from '@mercon/mobile-shared/lib/api';
-import { formatDayTime, inCompanyZone } from '@mercon/mobile-shared/lib/dates';
+import { companyDayKey, formatDayTime, inCompanyZone } from '@mercon/mobile-shared/lib/dates';
 
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');
 
@@ -30,8 +30,9 @@ function formatRelativeDate(iso?: string | null, lang: LanguageMode = 'en'): str
   if (!iso) return lang === 'ur' ? 'شیڈول شدہ' : 'Scheduled';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return lang === 'ur' ? 'شیڈول شدہ' : 'Scheduled';
-  const now = new Date();
-  const diffDays = Math.round((d.getTime() - now.getTime()) / (1000 * 3600 * 24));
+  // Calendar days in the company's zone, so a trip later today isn't "Tomorrow".
+  const dayMs = (v: Date) => Date.parse(`${companyDayKey(v)}T00:00:00Z`);
+  const diffDays = Math.round((dayMs(d) - dayMs(new Date())) / (1000 * 3600 * 24));
   if (diffDays === 0) return lang === 'ur' ? 'آج' : 'Today';
   if (diffDays === 1) return lang === 'ur' ? 'کل' : 'Tomorrow';
   if (diffDays > 1 && diffDays <= 7) return lang === 'ur' ? `${diffDays} دنوں میں` : `In ${diffDays} days`;
@@ -86,7 +87,9 @@ function toCard(t: MobileTrip, isCompletedTab: boolean, lang: LanguageMode = 'en
   // their planned delivery time, often hours after they were cancelled.
   const dateSource = isCompletedTab
     ? t.finished_at ?? t.actual_end ?? t.planned_end ?? null
-    : t.actual_end ?? t.planned_end ?? t.actual_start ?? t.planned_start ?? null;
+    // Upcoming: when it starts (pickup) — the planned delivery made a 04:00
+    // pickup read "20:30" (TestFlight 20 Oct, TRP-0041).
+    : t.actual_start ?? t.planned_start ?? t.planned_end ?? null;
   const pickup = t.stops?.find((s) => s.stop_type === 'Pickup');
   const dropoff = t.stops?.find((s) => s.stop_type === 'Dropoff');
   const fromCity = stopLabel(pickup, tr('label_pickup_point', 'Pickup Point')) ?? tr('label_pickup_point', 'Pickup Point');

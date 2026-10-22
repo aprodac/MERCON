@@ -34,7 +34,7 @@ import { Chips } from '@/features/notifications/components/parts';
 import { useNow, useTripList, HISTORY_DAYS, SCHEDULE_AFTER, type View as ListView } from './useTripList';
 import { askDeleteTrip, canDeleteTrip } from '../edit/movePlan';
 import {
-  clashesOf, dayLabel, isLateToStart, dayRange, daysBetween, driverNameOf, driverPhoneOf, finishedDayIso, needsAttention, phaseOf, tripDayIso, type TimeFmt,
+  clashesOf, dayLabel, isLateToStart, dayRange, daysBetween, driverNameOf, driverPhoneOf, historyDayIso, needsAttention, phaseOf, tripDayIso, type TimeFmt,
 } from './tripListModel';
 
 const INK = '#3E3C3D';
@@ -147,7 +147,7 @@ export default function TripsScreen() {
   const selectedCount = perDay.get(selectedDay);
 
   // ── History: the same strip, by the day each trip finished ─────────────────
-  const historyPerDay = useMemo(() => countByDay(data.history, f, finishedDayIso, now), [data.history, f, now]);
+  const historyPerDay = useMemo(() => countByDay(data.history, f, historyDayIso, now), [data.history, f, now]);
   const historyLatest = useMemo(() => [...historyPerDay.keys()].sort().reverse(), [historyPerDay]);
   // Opens on the latest day anything finished (today, if something did).
   const historyDefault = historyLatest.find((k) => k <= todayKey) ?? todayKey;
@@ -156,7 +156,7 @@ export default function TripsScreen() {
     const last = historyLatest[0] && historyLatest[0] > todayKey ? historyLatest[0] : todayKey;
     return dayRange(todayKey, HISTORY_DAYS, daysBetween(todayKey, last));
   }, [historyLatest, todayKey]);
-  const historyAll = useMemo(() => tripsOn(data.history, f, finishedDayIso, historySelected, true), [data.history, f, historySelected]);
+  const historyAll = useMemo(() => tripsOn(data.history, f, historyDayIso, historySelected, true), [data.history, f, historySelected]);
   // Filter (TestFlight: "add filter, deleted and completed"): delivered / cancelled / deleted that day.
   const deletedOnDay = useMemo(
     () => data.deleted.filter((d) => f.dayKey(d.deletedAt) === historySelected).sort((a, b) => b.deletedAt.localeCompare(a.deletedAt)),
@@ -376,7 +376,7 @@ export default function TripsScreen() {
                 <Empty
                   icon={History}
                   title="Nothing finished this day"
-                  text="Delivered trips show on the day they ended, cancelled ones on their planned day. Trips still to run are in Schedule."
+                  text="Finished trips show on the day they started, cancelled ones on their planned day. Trips still to run are in Schedule."
                   action={{ label: 'Open Schedule', icon: CalendarDays, onPress: () => { tap(); setView('schedule'); } }}
                 />
               )}

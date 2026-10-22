@@ -86,9 +86,24 @@ export function TruckDayView({ trips, dayKey, f, clashes, onOpen }: {
           </View>
         </View>
       ))}
-      {rows.some((r) => r.bars.some((b) => clashes.has(b.t.id))) ? (
-        <Text style={s.legend}>Red = overlaps another trip of the same truck or driver. Tap a bar to open the trip.</Text>
-      ) : <Text style={s.legend}>Tap a bar to open the trip.</Text>}
+      {/* How to read it (TestFlight 21 Oct: "how to use the bars"). */}
+      <View style={s.help}>
+        <Text style={s.legend}>
+          Each row is a truck, across the day from 00 to 24. A bar is one trip, from pickup to planned delivery — it shows the trip number and pickup time ("0048 18:00"). A square end means it carries on from yesterday or into tomorrow. Tap a bar to open the trip.
+        </Text>
+        <View style={s.keys}>
+          {(['planned', 'running', 'done'] as const).map((k) => (
+            <View key={k} style={s.key}>
+              <View style={[s.swatch, { backgroundColor: PHASE_STYLE[k].bg, borderColor: PHASE_STYLE[k].dot }]} />
+              <Text style={s.keyText}>{PHASE_STYLE[k].label}</Text>
+            </View>
+          ))}
+          <View style={s.key}>
+            <View style={[s.swatch, { backgroundColor: '#FDE2DF', borderColor: '#D92D20' }]} />
+            <Text style={s.keyText}>Overlaps another trip of the truck or driver</Text>
+          </View>
+        </View>
+      </View>
     </View>
   );
 }
@@ -105,6 +120,11 @@ const s = StyleSheet.create({
   grid: { position: 'absolute', top: 0, bottom: 0, width: 1, backgroundColor: '#E4E7EE' },
   bar: { position: 'absolute', borderRadius: 6, borderWidth: 1, paddingHorizontal: 4, justifyContent: 'center' },
   barText: { fontSize: 10, fontWeight: '700' },
-  legend: { fontSize: 11, color: '#6E6E80', marginTop: 4 },
+  help: { gap: 6, marginTop: 4 },
+  legend: { fontSize: 11, lineHeight: 15, color: '#6E6E80' },
+  keys: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 4 },
+  key: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  swatch: { width: 14, height: 10, borderRadius: 3, borderWidth: 1 },
+  keyText: { fontSize: 11, color: '#3E3C3D' },
   empty: { fontSize: 13, color: '#6E6E80', textAlign: 'center', paddingVertical: 20 },
 });

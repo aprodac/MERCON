@@ -77,12 +77,14 @@ const TripCompletedScreen = () => {
         const targetId = finished?.id;
         const targetRefId = finished?.ref_id;
 
+        // Only this trip's own saved photos. The "last_*" keys hold the
+        // previous trip's photos — used whenever the server had none for a
+        // stage, they made "Photos saved" read 7 for a trip with 4 (TRP-0050).
         const pickupKeys = [
           targetId ? `pickup_completed_photos_${targetId}` : null,
           targetId ? `pickup_draft_photos_${targetId}` : null,
           targetRefId ? `pickup_completed_photos_${targetRefId}` : null,
-          lastTripId ? `pickup_completed_photos_${lastTripId}` : null,
-          'last_pickup_photos',
+          !targetId ? 'last_pickup_photos' : null,
         ].filter(Boolean) as string[];
 
         for (const key of pickupKeys) {
@@ -100,8 +102,7 @@ const TripCompletedScreen = () => {
           targetId ? `delivery_completed_photos_${targetId}` : null,
           targetId ? `delivery_draft_photos_${targetId}` : null,
           targetRefId ? `delivery_completed_photos_${targetRefId}` : null,
-          lastTripId ? `delivery_completed_photos_${lastTripId}` : null,
-          'last_delivery_photos',
+          !targetId ? 'last_delivery_photos' : null,
         ].filter(Boolean) as string[];
 
         for (const key of deliveryKeys) {
@@ -118,8 +119,7 @@ const TripCompletedScreen = () => {
         const returnPickupKeys = [
           targetId ? `return_pickup_completed_photos_${targetId}` : null,
           targetRefId ? `return_pickup_completed_photos_${targetRefId}` : null,
-          lastTripId ? `return_pickup_completed_photos_${lastTripId}` : null,
-          'last_return_pickup_photos',
+          !targetId ? 'last_return_pickup_photos' : null,
         ].filter(Boolean) as string[];
 
         for (const key of returnPickupKeys) {
@@ -136,8 +136,7 @@ const TripCompletedScreen = () => {
         const returnDeliveryKeys = [
           targetId ? `return_delivery_completed_photos_${targetId}` : null,
           targetRefId ? `return_delivery_completed_photos_${targetRefId}` : null,
-          lastTripId ? `return_delivery_completed_photos_${lastTripId}` : null,
-          'last_return_delivery_photos',
+          !targetId ? 'last_return_delivery_photos' : null,
         ].filter(Boolean) as string[];
 
         for (const key of returnDeliveryKeys) {

@@ -5,9 +5,12 @@
  * POST /trips/:id/step-back       — { to_index, photos: 'move' | 'remove' | 'keep' }: take the trip
  *                                  back to that step (services/tripStepBack.ts). Audited, and the
  *                                  driver is told where their app now is.
+ * POST /trips/:id/step-back/undo  — put the latest step-back back the way it was (while the trip
+ *                                  hasn't moved on since).
  */
 import { Request, Response } from 'express';
-import { StepBackError, getTripProgressSteps, restoreStepBackPhotos, stepBackTrip, stepForwardTrip } from '../services/tripStepBack';
+import { StepBackError, getTripProgressSteps, restoreStepBackPhotos, stepBackTrip, stepForwardTrip, undoStepBack, type StepBackUndo } from '../services/tripStepBack';
+import { prisma } from '../db';
 import { createDriverNotification } from './notificationController';
 import { logAuditEvent } from '../services/auditService';
 import { logger } from '../utils/logger';
@@ -39,7 +42,7 @@ export const stepBack = async (req: Request, res: Response) => {
       action: 'TRIP_STEPPED_BACK',
       entityType: 'Trip',
       entityId: result.trip_id,
-      metadata: { from: result.from, to: result.to, cleared: result.cleared, photos: result.photos },
+      metadata: { from: result.from, to: result.to, cleared: result.cleared, photos: result.photos, undo: result.undo },
     });
     if (result.driver_id) {
       void createDriverNotification(
@@ -92,5 +95,41 @@ export const restoreStepBackPhotosHandler = async (req: Request, res: Response) 
     res.json({ success: true, data: { restored } });
   } catch (error) {
     fail(res, error, 'restore the photos');
+  }
+};
+
+/** POST /trips/:id/step-back/undo — undo the trip's latest step-back. */
+export const undoStepBackHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id ?? null;
+    const tripId = req.params.id as string;
+    const last = await prisma.auditLog.findFirst({
+      where: { entityType: 'Trip', entityId: tripId, action: 'TRIP_STEPPED_BACK' },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, metadata: true },
+    });
+    const m = (last?.metadata ?? {}) as { undo?: StepBackUndo; to?: { index?: number } };
+    const undone = last && await prisma.auditLog.findFirst({
+      where: { entityType: 'Trip', entityId: tripId, action: 'TRIP_STEP_BACK_UNDONE', metadata: { path: ['step_back_id'], equals: last.id } },
+      select: { id: true },
+    });
+    if (!last || !m.undo || typeof m.to?.index !== 'number' || undone) {
+      return res.status(409).json({ success: false, error: { code: 'NOTHING_TO_UNDO', message: 'There is no take-back to undo on this trip.' } });
+    }
+    const result = await undoStepBack(tripId, m.undo, m.to.index, userId);
+    void logAuditEvent({ req, action: 'TRIP_STEP_BACK_UNDONE', entityType: 'Trip', entityId: tripId, metadata: { step_back_id: last.id, to: result.to } });
+    if (result.driver_id) {
+      void createDriverNotification(
+        result.driver_id,
+        'Trip step put back by the office',
+        `The office undid its change. Your trip is at: ${result.to.label}.`,
+        'TripSteppedBack',
+        'Trip',
+        tripId,
+      );
+    }
+    res.json({ success: true, data: result });
+  } catch (error) {
+    fail(res, error, 'undo the take-back');
   }
 };

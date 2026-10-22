@@ -272,6 +272,10 @@ export interface TripStepBackEntry {
   from: string | null;
   to: string | null;
   photos: { choice: 'move' | 'remove' | 'keep'; count: number; moved_to: string | null; removed_at?: string | null; restorable?: number } | null;
+  /** Put back with "Undo" since. */
+  undone?: boolean;
+  /** The latest take-back, still in place: it can be undone. */
+  can_undo?: boolean;
 }
 
 export type ShareRecipient = 'customer_contact' | 'customer_group' | 'internal' | 'other';
@@ -1281,6 +1285,12 @@ export const operatorService = {
     return data.data;
   },
 
+  /** Undo the trip's latest take-back: stop times, status and photos go back to how they were. */
+  async undoStepBack(id: string): Promise<{ to: { index: number; label: string } }> {
+    const { data } = await api.post(`/trips/${id}/step-back/undo`, {});
+    return data.data;
+  },
+
   /** Bring back the photos a step-back removed. */
   async restoreStepBackPhotos(id: string, removedAt: string): Promise<number> {
     const { data } = await api.post(`/trips/${id}/step-back/restore-photos`, { removed_at: removedAt });
@@ -1596,7 +1606,13 @@ export const operatorService = {
   },
 
   /** Attaches a photo, video or file to the trip as a Document (POST /documents, as the web's upload). */
-  async uploadTripDocument(tripId: string, file: { uri: string; name?: string; mimeType?: string | null }, docType: TripDocKind): Promise<OperatorTripDocument> {
+  async uploadTripDocument(
+    tripId: string,
+    file: { uri: string; name?: string; mimeType?: string | null },
+    docType: TripDocKind,
+    /** Put it under a stop, tagged like the driver app's photos (the server checks the stop is on the trip). */
+    at?: { stopId: string; operation: 'pickup' | 'delivery' | 'intermediate' | 'return_loading' },
+  ): Promise<OperatorTripDocument> {
     const name = file.name || file.uri.split('/').pop() || 'upload.jpg';
     const ext = (/\.(\w+)$/.exec(name)?.[1] || 'jpg').toLowerCase();
     const type = file.mimeType
@@ -1606,6 +1622,10 @@ export const operatorService = {
     form.append('entity_type', 'Trip');
     form.append('entity_id', tripId);
     form.append('doc_type', docType);
+    if (at) {
+      form.append('stop_id', at.stopId);
+      form.append('operation', at.operation);
+    }
     const { data } = await api.post('/documents', form, { headers: { 'Content-Type': 'multipart/form-data' } });
     return data.data as OperatorTripDocument;
   },

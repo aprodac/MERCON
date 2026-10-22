@@ -17,7 +17,7 @@ import { DocumentPackSheet, type PackOwnerKind } from '../../../documents/Docume
 import { initialsOf, niceName } from '../../create/components/ui';
 import type { LiveGpsFix, OperatorTripDetail, OperatorTripDocument, TripOverview, TripPhase } from '../../../../lib/operator';
 import {
-  ON_TIME_GRACE_MIN, TONE, type Tone, ago, billingLabel, canChangeAssignment, formatDuration, lineType, minutesLate, moneyOf, sar, sortedStops,
+  ON_TIME_GRACE_MIN, TONE, type Tone, ago, billingLabel, canChangeAssignment, formatDuration, lineType, minutesLate, moneyOf, runTimes, sar, sortedStops,
   type Formatters,
   tripLegsOf,
   stopName,
@@ -180,14 +180,15 @@ function TripSummary({ trip, overview, f }: { trip: OperatorTripDetail; overview
   const judged = stops.map((st) => minutesLate(st.planned_arrival, st.actual_arrival)).filter((m): m is number => m != null);
   const onTime = judged.filter((m) => m <= ON_TIME_GRACE_MIN).length;
   const late = judged.length - onTime;
-  const durationSec = trip.actual_start && trip.actual_end ? (new Date(trip.actual_end).getTime() - new Date(trip.actual_start).getTime()) / 1000 : null;
+  const run = runTimes(trip);
   const meters = overview?.path_distance_m ?? 0;
   const invoiced = trip.status === 'Invoiced';
 
   const rows: { label: string; value: string; color?: string }[] = [
-    { label: 'Started', value: trip.actual_start ? f.dateTime(trip.actual_start) : 'Not recorded' },
-    { label: 'Delivered', value: trip.actual_end ? f.dateTime(trip.actual_end) : 'Not recorded' },
-    { label: 'Time taken', value: durationSec && durationSec > 0 ? formatDuration(durationSec) : 'Not recorded' },
+    { label: 'Started', value: run.start ? f.dateTime(run.start) : 'Not recorded' },
+    { label: 'Delivered', value: run.end ? f.dateTime(run.end) : 'Not recorded' },
+    { label: 'Time taken', value: run.sec ? formatDuration(run.sec) : 'Not recorded' },
+    ...run.legs.map((l) => ({ label: l.label, value: formatDuration(l.sec) })),
     // Under 1 km means the truck's GPS never reported the drive, not that it didn't move.
     { label: 'Distance driven', value: meters >= 1000 ? `${Math.round(meters / 1000)} km` : 'No GPS record' },
     {
