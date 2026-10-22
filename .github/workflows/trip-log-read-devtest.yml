@@ -18,6 +18,10 @@ on:
         description: "Soft-delete the TEST records instead of running the test"
         type: boolean
         default: false
+      fill:
+        description: "No Gemini: store the reads from claude-read.json, leave the suggestions unconfirmed"
+        type: boolean
+        default: false
 
 # Same group as the dev deploy: the test waits for the deploy that built the script.
 concurrency:
@@ -83,4 +87,5 @@ jobs:
           set -o pipefail
           ARGS=""
           if [ "${{ inputs.cleanup }}" = "true" ]; then ARGS="--cleanup"; fi
+          if [ "${{ inputs.fill }}" = "true" ]; then ARGS="--fill-from /tmp/trip-log-read-fixtures/claude-read.json --no-confirm"; fi
           docker compose -p mercon-dev exec -T -e FIXTURES_DIR=/tmp/trip-log-read-fixtures mercon-api node dist/scripts/tripLogReadDevTest.js $ARGS 2>&1 | tee devtest.log

@@ -194,8 +194,12 @@ export function makeTime(tz: string) {
 export type TimeFmt = ReturnType<typeof makeTime>;
 
 export const tripDayIso = (t: OperatorTrip) => t.planned_start || t.createdAt || null;
-/** History is about when a trip finished: delivered time, else the planned day (cancelled trips). */
-export const finishedDayIso = (t: OperatorTrip) => t.actual_end || tripDayIso(t);
+/**
+ * History files a trip under the day it started — a trip out on 19 Oct and
+ * delivered on the 20th is one of the 19th's trips (TestFlight 21 Oct). The
+ * planned day when it never started (cancelled trips).
+ */
+export const historyDayIso = (t: OperatorTrip) => t.actual_start || tripDayIso(t);
 
 /** "Today", "Tomorrow", "Yesterday" or "Fri 26 Sep". */
 export function dayLabel(key: string, todayKey: string, f: TimeFmt): string {

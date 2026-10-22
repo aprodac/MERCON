@@ -1,0 +1,7 @@
+{
+  "01-imile-riyadh.png": {"stops":[{"name":"Riyadh DC","arrive":"06:10:42","depart":"06:55:03","date":null}],"app":"iMile","confidence":0.97},
+  "02-imile-taif.png": {"stops":[{"name":"Taif Station","arrive":"12:04:51","depart":"12:40:10","date":null}],"app":"iMile","confidence":0.97},
+  "03-jdl-jeddah.png": {"stops":[{"name":"Jeddah Hub","arrive":"18:22:00","depart":null,"date":null}],"app":"JD","confidence":0.9},
+  "04-imile-dark-cut.png": {"stops":[{"name":"Riyadh DC","arrive":"06:10:42","depart":null,"date":null},{"name":"Taif Station","arrive":"12:04:51","depart":null,"date":null}],"app":"iMile","confidence":0.4},
+  "05-imile-no-times.png": {"stops":[],"app":"iMile","confidence":0}
+}

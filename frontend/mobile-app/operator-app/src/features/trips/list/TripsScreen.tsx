@@ -21,20 +21,20 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  Building2, CalendarDays, CircleCheckBig, History, AlertTriangle, MessageCircle, Phone, Plus, Radio, Search, Send, Trash2, Truck, UserRound, X, ArrowUpRight, type LucideIcon,
+  BookOpen, Building2, CalendarDays, CircleCheckBig, History, AlertTriangle, MessageCircle, Phone, Plus, Radio, Search, Send, Trash2, Truck, UserRound, X, ArrowUpRight, type LucideIcon,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import type { OperatorTrip } from '../../../lib/operator';
 import { TripCard } from './TripCard';
-import { TruckDayView } from './TruckDayView';
 import { AppTopBar } from '@/components/AppTopBar';
-import { Chips } from '@/features/notifications/components/parts';
+import { FilterChips } from '@/components/FilterChips';
+import { TripLedger } from './TripLedger';
 import { useNow, useTripList, HISTORY_DAYS, SCHEDULE_AFTER, type View as ListView } from './useTripList';
 import { askDeleteTrip, canDeleteTrip } from '../edit/movePlan';
 import {
-  clashesOf, dayLabel, isLateToStart, dayRange, daysBetween, driverNameOf, driverPhoneOf, finishedDayIso, needsAttention, phaseOf, tripDayIso, type TimeFmt,
+  clashesOf, dayLabel, isLateToStart, dayRange, daysBetween, driverNameOf, driverPhoneOf, historyDayIso, needsAttention, phaseOf, tripDayIso, type TimeFmt,
 } from './tripListModel';
 
 const INK = '#3E3C3D';
@@ -57,7 +57,7 @@ export default function TripsScreen() {
   );
   const [view, setView] = useState<ListView>(
     params.vehicleId || params.customerId ? 'history'
-      : params.view === 'delayed' || params.view === 'schedule' || params.view === 'history' ? params.view
+      : params.view === 'delayed' || params.view === 'schedule' || params.view === 'history' || params.view === 'ledger' ? params.view
       : 'now',
   );
   const [query, setQuery] = useState('');
@@ -67,7 +67,6 @@ export default function TripsScreen() {
   const [historyDay, setHistoryDay] = useState<string | null>(null);
   const [historyFilter, setHistoryFilter] = useState<'all' | 'done' | 'cancelled' | 'deleted'>('all');
   // Schedule as a list of cards, or one row per truck across the day.
-  const [byTruck, setByTruck] = useState(false);
   const [actionsFor, setActionsFor] = useState<OperatorTrip | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -147,7 +146,7 @@ export default function TripsScreen() {
   const selectedCount = perDay.get(selectedDay);
 
   // ── History: the same strip, by the day each trip finished ─────────────────
-  const historyPerDay = useMemo(() => countByDay(data.history, f, finishedDayIso, now), [data.history, f, now]);
+  const historyPerDay = useMemo(() => countByDay(data.history, f, historyDayIso, now), [data.history, f, now]);
   const historyLatest = useMemo(() => [...historyPerDay.keys()].sort().reverse(), [historyPerDay]);
   // Opens on the latest day anything finished (today, if something did).
   const historyDefault = historyLatest.find((k) => k <= todayKey) ?? todayKey;
@@ -156,7 +155,7 @@ export default function TripsScreen() {
     const last = historyLatest[0] && historyLatest[0] > todayKey ? historyLatest[0] : todayKey;
     return dayRange(todayKey, HISTORY_DAYS, daysBetween(todayKey, last));
   }, [historyLatest, todayKey]);
-  const historyAll = useMemo(() => tripsOn(data.history, f, finishedDayIso, historySelected, true), [data.history, f, historySelected]);
+  const historyAll = useMemo(() => tripsOn(data.history, f, historyDayIso, historySelected, true), [data.history, f, historySelected]);
   // Filter (TestFlight: "add filter, deleted and completed"): delivered / cancelled / deleted that day.
   const deletedOnDay = useMemo(
     () => data.deleted.filter((d) => f.dayKey(d.deletedAt) === historySelected).sort((a, b) => b.deletedAt.localeCompare(a.deletedAt)),
@@ -186,6 +185,7 @@ export default function TripsScreen() {
     { id: 'delayed', label: 'Delayed', icon: AlertTriangle, badge: delayedTrips.length || undefined },
     { id: 'schedule', label: 'Schedule', icon: CalendarDays },
     { id: 'history', label: 'History', icon: History },
+    { id: 'ledger', label: 'Ledger', icon: BookOpen },
   ];
 
   const refreshControl = <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={Colors.primary} />;
@@ -284,24 +284,19 @@ export default function TripsScreen() {
               ItemSeparatorComponent={Gap}
               ListEmptyComponent={data.openLoading ? <Loading /> : <Empty icon={CircleCheckBig} title="Nothing on the road" text="Trips show here once they start. Upcoming trips are in Schedule." good />}
             />
+          ) : view === 'ledger' ? (
+            <TripLedger f={f} todayKey={todayKey} scope={scope?.filter} onOpen={open} />
           ) : view === 'schedule' ? (
             <FlatList
-              data={byTruck ? [] : dayTrips}
+              data={dayTrips}
               keyExtractor={(t) => t.id}
               contentContainerStyle={s.list}
               refreshControl={refreshControl}
               renderItem={({ item }) => renderCard(item)}
               ItemSeparatorComponent={Gap}
               ListHeaderComponent={(
-                <View style={{ gap: 10, marginBottom: 4 }}>
+                <View style={{ gap: 12, marginBottom: 12 }}>
                   <DateStrip days={days} selected={selectedDay} today={todayKey} counts={perDay} onSelect={(k) => { tap(); setDay(k); }} f={f} />
-                  <View style={s.modeRow}>
-                    {([['List', false], ['By truck', true]] as const).map(([label, on]) => (
-                      <TouchableOpacity key={label} style={[s.modeBtn, byTruck === on && s.modeBtnOn]} onPress={() => { tap(); setByTruck(on); }} accessibilityRole="tab" accessibilityState={{ selected: byTruck === on }}>
-                        <Text style={[s.modeText, byTruck === on && s.modeTextOn]}>{label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
                   <View style={s.dayHead}>
                     <Text style={s.dayTitle}>{dayLabel(selectedDay, todayKey, f)}</Text>
                     {selectedDay !== todayKey ? (
@@ -317,9 +312,7 @@ export default function TripsScreen() {
                   </View>
                 </View>
               )}
-              ListEmptyComponent={data.windowLoading ? <Loading /> : byTruck ? (
-                <TruckDayView trips={data.window} dayKey={selectedDay} f={f} clashes={clashes} onOpen={(t) => open(t)} />
-              ) : (
+              ListEmptyComponent={data.windowLoading ? <Loading /> : (
                 <Empty
                   icon={CalendarDays}
                   title="No trips to run this day"
@@ -337,7 +330,7 @@ export default function TripsScreen() {
               renderItem={({ item }) => renderCard(item)}
               ItemSeparatorComponent={Gap}
               ListHeaderComponent={(
-                <View style={{ gap: 10, marginBottom: 4 }}>
+                <View style={{ gap: 12, marginBottom: 12 }}>
                   <DateStrip days={historyDays} selected={historySelected} today={todayKey} counts={historyPerDay} onSelect={(k) => { tap(); setHistoryDay(k); }} f={f} />
                   <View style={s.dayHead}>
                     <Text style={s.dayTitle}>{dayLabel(historySelected, todayKey, f)}</Text>
@@ -352,14 +345,15 @@ export default function TripsScreen() {
                       {historyCount?.cancelled ? <Text> · {historyCount.cancelled} cancelled</Text> : null}
                     </Text>
                   </View>
-                  <Chips
+                  <FilterChips
                     value={historyFilter}
-                    onChange={setHistoryFilter}
-                    options={[
-                      { value: 'all', label: 'All', count: historyAll.length },
-                      { value: 'done', label: 'Delivered', count: historyCount?.done ?? 0 },
-                      { value: 'cancelled', label: 'Cancelled', count: historyCount?.cancelled ?? 0 },
-                      { value: 'deleted', label: 'Deleted', count: deletedOnDay.length },
+                    onChange={(v) => setHistoryFilter(v)}
+                    // Counts only when there is something, so all four fit on a phone.
+                    items={[
+                      { key: 'all', label: 'All', count: historyAll.length || undefined },
+                      { key: 'done', label: 'Delivered', count: historyCount?.done || undefined },
+                      { key: 'cancelled', label: 'Cancelled', count: historyCount?.cancelled || undefined },
+                      { key: 'deleted', label: 'Deleted', count: deletedOnDay.length || undefined },
                     ]}
                   />
                   {historyFilter === 'deleted' ? deletedOnDay.map((d) => (
@@ -376,7 +370,7 @@ export default function TripsScreen() {
                 <Empty
                   icon={History}
                   title="Nothing finished this day"
-                  text="Delivered trips show on the day they ended, cancelled ones on their planned day. Trips still to run are in Schedule."
+                  text="Finished trips show on the day they started, cancelled ones on their planned day. Trips still to run are in Schedule."
                   action={{ label: 'Open Schedule', icon: CalendarDays, onPress: () => { tap(); setView('schedule'); } }}
                 />
               )}
@@ -541,27 +535,23 @@ const s = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10, gap: 12 },
   h1: { fontSize: 24, fontWeight: '700', color: INK, letterSpacing: -0.4 },
   h1sub: { fontSize: 13, fontWeight: '600', color: MUTED, marginTop: 1 },
-  searchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, height: 46, borderRadius: 14, backgroundColor: Colors.white, paddingHorizontal: 13, borderWidth: 1, borderColor: '#EEF0F4' },
+  searchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, height: 44, borderRadius: 14, backgroundColor: Colors.white, paddingHorizontal: 13, borderWidth: 1, borderColor: '#E9EAEE' },
   searchInput: { flex: 1, fontSize: 15, color: INK, paddingVertical: 0 },
-  segment: { flexDirection: 'row', gap: 4, marginHorizontal: 16, marginTop: 12, backgroundColor: '#E4E7EE', borderRadius: 13, padding: 3 },
-  segItem: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, height: 38, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 4 },
-  segOn: { backgroundColor: Colors.white, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
-  segText: { fontSize: 13, fontWeight: '700', color: '#4A4A55' },
+  // One tab bar, same gutter as the search bar; the content below starts 12 under it.
+  segment: { flexDirection: 'row', gap: 2, marginHorizontal: 16, marginTop: 10, backgroundColor: '#E6E8ED', borderRadius: 12, padding: 3 },
+  segItem: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, height: 36, borderRadius: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: 2 },
+  segOn: { backgroundColor: Colors.white, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
+  segText: { fontSize: 13, fontWeight: '600', color: '#6E6E80' },
   segTextOn: { color: INK, fontWeight: '800' },
-  badge: { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#D92D20', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  badge: { minWidth: 17, height: 17, borderRadius: 9, backgroundColor: '#D92D20', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   badgeText: { color: Colors.white, fontSize: 11, fontWeight: '800' },
-  list: { padding: 16, paddingBottom: 120, flexGrow: 1 },
+  list: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 120, flexGrow: 1 },
   resultsHead: { fontSize: 13, fontWeight: '700', color: MUTED, marginBottom: 10 },
-  sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 12, paddingBottom: 8 },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 4, paddingBottom: 10 },
   sectionDot: { width: 6, height: 6, borderRadius: 3 },
-  sectionTitle: { fontSize: 13, fontWeight: '600', color: '#3F3F46' },
+  sectionTitle: { fontSize: 13, fontWeight: '700', color: '#3F3F46' },
   sectionCount: { fontSize: 13, fontWeight: '500', color: '#A1A1AA' },
-  modeRow: { flexDirection: 'row', alignSelf: 'flex-start', backgroundColor: '#EDEDF0', borderRadius: 10, padding: 3, gap: 3 },
-  modeBtn: { paddingHorizontal: 14, height: 30, borderRadius: 8, justifyContent: 'center' },
-  modeBtnOn: { backgroundColor: Colors.white },
-  modeText: { fontSize: 13, fontWeight: '600', color: MUTED },
-  modeTextOn: { color: INK },
-  dayHead: { flexDirection: 'row', alignItems: 'baseline', gap: 10, marginTop: 4 },
+  dayHead: { flexDirection: 'row', alignItems: 'baseline', gap: 10, marginTop: 2 },
   todayLink: { fontSize: 13, fontWeight: '700', color: '#C4432F' },
   dayMonth: { fontSize: 9, lineHeight: 11, fontWeight: '800', letterSpacing: 0.4, color: '#C4432F', textTransform: 'uppercase' },
   dayTitle: { fontSize: 18, fontWeight: '800', color: INK },
@@ -578,7 +568,7 @@ const s = StyleSheet.create({
   dayDots: { flexDirection: 'row', alignItems: 'center', gap: 3, height: 14 },
   dayDot: { width: 6, height: 6, borderRadius: 3 },
   dayCountSmall: { fontSize: 11, fontWeight: '800', color: MUTED },
-  empty: { alignItems: 'center', gap: 6, backgroundColor: Colors.white, borderRadius: 18, padding: 24, marginTop: 8 },
+  empty: { alignItems: 'center', gap: 6, backgroundColor: Colors.white, borderRadius: 18, padding: 24 },
   emptyIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#F4F5F8', alignItems: 'center', justifyContent: 'center' },
   emptyTitle: { fontSize: 16, fontWeight: '800', color: INK },
   emptyText: { fontSize: 13, color: MUTED, textAlign: 'center' },

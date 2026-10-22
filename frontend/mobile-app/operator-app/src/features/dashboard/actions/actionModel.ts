@@ -6,6 +6,7 @@
  * Same rules as the web's Operator Inbox (components/dashboard/inbox).
  */
 import type { AppNotification } from '@mercon/mobile-shared/lib/notifications';
+import { inCompanyZone } from '@mercon/mobile-shared/lib/dates';
 import { needsSending, type DriverUpdate, type ExpiryItem, type LiveUnit, type OperatorInvoice, type OperatorTripDocument } from '../../../lib/operator';
 
 export type Urgency = 'now' | 'today' | 'watch';
@@ -56,6 +57,18 @@ export interface ActionItem {
   media?: { id: string; url: string; kind: 'photo' | 'video' }[];
 }
 
+/** Which trip a document to check is on (GET /documents?entity_type=Trip sends it). */
+export interface ReviewTrip {
+  ref_id: string | null;
+  customer: string | null;
+  plate: string | null;
+  driver: string | null;
+  from: string | null;
+  to: string | null;
+  round: boolean;
+  planned_start: string | null;
+}
+
 export interface ActionSources {
   units: LiveUnit[];
   unassigned: {
@@ -73,7 +86,7 @@ export interface ActionSources {
   }[];
   updates: DriverUpdate[];
   expiries: ExpiryItem[];
-  reviews: (OperatorTripDocument & { entity_id?: string })[];
+  reviews: (OperatorTripDocument & { entity_id?: string; trip?: ReviewTrip | null })[];
   invoices: OperatorInvoice[];
   notifications: AppNotification[];
   now?: number;
@@ -271,20 +284,25 @@ export function buildActions(src: ActionSources): ActionItem[] {
   }
 
   // 7 · External-app screenshots whose time must be confirmed.
-  const reviewsByTrip = new Map<string, number>();
+  const reviewsByTrip = new Map<string, { count: number; trip: ReviewTrip | null }>();
   for (const d of src.reviews) {
     if (d.ai_extracted_json?.source !== 'external_app_screenshot' || !d.entity_id) continue;
-    reviewsByTrip.set(d.entity_id, (reviewsByTrip.get(d.entity_id) ?? 0) + 1);
+    const r = reviewsByTrip.get(d.entity_id);
+    reviewsByTrip.set(d.entity_id, { count: (r?.count ?? 0) + 1, trip: r?.trip ?? d.trip ?? null });
   }
-  for (const [tripId, count] of reviewsByTrip) {
+  for (const [tripId, { count, trip }] of reviewsByTrip) {
     const u = unitByTrip.get(tripId);
+    // Which trip: ref · customer · truck, then the route and start (TestFlight 21 Oct:
+    // "show vehicle, company, route, time" — finished trips had only "Driver uses the customer's app").
+    const route = trip && (trip.from || trip.to) ? `${trip.from ?? '?'} → ${trip.to ?? '?'}${trip.round ? ' · round' : ''}` : null;
+    const when = trip?.planned_start ? new Date(trip.planned_start).toLocaleString('en-GB', inCompanyZone({ day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })) : null;
     out.push({
       key: `review-${tripId}`,
       kind: 'time-check',
       urgency: 'today',
       group: 'trips',
       title: `${count} screenshot${count > 1 ? 's' : ''} · check stop times`,
-      detail: [u?.trip?.ref_id, u?.trip?.customer_name, u ? unitName(u) : null].filter(Boolean).join(' · ') || 'Driver uses the customer’s app',
+      detail: [trip?.ref_id ?? u?.trip?.ref_id, trip?.customer ?? u?.trip?.customer_name, trip?.plate ?? (u ? unitName(u) : null), route, when].filter(Boolean).join(' · ') || 'Driver uses the customer’s app',
       at: null,
       tripId,
       primary: { label: 'Check', intent: { type: 'trip', tripId, tab: 'stops', times: true } },

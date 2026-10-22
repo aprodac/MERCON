@@ -5,6 +5,7 @@ import { nextMaintenanceRefId } from './maintenanceController';
 import { nextExpenseRefId } from './expenseController';
 import { getEnabledModules } from './settingsController';
 import { isFinanciallyProtectedTrip } from './tripController';
+import { tripEnds } from '@mercon/shared-types';
 import { generateRefId } from '../utils/refId';
 
 // Which toggleable module a trash entity type belongs to. Customer/Driver/
@@ -22,7 +23,15 @@ export async function getTrashItems(req: Request, res: Response) {
       prisma.customer.findMany({ where: { deletedAt: { not: null } } }),
       prisma.driver.findMany({ where: { deletedAt: { not: null } } }),
       prisma.vehicle.findMany({ where: { deletedAt: { not: null } } }),
-      prisma.trip.findMany({ where: { deletedAt: { not: null } } }),
+      prisma.trip.findMany({
+        where: { deletedAt: { not: null } },
+        include: {
+          customer: { select: { name: true } },
+          driver: { select: { first_name: true, last_name: true } },
+          vehicle: { select: { plate_number: true } },
+          stops: { select: { stop_sequence: true, stop_type: true, leg_index: true, location_name: true }, orderBy: { stop_sequence: 'asc' } },
+        },
+      }),
       enabledModules.has('maintenance') ? prisma.maintenanceRecord.findMany({ where: { deletedAt: { not: null } } }) : Promise.resolve([]),
       prisma.quotation.findMany({ where: { deletedAt: { not: null } } }),
       enabledModules.has('expenses') ? prisma.expense.findMany({ where: { deletedAt: { not: null } } }) : Promise.resolve([]),
@@ -33,7 +42,24 @@ export async function getTrashItems(req: Request, res: Response) {
       ...customers.map(c => ({ id: c.id, type: 'Customer', name: c.name, deletedAt: c.deletedAt })),
       ...drivers.map(d => ({ id: d.id, type: 'Driver', name: `${d.first_name} ${d.last_name}`, deletedAt: d.deletedAt })),
       ...vehicles.map(v => ({ id: v.id, type: 'Vehicle', name: v.plate_number, deletedAt: v.deletedAt })),
-      ...trips.map(t => ({ id: t.id, type: 'Trip', name: t.ref_id || 'Draft', deletedAt: t.deletedAt })),
+      // Which trip it was — customer, route, truck, driver, when (TestFlight 21 Oct: a bare "TRP-DEL-0043" says nothing).
+      ...trips.map(t => {
+        const ends = tripEnds(t.stops, t.rate_category);
+        const place = (s: { location_name: string | null } | null) => (s?.location_name || '').replace(/\[RETURN:.*?\]/gi, '').split(',')[0].trim() || null;
+        return {
+          id: t.id, type: 'Trip', name: t.ref_id || 'Draft', deletedAt: t.deletedAt,
+          trip: {
+            customer: t.customer?.name ?? null,
+            from: place(ends.from),
+            to: place(ends.to),
+            round: ends.round,
+            plate: t.vehicle?.plate_number ?? null,
+            driver: t.driver ? `${t.driver.first_name} ${t.driver.last_name}`.trim() : null,
+            planned_start: t.planned_start,
+            status: t.status,
+          },
+        };
+      }),
       ...maintenance.map(m => ({ id: m.id, type: 'MaintenanceRecord', name: `Workshop: ${m.workshop_name} (Cost: SAR ${m.cost})`, deletedAt: m.deletedAt })),
       ...rateCards.map(r => ({ id: r.id, type: 'Quotation', name: `${r.name || 'Quotation'} (${r.rate} ${r.currency})`, deletedAt: r.deletedAt })),
       ...expenses.map(e => ({ id: e.id, type: 'Expense', name: `${e.category} (${e.currency} ${e.amount})`, deletedAt: e.deletedAt })),
