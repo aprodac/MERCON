@@ -33,7 +33,7 @@ import { DAY_QUEUE_STATUSES, deploymentTimezone, findTripAhead, orderDriverQueue
  * ("Jeddah"), while location_name/location_address/lat/lng are the exact yard
  * inside it that the driver actually drives to.
  */
-const tripInclude = {
+export const tripInclude = {
   customer: true,
   // Explicit select, never `vehicle: true`: Vehicle.image_url can hold a
   // base64 data-URL photo (2.5 MB on dev), and it was sent with every trip —
@@ -93,7 +93,7 @@ const formatMobileTrip = (trip: any) => {
   };
 };
 
-const attachTripDocuments = async (trip: any) => {
+export const attachTripDocuments = async (trip: any) => {
   if (!trip) return trip;
   let docs: any[] = [];
   try {
