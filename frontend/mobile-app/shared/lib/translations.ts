@@ -685,4 +685,8 @@ export const TRANSLATIONS: Record<string, TranslationItem> = {
   ext_no_location: { en: 'Location not available — the screenshot\'s place is used', ur: 'لوکیشن دستیاب نہیں — اسکرین شاٹ کی جگہ استعمال ہوگی' },
   ext_place_optional: { en: 'Name (optional)', ur: 'نام (اختیاری)' },
   ext_place_default: { en: 'Leave empty to use', ur: 'خالی چھوڑیں تو یہ استعمال ہوگا:' },
+  ext_early_title: { en: 'Is this the right trip?', ur: 'کیا یہ صحیح ٹرپ ہے؟' },
+  ext_early_body: { en: 'This trip is planned for', ur: 'یہ ٹرپ اس وقت کے لیے طے ہے:' },
+  ext_early_hint: { en: 'A screenshot from an earlier trip goes on that trip, not this one.', ur: 'پچھلے ٹرپ کا اسکرین شاٹ اسی ٹرپ میں بھیجیں، اس میں نہیں۔' },
+  ext_early_send: { en: 'Send here', ur: 'یہیں بھیجیں' },
 };

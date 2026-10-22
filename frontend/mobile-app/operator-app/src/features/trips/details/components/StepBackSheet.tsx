@@ -41,7 +41,8 @@ export function StepBackSheet({ visible, tripId, f, onClose, onDone }: {
   const current = data?.current ?? -1;
   // A pick above "now" moves the trip on to it; below, takes it back.
   const forwardTo = target !== null && target > current ? target : null;
-  const undoCount = target === null || forwardTo !== null ? 0 : current - target;
+  // Steps the driver skipped (customer-app trips skip most) aren't "undone".
+  const undoCount = target === null || forwardTo !== null ? 0 : steps.slice(target + 1, current + 1).filter((st) => st.done).length;
   const doneCount = forwardTo === null ? 0 : forwardTo - current;
   const photoCount = target === null || forwardTo !== null ? 0 : data?.photos_after[target] ?? 0;
   const targetLabel = target === null ? '' : target === -1 ? 'Not started' : steps[target]?.label;
@@ -107,7 +108,8 @@ export function StepBackSheet({ visible, tripId, f, onClose, onDone }: {
   };
 
   const row = (index: number, label: string, sub: string, done: boolean, isCurrent: boolean) => {
-    const canPick = done ? !isCurrent : index > current && index <= lastMarkable;
+    // Any earlier step, done or skipped (TestFlight 21 Oct: "not able to select 2-3 steps back"); later ones up to the last markable.
+    const canPick = isCurrent ? false : index < current || (index > current && index <= lastMarkable);
     const picked = target === index;
     const undone = target !== null && index > target && done;
     const toBeDone = forwardTo !== null && !done && index <= forwardTo;
