@@ -1,3 +1,9 @@
+NEW: SUGGESTED STOP FROM THE SCREENSHOTS (customer-app trips)
+1. Driver sends trip-log screenshots; a minute later each send in Driver's log shows "Suggested: Stop 1 · Riyadh DC · LOAD · Arrived 06:10 · Left 06:55".
+2. Tap Confirm: it makes the stop (or adds to the planned one) and saves both times. Nothing is saved unless you tap.
+3. If it says "Not sure", the time still saves but the stop shows "Time to confirm" until you check it in Check times.
+4. Wrong suggestion? Ignore it and use "Make stop" as before. Tell us how many times came out right.
+
 FROM YOUR LATEST FEEDBACK (18 Oct morning)
 1. Check times: Najran-type trip (offload then load at the same place) — your times in order now save. Any problem is written in full under the stop.
 2. Check times: wheels go round — from 00:47 roll the hour back to 23. Tap the screenshot to enlarge it while a time is open; pinch to zoom.

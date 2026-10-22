@@ -98,13 +98,19 @@ const sameSecond = (a: string | null, b: string | null) =>
  *
  * Only a clock is typed, so the date is inferred: the day that puts it closest
  * to the driver's tap for that same field (taps are minutes-to-hours off, never
- * half a day). With no tap, the first day at or after the previous stop's time.
+ * half a day). With no tap, the first day at or after the previous stop's time —
+ * a day earlier when that would be in the future or after a later stop's tap.
  * Then flags what can't be true: leaving before arriving, or arriving before
  * the stop before.
  */
-export function resolveStopTimes(rows: StopTimeRow[], tz: string, fallbackIso: string): ResolvedStop[] {
+export function resolveStopTimes(rows: StopTimeRow[], tz: string, fallbackIso: string, nowIso?: string): ResolvedStop[] {
   let prevIso: string | null = null;
   let firstDate: string | null = null;
+  const nowMs = nowIso ? Date.parse(nowIso) : Date.now();
+  /** The earliest time the driver's taps recorded after the row being resolved. */
+  let limitAfter = Infinity;
+  const recordedFrom = (i: number) =>
+    rows.slice(i + 1).flatMap((r) => [r.recordedArrival, r.recordedDeparture]).filter((x): x is string => !!x).map(Date.parse);
 
   const resolve = (typed: string, recorded: string | null): ResolvedTime => {
     if (!typed.trim()) {
@@ -125,11 +131,21 @@ export function resolveStopTimes(rows: StopTimeRow[], tz: string, fallbackIso: s
       const base = isoToWall(after, tz).date;
       const sameDay = zonedWallTimeToUtcIso(base, clock, tz);
       iso = Date.parse(sameDay) >= Date.parse(after) || !prevIso ? sameDay : zonedWallTimeToUtcIso(shiftDate(base, 1), clock, tz);
+      // A screenshot time has already happened, and comes before any later
+      // stop's tap: never after either. The trip's Start tap is often made
+      // late, so its day put "21:05" (the night before) a day ahead and every
+      // later stop with it (TRP-0049: "03:22 is before 03:11").
+      const limit = Math.min(nowMs, limitAfter);
+      if (Date.parse(iso) > limit) {
+        const dayBefore = zonedWallTimeToUtcIso(shiftDate(isoToWall(iso, tz).date, -1), clock, tz);
+        if (!prevIso || Date.parse(dayBefore) >= Date.parse(prevIso)) iso = dayBefore;
+      }
     }
     return { iso, changed: !sameSecond(iso, recorded), dayOffset: 0, error: null };
   };
 
-  const out: ResolvedStop[] = rows.map((r) => {
+  const out: ResolvedStop[] = rows.map((r, i) => {
+    limitAfter = Math.min(Infinity, ...recordedFrom(i));
     const arrival = resolve(r.arrival, r.recordedArrival);
     if (arrival.iso) prevIso = arrival.iso;
     if (r.leftFollowsArrival) {

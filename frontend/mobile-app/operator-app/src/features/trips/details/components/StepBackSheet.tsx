@@ -132,9 +132,8 @@ export function StepBackSheet({ visible, tripId, f, onClose, onDone }: {
   };
 
   return (
-    <AppModal visible={visible} onClose={onClose} type="bottom-sheet" title="Driver's steps">
-      <View style={{ gap: 12, paddingBottom: 8 }}>
-        <Text style={s.intro}>Pick the step the trip is really at. An earlier step undoes everything after it; a later step marks every step up to it done for the driver.</Text>
+    <AppModal visible={visible} onClose={onClose} type="bottom-sheet" title="Driver's steps" maxHeight="92%">
+      <View style={{ gap: 12, paddingBottom: 8, flexShrink: 1 }}>
         {isLoading ? (
           <ActivityIndicator color={Colors.primary} style={{ marginVertical: 20 }} />
         ) : isError || !data ? (
@@ -146,7 +145,13 @@ export function StepBackSheet({ visible, tripId, f, onClose, onDone }: {
           </View>
         ) : (
           <>
-            <ScrollView style={{ maxHeight: 300 }}>
+            {/* One scroll for the steps and the summary under them, with the button kept in view:
+                the steps list used to scroll on its own inside a sheet that didn't, so the photo
+                choices under it were cut off (TestFlight 21 Oct: "can't scroll down the yellow bar",
+                "not able to select 2-3 steps back"). */}
+            <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={{ gap: 12 }} showsVerticalScrollIndicator>
+              <Text style={s.intro}>Pick the step the trip is really at. An earlier step undoes everything after it; a later step marks every step up to it done for the driver.</Text>
+              <View>
               {row(-1, 'Not started', 'Before the driver tapped Start', true, false)}
               {steps.map((st) => row(
                 st.index,
@@ -155,7 +160,7 @@ export function StepBackSheet({ visible, tripId, f, onClose, onDone }: {
                 st.done,
                 st.index === current,
               ))}
-            </ScrollView>
+              </View>
 
             {forwardTo !== null ? (
               <View style={s.summary}>
@@ -191,6 +196,7 @@ export function StepBackSheet({ visible, tripId, f, onClose, onDone }: {
                 ) : null}
               </View>
             ) : null}
+            </ScrollView>
 
             {forwardTo !== null ? (
               <TouchableOpacity style={[s.cta, { backgroundColor: '#2563EB' }, saving && { opacity: 0.5 }]} disabled={saving} onPress={forward} accessibilityRole="button">

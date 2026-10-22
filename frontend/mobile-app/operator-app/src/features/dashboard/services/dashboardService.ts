@@ -106,23 +106,25 @@ export function periodRange(period: FleetPeriod): { startDate: string; endDate: 
  * Groups vehicles by asset type into In Use / Idle / Maintenance (from their
  * current status — the backend doesn't track status history), and pairs
  * each category with its share of trucks that ran a trip in `tripCounts`'
- * date window, as the period-scoped utilization figure.
+ * date window, as the period-scoped utilization figure. No `tripCounts`
+ * (the Reports module is off for the company) → the share on a trip right now.
  */
-export function buildFleetUtilization(vehicles: VehicleRef[], tripCounts: FleetTripCount[]): FleetUtilization {
-  const tripsById = new Map(tripCounts.map((v) => [v.id, v.total_trips]));
+export function buildFleetUtilization(vehicles: VehicleRef[], tripCounts: FleetTripCount[] | null): FleetUtilization {
+  const tripsById = new Map((tripCounts ?? []).map((v) => [v.id, v.total_trips]));
 
   const categories: FleetCategoryUtilization[] = ASSET_TYPES.map((assetType) => {
     const inCategory = vehicles.filter((v) => v.asset_type === assetType);
     const inUse = inCategory.filter((v) => v.status === 'OnTrip').length;
     const idle = inCategory.filter((v) => v.status === 'Available').length;
     const maintenance = inCategory.filter((v) => v.status === 'Maintenance').length;
-    const activeInPeriod = inCategory.filter((v) => (tripsById.get(v.id) ?? 0) > 0).length;
+    const activeInPeriod = tripCounts ? inCategory.filter((v) => (tripsById.get(v.id) ?? 0) > 0).length : inUse;
     return {
       assetType,
       totalTrucks: inCategory.length,
       inUse,
       idle,
       maintenance,
+      activeInPeriod,
       utilization: inCategory.length > 0 ? activeInPeriod / inCategory.length : 0,
     };
   }).filter((c) => c.totalTrucks > 0);
@@ -133,13 +135,16 @@ export function buildFleetUtilization(vehicles: VehicleRef[], tripCounts: FleetT
       inUse: acc.inUse + c.inUse,
       idle: acc.idle + c.idle,
       maintenance: acc.maintenance + c.maintenance,
+      activeInPeriod: acc.activeInPeriod + c.activeInPeriod,
       overallUtilization: 0,
+      periodUtilization: 0,
     }),
-    { totalTrucks: 0, inUse: 0, idle: 0, maintenance: 0, overallUtilization: 0 },
+    { totalTrucks: 0, inUse: 0, idle: 0, maintenance: 0, activeInPeriod: 0, overallUtilization: 0, periodUtilization: 0 },
   );
   totals.overallUtilization = totals.totalTrucks > 0 ? totals.inUse / totals.totalTrucks : 0;
+  totals.periodUtilization = totals.totalTrucks > 0 ? totals.activeInPeriod / totals.totalTrucks : 0;
 
-  return { categories, totals };
+  return { categories, totals, fromTrips: !!tripCounts };
 }
 
 const EXPIRING_SOON_WINDOW_DAYS = 30;

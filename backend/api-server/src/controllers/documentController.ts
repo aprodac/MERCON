@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { tripEnds } from '@mercon/shared-types';
 import { env } from '../config/env';
 import { prisma } from '../db';
 import { DOCUMENT_LIST_SELECT, DOCUMENT_FILES_SELECT } from '../utils/documentSelect';
@@ -84,9 +85,41 @@ export const getDocuments = async (req: Request, res: Response) => {
       prisma.document.count({ where: whereClause })
     ]);
 
+    // Trip media: which trip each one is on (ref, customer, truck, route, start), so a
+    // to-do row reads "TRP-0048 · JDL · DRA-6487 · Khamis → Najran" (TestFlight 21 Oct).
+    let data: unknown[] = documents;
+    if (entity_type === 'Trip' && documents.length) {
+      const ids = [...new Set(documents.map((d) => d.entity_id).filter((x): x is string => !!x))];
+      const trips = await prisma.trip.findMany({
+        where: { id: { in: ids } },
+        select: {
+          id: true, ref_id: true, planned_start: true, rate_category: true,
+          customer: { select: { name: true } },
+          vehicle: { select: { plate_number: true } },
+          driver: { select: { first_name: true, last_name: true } },
+          stops: { where: { deletedAt: null }, select: { stop_sequence: true, stop_type: true, leg_index: true, location_name: true }, orderBy: { stop_sequence: 'asc' } },
+        },
+      });
+      const place = (st: { location_name: string | null } | null) => (st?.location_name || '').replace(/\[RETURN:.*?\]/gi, '').split(',')[0].trim() || null;
+      const byId = new Map(trips.map((t) => {
+        const ends = tripEnds(t.stops, t.rate_category);
+        return [t.id, {
+          ref_id: t.ref_id,
+          customer: t.customer?.name ?? null,
+          plate: t.vehicle?.plate_number ?? null,
+          driver: t.driver ? `${t.driver.first_name} ${t.driver.last_name}`.trim() : null,
+          from: place(ends.from),
+          to: place(ends.to),
+          round: ends.round,
+          planned_start: t.planned_start,
+        }];
+      }));
+      data = documents.map((d) => ({ ...d, trip: d.entity_id ? byId.get(d.entity_id) ?? null : null }));
+    }
+
     res.json({
       success: true,
-      data: documents,
+      data,
       meta: {
         page: pageNumber,
         per_page: limit,

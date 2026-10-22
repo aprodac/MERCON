@@ -13,6 +13,7 @@ import { publicBaseUrl } from './operatorInboxController';
 import { getDrivingRoute, RoutingUnavailableError } from '../services/routing/routeProvider';
 import { compressUploadedImage } from '../services/imageCompressor';
 import { queueVideoCompression } from '../services/media/videoCompressor';
+import { queueTripLogRead } from '../services/tripLogRead';
 import { calculateBackendTripFinancials } from '../utils/tripFinancials';
 import { splitDelayReason } from '../utils/delayReason';
 import { isUuid } from '../utils/uuid';
@@ -32,7 +33,7 @@ import { DAY_QUEUE_STATUSES, deploymentTimezone, findTripAhead, orderDriverQueue
  * ("Jeddah"), while location_name/location_address/lat/lng are the exact yard
  * inside it that the driver actually drives to.
  */
-const tripInclude = {
+export const tripInclude = {
   customer: true,
   // Explicit select, never `vehicle: true`: Vehicle.image_url can hold a
   // base64 data-URL photo (2.5 MB on dev), and it was sent with every trip —
@@ -92,7 +93,7 @@ const formatMobileTrip = (trip: any) => {
   };
 };
 
-const attachTripDocuments = async (trip: any) => {
+export const attachTripDocuments = async (trip: any) => {
   if (!trip) return trip;
   let docs: any[] = [];
   try {
@@ -566,6 +567,8 @@ export const uploadTripPhoto = async (req: Request, res: Response) => {
 
     // Phone videos are 20–60 MB; shrink them in the background (keeps the original on failure).
     if (isVideo) queueVideoCompression(document.id, req.file.path);
+    // Customer-app trip log: read the stop and times off the screenshot in the background.
+    if (logEntry && !isVideo) queueTripLogRead(document.id);
 
     void recordDriverActivity(driverId, 'PhotoUploaded', {
       tripId: id,

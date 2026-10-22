@@ -26,6 +26,7 @@ import {
 import { Field, FormHeader, SaveBar, Section, formStyles } from '@/features/users/components/FormKit';
 import { PickerSheet, ValueTile, fmtDay, niceName, tap } from '../create/components/ui';
 import { WhenSheet, type WhenValue } from '../create/components/WhenSheet';
+import { TransitSheet, transitText } from '../create/components/TransitSheet';
 import { deltaText, moveTrips, tripsMadeWith } from './movePlan';
 import { ExtraStopSheet, type ExtraStopSheetValue } from './ExtraStopSheet';
 import { MovePlanSheet } from './MovePlanSheet';
@@ -105,15 +106,6 @@ export default function EditTripScreen() {
 
 const isoMs = (w: WhenValue, tz: string) => (w.date && w.time ? Date.parse(zonedWallTimeToUtcIso(w.date, w.time, tz)) : null);
 const shiftIso = (iso: string | null, deltaMs: number) => (iso && deltaMs ? new Date(Date.parse(iso) + deltaMs).toISOString() : iso);
-
-/** "8 h 30 m" for a transit time in minutes. */
-const transitText = (min: number) => {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return h && m ? `${h} h ${m} m` : h ? `${h} h` : `${m} m`;
-};
-/** Transit times offered: every 30 minutes up to two days. */
-const TRANSIT_CHOICES = Array.from({ length: 96 }, (_, i) => (i + 1) * 30);
 
 function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; onDone: () => void }) {
   const queryClient = useQueryClient();
@@ -553,23 +545,19 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
         onDone={(v) => { setEnd(v); setEndTouched(true); clear('schedule'); setWhen(null); }}
         onClose={() => setWhen(null)}
       />
-      <PickerSheet
+      <TransitSheet
         visible={transitPicker}
-        title="Transit time"
-        options={TRANSIT_CHOICES.map((m) => ({
-          value: String(m),
-          label: transitText(m),
-          sub: startMs != null ? `Delivery ${whenText(wallOf(new Date(startMs + m * 60000).toISOString(), tz))}` : undefined,
-        }))}
-        value={transitMin != null ? String(Math.round(transitMin / 30) * 30) : null}
-        onSelect={(value) => {
-          if (startMs == null) return;
-          setEnd(wallOf(new Date(startMs + Number(value) * 60000).toISOString(), tz));
-          setEndTouched(true);
-          clear('schedule');
+        value={transitMin}
+        arrivalText={(m) => (startMs != null ? `Delivery ${whenText(wallOf(new Date(startMs + m * 60000).toISOString(), tz))}` : '')}
+        onDone={(m) => {
+          if (startMs != null) {
+            setEnd(wallOf(new Date(startMs + m * 60000).toISOString(), tz));
+            setEndTouched(true);
+            clear('schedule');
+          }
+          setTransitPicker(false);
         }}
         onClose={() => setTransitPicker(false)}
-        searchPlaceholder="Hours, e.g. 8"
       />
       <PickerSheet
         visible={!!stopPicker}

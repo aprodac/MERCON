@@ -518,13 +518,21 @@ async function tripStepBacks(tripId: string) {
       where: { entityType: 'Trip', entityId: tripId, action: 'TRIP_STEPPED_BACK' },
       orderBy: { createdAt: 'desc' },
       take: 20,
-      select: { createdAt: true, metadata: true, user: { select: { name: true, username: true } } },
+      select: { id: true, createdAt: true, metadata: true, user: { select: { name: true, username: true } } },
     });
-    return Promise.all(rows.map(async (r) => {
+    const undoneIds = new Set((await prisma.auditLog.findMany({
+      where: { entityType: 'Trip', entityId: tripId, action: 'TRIP_STEP_BACK_UNDONE' },
+      select: { metadata: true },
+    })).map((u) => String((u.metadata as any)?.step_back_id ?? '')));
+    return Promise.all(rows.map(async (r, i) => {
       const m = (r.metadata ?? {}) as any;
       const removedAt: string | null = m.photos?.removed_at ?? null;
+      const undone = undoneIds.has(r.id);
       return {
         at: r.createdAt.toISOString(),
+        undone,
+        // Only the latest, still in place, and recorded with what to put back (older ones weren't).
+        can_undo: i === 0 && !undone && !!m.undo,
         by: r.user?.name || r.user?.username || null,
         from: m.from?.label ?? null,
         to: m.to?.label ?? null,

@@ -6,7 +6,7 @@
  */
 import { STAGE_TITLE } from '../../dashboard/actions/actionModel';
 import type { TripStatus } from '@mercon/mobile-shared/lib/trips';
-import { formatTripStatusMessage, haltActivityLabel, insertByTime, type StatusTrip } from '@mercon/shared-types';
+import { formatTripStatusMessage, haltActivityLabel, insertByTime, tripLogEntries, type StatusTrip, type TripLogEntry } from '@mercon/shared-types';
 import { operatorService, type DriverUpdate, type OperatorTripDetail, type OperatorTripStop, type TripHalt, type TripPhase } from '../../../lib/operator';
 import { niceName } from '../create/components/ui';
 import { legLabel, liveLegOf, splitLegs } from '../tripLegs';
@@ -117,6 +117,40 @@ export function minutesLate(planned: string | null | undefined, actual: string |
   return Math.round((new Date(actual).getTime() - new Date(planned).getTime()) / 60000);
 }
 
+const ms = (iso: string | null | undefined) => (iso ? new Date(iso).getTime() : NaN);
+
+/** Leaving the first stop → reaching the last one, from the stop times; null when either is missing or out of order. */
+function spanOf(stops: Stop[]): { start: string; end: string; sec: number } | null {
+  const first = stops[0];
+  const last = stops[stops.length - 1];
+  if (!first || !last || first === last) return null;
+  const start = first.actual_departure || first.actual_arrival;
+  const end = last.actual_arrival || last.actual_departure;
+  const sec = (ms(end) - ms(start)) / 1000;
+  return start && end && sec > 0 ? { start, end, sec } : null;
+}
+
+/**
+ * How long the trip really ran. The stop times (taken off the driver's
+ * screenshots or GPS) win over the Start / Finish taps, which a driver on the
+ * customer's app often makes together at the end (TRP-0039: both 05:04 → "0 min").
+ * A round trip also gets each leg's time on the road.
+ */
+export function runTimes(t: OperatorTripDetail): {
+  start: string | null; end: string | null; sec: number | null;
+  legs: { label: string; sec: number }[];
+} {
+  const legs = tripLegsOf(t);
+  const all = spanOf(sortedStops(t));
+  const tapped = t.actual_start && t.actual_end ? (ms(t.actual_end) - ms(t.actual_start)) / 1000 : NaN;
+  const run = all ?? (tapped > 0 ? { start: t.actual_start!, end: t.actual_end!, sec: tapped } : null);
+  const legTimes = legs.round
+    ? ([['Leg 1 going', spanOf(legs.outbound)], ['Leg 2 returning', spanOf(legs.ret)]] as const)
+        .flatMap(([label, span]) => (span ? [{ label, sec: span.sec }] : []))
+    : [];
+  return { start: run?.start ?? t.actual_start ?? null, end: run?.end ?? t.actual_end ?? null, sec: run?.sec ?? null, legs: legTimes };
+}
+
 export const delayText = (s: Stop) =>
   s.delay_note || (s.delay_reason ? String(s.delay_reason).replace(/([a-z])([A-Z])/g, '$1 $2') : null);
 
@@ -211,10 +245,11 @@ export function statePhrase(t: OperatorTripDetail, phase: TripPhase, f: Formatte
     return ms > 0 ? `Starts in ${formatDuration(ms / 1000)}` : 'Start time has passed';
   }
   if (phase === 'active') {
-    const i = stops.findIndex((s) => !s.actual_arrival);
+    const i = tripStopProgress(t).next;
     if (i < 0) return 'At the last stop';
     const due = stops[i].planned_arrival ? ` · due ${f.smart(stops[i].planned_arrival)}` : '';
-    const leg = liveLegOf(tripLegsOf(t), t.status);
+    const legs = tripLegsOf(t);
+    const leg = legs.round ? (legs.ret.includes(stops[i]) ? 2 : 1) : liveLegOf(legs, t.status);
     const legText = leg ? `${legLabel(leg)} · ` : '';
     return `${legText}Heading to ${stopName(stops[i], i)}${due}`;
   }
@@ -671,4 +706,53 @@ export function photoPinsForStop(updates: DriverUpdate[], stopId: string): Photo
 export function distanceFromStop(st: Pick<Stop, 'location_lat' | 'location_lng'>, p: { lat: number; lng: number }): number | null {
   if (!Number.isFinite(st.location_lat) || !(st.location_lat || st.location_lng)) return null;
   return haversineKm({ lat: st.location_lat, lng: st.location_lng }, p) * 1000;
+}
+
+/** A driver's-log send this close to a stop counts as the truck being there. */
+const LOG_NEAR_STOP_KM = 25;
+
+/**
+ * How far along the stops the truck has got. A stop is passed when it has a
+ * time, when a later stop has one, or — on a customer-app trip, where the driver
+ * only sends screenshots — when a driver's-log send was made at it (made into
+ * that stop, or its GPS within 25 km, walking the sends in time order so a
+ * round trip's start and end at the same city aren't mixed up; a send never
+ * moves on to a stop at the same place as the one already reached).
+ * TestFlight 21 Oct: "it should also update the stops, which stop has been covered" —
+ * the list kept "Next" on stop 1 while the driver was already at the drop-off.
+ */
+export function stopProgress(stops: Stop[], log: Pick<TripLogEntry, 'at' | 'gps' | 'place' | 'stop_id'>[]): {
+  /** Index of the furthest stop passed, -1 for none. */
+  last: number;
+  /** Stops passed on the driver's log's word only (no time recorded): when and where it was sent. */
+  fromLog: Map<string, { at: string; place: string | null }>;
+} {
+  let last = -1;
+  stops.forEach((st, i) => { if (st.actual_arrival || st.actual_departure) last = i; });
+  const fromLog = new Map<string, { at: string; place: string | null }>();
+  let walked = -1;
+  for (const e of [...log].sort((a, b) => Date.parse(a.at) - Date.parse(b.at))) {
+    let hit = e.stop_id ? stops.findIndex((st) => st.id === e.stop_id) : -1;
+    if (hit < 0 && e.gps) {
+      const gps = e.gps;
+      const near = (st: Stop | undefined, p: { lat: number; lng: number }) => !!st && Number.isFinite(st.location_lat) && Number.isFinite(st.location_lng)
+        && !!(st.location_lat || st.location_lng) && haversineKm(p, { lat: st.location_lat, lng: st.location_lng }) <= LOG_NEAR_STOP_KM;
+      hit = stops.findIndex((st, i) => i > walked && near(st, gps));
+      // A send at the stop it's already at says nothing about the next one there too
+      // (a drop-off then loading at one place, or a short trip inside one city).
+      const at = stops[walked];
+      if (hit >= 0 && at && near(at, { lat: stops[hit].location_lat, lng: stops[hit].location_lng })) hit = -1;
+    }
+    if (hit < 0) continue;
+    walked = Math.max(walked, hit);
+    if (!stops[hit].actual_arrival && !fromLog.has(stops[hit].id)) fromLog.set(stops[hit].id, { at: e.at, place: e.place });
+  }
+  return { last: Math.max(last, walked), fromLog };
+}
+
+/** stopProgress for a trip, from its stops and its driver's log, plus the stop it is heading to (-1 when none). */
+export function tripStopProgress(t: OperatorTripDetail) {
+  const stops = sortedStops(t);
+  const p = stopProgress(stops, tripLogEntries(t.documents ?? []));
+  return { ...p, next: p.last + 1 < stops.length ? p.last + 1 : -1 };
 }

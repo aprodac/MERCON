@@ -14,7 +14,7 @@ import { logger } from '../utils/logger';
 import { createDriverNotification } from './notificationController';
 import { visibleNotificationMessage } from '../services/pushNotificationService';
 import { logAuditEvent } from '../services/auditService';
-import { computePhoneStatus } from '../services/driverPhone/rules';
+import { compareVersions, computePhoneStatus, isBelowMinVersion } from '../services/driverPhone/rules';
 import {
   computeAttention,
   getDriverAppMinVersion,
@@ -134,14 +134,21 @@ export const getDriversPhoneStatus = async (_req: Request, res: Response) => {
     ]);
     const now = new Date();
     const data = drivers.map((d) => {
-      const st = computePhoneStatus(devices.get(d.id) ?? [], { now, minVersion, latestVersion });
+      const all = devices.get(d.id) ?? [];
+      const st = computePhoneStatus(all, { now, minVersion, latestVersion });
+      const version = st.device?.app_version ?? null;
       return {
         driverId: d.id,
         level: st.level,
         reasons: st.reasons,
         lastSeenAt: st.lastSeenAt,
         platform: st.device?.platform ?? null,
-        app_version: st.device?.app_version ?? null,
+        app_version: version,
+        // No phone has ever registered for this driver: the app was never installed / logged in to.
+        never_installed: all.length === 0,
+        // Behind the newest version any driver runs (or below the minimum) — an update is waiting.
+        needs_update: !!version && ((!!latestVersion && compareVersions(version, latestVersion) < 0) || isBelowMinVersion(version, minVersion)),
+        latest_version: latestVersion,
       };
     });
     res.json({ success: true, data });

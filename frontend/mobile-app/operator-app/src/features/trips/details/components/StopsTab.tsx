@@ -1,11 +1,11 @@
 /** Every stop in order: planned vs actual time, lateness, delay reason, photos, and screenshots to check. */
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking, Image } from 'react-native';
-import { Check, CheckCheck, Clock3, Image as ImageIcon, ImageOff, MapPin, MessageCircle, Navigation, Play, TriangleAlert, Undo2, Crosshair, ArrowRightLeft, CircleCheck } from 'lucide-react-native';
+import { Camera, Check, CheckCheck, Clock3, Image as ImageIcon, ImageOff, MapPin, MessageCircle, Navigation, Play, TriangleAlert, Undo2, Crosshair, ArrowRightLeft, CircleCheck } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import type { DriverUpdate, LiveMediaItem, OperatorTripDetail, TripPhase } from '../../../../lib/operator';
-import { ON_TIME_GRACE_MIN, TONE, delayText, mapsLink, minutesLate, minutesText, photoPinsForStop, sendStatus, sortedStops, stopName, stopTiming, tripLegsOf, updateTitle, type Formatters, type Stop } from '../tripDetailsModel';
+import { ON_TIME_GRACE_MIN, TONE, delayText, mapsLink, minutesLate, minutesText, photoPinsForStop, sendStatus, sortedStops, stopName, stopTiming, tripStopProgress, tripLegsOf, updateTitle, type Formatters, type Stop } from '../tripDetailsModel';
 import { extraStopNote } from '@mercon/shared-types';
 import { liveLegOf } from '../../tripLegs';
 import { Card, Chip, INK, MUTED, WA, WA_INK, WA_LIGHT, tap } from './parts';
@@ -33,6 +33,10 @@ interface Props {
   onStepBack?: () => void;
   /** Bring back the photos a step-back removed. */
   onRestorePhotos?: (removedAt: string) => void;
+  /** Undo the latest take-back (TestFlight 21 Oct: "add undo option done by the operator"). */
+  onUndoStepBack?: () => void;
+  /** Add a photo / screenshot / video at this stop from the office. */
+  onAddMedia?: (st: Stop) => void;
 }
 
 /**
@@ -51,20 +55,23 @@ const shortDuration = (min: number) => (min < 60 ? `${Math.round(min)}m` : `${(m
 export const needsPin = (st: Stop) =>
   st.location_coordinate_precision !== 'EXACT' || !Number.isFinite(st.location_lat) || !(st.location_lat || st.location_lng);
 
-export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, onCheckTimes, onSetPin, focusStopId, onStopLayout, onStepBack, onRestorePhotos }: Props) {
+export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, onCheckTimes, onSetPin, focusStopId, onStopLayout, onStepBack, onRestorePhotos, onUndoStepBack, onAddMedia }: Props) {
   const stops = sortedStops(trip);
   // Round trip: a heading over each leg — "Leg 1 · Riyadh → Jeddah", "Leg 2 · Jeddah → Riyadh".
   const legs = tripLegsOf(trip);
   const legTitle = (part: Stop[], n: 1 | 2) =>
     part.length ? `Leg ${n} · ${n === 1 ? 'going' : 'returning'} · ${stopName(part[0], stops.indexOf(part[0]))} → ${stopName(part[part.length - 1], stops.indexOf(part[part.length - 1]))}` : null;
-  const liveLeg = phase === 'active' ? liveLegOf(legs, trip.status) : null;
+  const progress = tripStopProgress(trip);
+  // The stop after the furthest one passed — not the first stop without a time.
+  const nextIdx = phase === 'active' ? progress.next : -1;
+  // The leg of the next stop — so "Now" moves to leg 2 with the stops, not only with recorded times.
+  const liveLeg = phase === 'active' ? (legs.round && nextIdx >= 0 ? (legs.ret.includes(stops[nextIdx]) ? 2 : 1) : liveLegOf(legs, trip.status)) : null;
   const legStart = legs.round
     ? new Map<string, { title: string | null; current: boolean }>([
         [legs.outbound[0]?.id, { title: legTitle(legs.outbound, 1), current: liveLeg === 1 }],
         [legs.ret[0]?.id, { title: legTitle(legs.ret, 2), current: liveLeg === 2 }],
       ])
     : null;
-  const nextIdx = phase === 'active' ? stops.findIndex((s) => !s.actual_arrival) : -1;
   const docs = trip.documents ?? [];
 
   if (stops.length === 0) {
@@ -85,7 +92,7 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
           <Undo2 size={14} color="#5B34B0" />
           <View style={{ flex: 1 }}>
             <Text style={s.backNoteTitle}>
-              Taken back by {b.by ?? 'the office'} · {f.smart(b.at)}
+              Taken back by {b.by ?? 'the office'} · {f.smart(b.at)}{b.undone ? ' · undone' : ''}
             </Text>
             <Text style={s.backNoteText}>
               {b.from ? `${b.from} → ` : ''}{b.to ?? 'an earlier step'}
@@ -93,7 +100,12 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
                 ? ` · ${b.photos.count} photo${b.photos.count === 1 ? '' : 's'} ${b.photos.choice === 'move' ? `moved to ${b.photos.moved_to ?? 'the redone step'}` : b.photos.choice === 'remove' ? 'removed' : 'left as they were'}`
                 : ''}
             </Text>
-            {b.photos?.removed_at && (b.photos.restorable ?? 0) > 0 && onRestorePhotos ? (
+            {b.can_undo && onUndoStepBack ? (
+              <TouchableOpacity style={s.restore} onPress={onUndoStepBack} hitSlop={6} accessibilityRole="button">
+                <Text style={s.restoreText}>Undo</Text>
+              </TouchableOpacity>
+            ) : null}
+            {b.photos?.removed_at && (b.photos.restorable ?? 0) > 0 && onRestorePhotos && !b.can_undo ? (
               <TouchableOpacity style={s.restore} onPress={() => onRestorePhotos(b.photos!.removed_at!)} hitSlop={6} accessibilityRole="button">
                 <Text style={s.restoreText}>Restore {b.photos.restorable} photo{b.photos.restorable === 1 ? '' : 's'}</Text>
               </TouchableOpacity>
@@ -134,7 +146,8 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
         </TouchableOpacity>
       ) : null}
       {stops.map((st, i) => {
-        const done = phase === 'done' || !!st.actual_arrival;
+        const done = phase === 'done' || !!st.actual_arrival || (phase === 'active' && i <= progress.last);
+        const logged = progress.fromLog.get(st.id);
         const isNext = i === nextIdx;
         const last = i === stops.length - 1;
         const late = minutesLate(st.planned_arrival, st.actual_arrival);
@@ -159,6 +172,8 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
         const heading = legStart?.get(st.id);
         const times = st.actual_arrival
           ? `arrived ${f.smart(st.actual_arrival)}${st.actual_departure ? ` · left ${f.time(st.actual_departure)}` : ''}`
+          : logged ? `screenshot sent here ${f.smart(logged.at)}`
+          : done ? 'passed · no time yet'
           : st.planned_arrival ? `due ${f.smart(st.planned_arrival)}` : 'no time planned';
 
         return (
@@ -254,6 +269,12 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
                   <TouchableOpacity style={s.link} onPress={() => Linking.openURL(mapsLink(st.location_lat, st.location_lng)).catch(() => {})} hitSlop={6}>
                     <Navigation size={13} color="#2449A8" />
                     <Text style={s.linkText}>Directions</Text>
+                  </TouchableOpacity>
+                ) : null}
+                {onAddMedia && (phase === 'active' || phase === 'done') ? (
+                  <TouchableOpacity style={s.link} onPress={() => onAddMedia(st)} hitSlop={6} accessibilityRole="button" accessibilityLabel={`Add a photo, screenshot or video at ${stopName(st, i)}`}>
+                    <Camera size={13} color="#2449A8" />
+                    <Text style={s.linkText}>Add photo</Text>
                   </TouchableOpacity>
                 ) : null}
               </View>

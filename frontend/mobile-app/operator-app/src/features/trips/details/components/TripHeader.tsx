@@ -9,7 +9,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { RotateCcw } from 'lucide-react-native';
 import { CompanyAvatar, niceName } from '../../create/components/ui';
 import type { OperatorTripDetail, TripPhase } from '../../../../lib/operator';
-import { TONE, delayText, sortedStops, statusChip, stopName, tripLegsOf, type Formatters, type Tone, statePhrase } from '../tripDetailsModel';
+import { TONE, delayText, sortedStops, statusChip, stopName, tripLegsOf, tripStopProgress, type Formatters, type Tone, statePhrase } from '../tripDetailsModel';
 import { Card, Chip, INK, MUTED } from './parts';
 
 const PHASE_TONE: Record<TripPhase, Tone> = { planned: 'violet', active: 'blue', done: 'green', cancelled: 'gray' };
@@ -20,8 +20,10 @@ export function TripHeader({ trip, phase, f, children }: { trip: OperatorTripDet
   const phrase = statePhrase(trip, phase, f);
   const delayed = trip.status === 'Delayed' || trip.status === 'Emergency';
   const tone = TONE[delayed ? 'red' : PHASE_TONE[phase]];
-  const nextIdx = phase === 'active' ? stops.findIndex((s) => !s.actual_arrival) : -1;
-  const doneCount = stops.filter((s) => s.actual_arrival).length;
+  // Same progress as the Stops tab: times, or the driver's log on a customer-app trip.
+  const progress = tripStopProgress(trip);
+  const nextIdx = phase === 'active' ? progress.next : -1;
+  const doneCount = progress.last + 1;
   const reported = [...stops].reverse().find((s) => s.delay_reason || s.delay_note);
   // A round trip shows its way out (Riyadh → Jeddah) and "back to Riyadh" — not first → last stop.
   const legs = tripLegsOf(trip);
@@ -78,7 +80,7 @@ export function TripHeader({ trip, phase, f, children }: { trip: OperatorTripDet
         <View style={{ gap: 6 }}>
           <View style={s.segments}>
             {stops.map((st, i) => (
-              <View key={st.id} style={[s.segment, { backgroundColor: st.actual_arrival ? TONE.green.dot : i === nextIdx ? (delayed ? TONE.red.dot : TONE.blue.dot) : '#E4E4E7' }]} />
+              <View key={st.id} style={[s.segment, { backgroundColor: i <= progress.last ? TONE.green.dot : i === nextIdx ? (delayed ? TONE.red.dot : TONE.blue.dot) : '#E4E4E7' }]} />
             ))}
           </View>
           <Text style={s.note}>{doneCount} of {stops.length} stops done</Text>

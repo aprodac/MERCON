@@ -278,7 +278,42 @@ export default function TripDetailsScreen() {
   };
 
 
+  // A photo, screenshot or video the office adds at one stop (TestFlight 19 Oct: "option to add photo,
+  // screenshot and video by the operator") — filed under that stop like the driver's own.
+  const uploadAtStop = async (st: { id: string; stop_type: string; leg_index?: number | null }) => {
+    try {
+      const media = await chooseMedia();
+      if (!media) return;
+      setUploading(true);
+      const drop = /drop|deliver/i.test(st.stop_type);
+      const operation = drop ? 'delivery' : (st.leg_index ?? 0) === 1 ? 'return_loading' : /pick/i.test(st.stop_type) ? 'pickup' : 'intermediate';
+      await operatorService.uploadTripDocument(trip!.id, { uri: media.uri, name: media.fileName ?? undefined, mimeType: media.mimeType }, drop ? 'POD' : 'Waybill', { stopId: st.id, operation });
+      reload();
+    } catch (e) {
+      Alert.alert('Upload failed', getApiErrorMessage(e));
+    } finally {
+      setUploading(false);
+    }
+  };
+
   // Undo the "remove photos" of a step-back.
+  const undoStepBack = () => {
+    Alert.alert('Undo the take-back?', 'The trip goes back to where it was before, with the same times and photos. The driver gets a notification.', [
+      { text: 'Not now', style: 'cancel' },
+      {
+        text: 'Undo', onPress: async () => {
+          try {
+            const r = await operatorService.undoStepBack(trip!.id);
+            Alert.alert('Take-back undone', `Now at: ${r.to.label}.`);
+            reload();
+          } catch (e) {
+            Alert.alert('Could not undo', getApiErrorMessage(e));
+          }
+        },
+      },
+    ]);
+  };
+
   const restorePhotos = (removedAt: string) => {
     Alert.alert('Restore the photos?', 'They go back onto the stops they were on before.', [
       { text: 'Not now', style: 'cancel' },
@@ -476,6 +511,7 @@ export default function TripDetailsScreen() {
                 items: e.docs.map((d) => ({ id: d.id, url: d.file_url, kind: 'photo' as const, caption: [f.smart(e.at), e.place ? `near ${e.place}` : null].filter(Boolean).join(' · ') })),
               })}
               onPick={setLogEntry}
+              onDone={reload}
             />
             <StopsTab
               trip={trip}
@@ -490,6 +526,8 @@ export default function TripDetailsScreen() {
               onStopLayout={params.stop ? onStopLayout : undefined}
               onStepBack={canStepBack ? () => setSheet('stepback') : undefined}
               onRestorePhotos={restorePhotos}
+              onUndoStepBack={undoStepBack}
+              onAddMedia={uploadAtStop}
             />
             </>
           ) : (

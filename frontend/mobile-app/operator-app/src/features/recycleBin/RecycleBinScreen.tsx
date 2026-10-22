@@ -12,10 +12,22 @@ import { RotateCcw, Trash2 } from 'lucide-react-native';
 import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
 import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
+import { formatDayTime } from '@mercon/mobile-shared/lib/dates';
 import { AppTopBar } from '@/components/AppTopBar';
+import { niceName } from '@/features/trips/create/components/ui';
 import { BG, Chips, EmptyState, INK, MUTED, SkeletonCard, p, tap } from '@/features/notifications/components/parts';
 
-interface TrashItem { id: string; type: string; name: string; deletedAt: string }
+interface TrashItem {
+  id: string; type: string; name: string; deletedAt: string;
+  /** Trips only: which trip it was. */
+  trip?: { customer: string | null; from: string | null; to: string | null; round: boolean; plate: string | null; driver: string | null; planned_start: string | null };
+}
+
+/** "Riyadh → Al Bahah · round trip" / "Imile · VRA-3358 · Umar Farooq · Tue 21 Oct, 04:00". */
+const tripLines = (t: NonNullable<TrashItem['trip']>) => [
+  t.from || t.to ? `${t.from ?? '?'} → ${t.to ?? '?'}${t.round ? ' · round trip' : ''}` : null,
+  [t.customer, t.plate, t.driver ? niceName(t.driver) : null, t.planned_start ? formatDayTime(t.planned_start) : null].filter(Boolean).join(' · ') || null,
+].filter((x): x is string => !!x);
 
 const TYPE_LABEL: Record<string, string> = {
   Trip: 'Trips', Driver: 'Drivers', Vehicle: 'Trucks', Customer: 'Customers',
@@ -99,6 +111,7 @@ export default function RecycleBinScreen() {
                 <View key={`${it.type}:${it.id}`} style={[s.row, i > 0 && p.rowBorder]}>
                   <View style={{ flex: 1, gap: 2 }}>
                     <Text style={s.name} numberOfLines={1}>{it.name}</Text>
+                    {it.trip ? tripLines(it.trip).map((line) => <Text key={line} style={s.detail} numberOfLines={1}>{line}</Text>) : null}
                     <Text style={s.meta}>{TYPE_LABEL[it.type]?.replace(/s$/, '') ?? it.type} · deleted {ago(it.deletedAt)}</Text>
                   </View>
                   <TouchableOpacity style={s.restore} onPress={() => restore(it)} disabled={busy === it.id} accessibilityLabel={`Restore ${it.name}`}>
@@ -127,6 +140,7 @@ const s = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12 },
   name: { fontSize: 15, fontWeight: '700', color: INK },
   meta: { fontSize: 12, color: MUTED },
+  detail: { fontSize: 13, color: INK },
   restore: { flexDirection: 'row', alignItems: 'center', gap: 5, height: 34, paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#F1F3F7' },
   restoreText: { fontSize: 13, fontWeight: '700', color: INK },
   remove: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#FEF3F2', alignItems: 'center', justifyContent: 'center' },
