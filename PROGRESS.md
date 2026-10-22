@@ -759,8 +759,9 @@ names, unreliable arrivals and no reasons, and cannot be backfilled.
 - ✅ Stops passed from the driver's log (send made into the stop, or GPS within 25 km, in time order): Stops tab, header progress and "Heading to" (`stopProgress` / `tripStopProgress`).
 - ✅ Recycle bin trip rows: route, customer, truck, driver, planned time (`trashController` sends `trip`); "check stop times" rows: ref · customer · truck · route · time (`GET /documents?entity_type=Trip` adds `trip`).
 - ✅ History: trips under the day they started (`historyDayIso`); By-truck legend (the By-truck view was then removed at the owner's request); driver page "App 1.2.2 (106) · iOS 26.5"; "Add photo" per stop (office upload tagged to the stop).
-- ⬜ Driver flow confusion (driver finishes after leg 1 / sends leg-2 screenshots into the next day's trip) — needs a decision from the owner.
-- ⬜ "UI alignment" on Create trip's Daily timing — unclear what to change; ask.
+- 🔄 Driver flow confusion (driver finishes after leg 1 / sends leg-2 screenshots into the next day's trip): the next-stop screen (idea 1) already warns "No screenshot yet for … Finish anyway?"; now also the first screenshot on a trip planned more than 3 h ahead asks "Is this the right trip? … planned for <time>" (`ExternalTripScreen` `rightTrip`, Urdu). Owner to confirm this is enough.
+- ✅ Driver's steps: any earlier step can be picked, also steps the driver skipped (customer-app trips skip most — only 1 step back was pickable, "not able to select 2-3 steps back"); "N steps undone" counts only done steps; photos "since then" count from the last step actually done, not every photo of the trip (`StepBackSheet`, `tripStepBack.ts` `sinceOf`).
+- 🔄 "UI alignment" on Create trip's Daily timing: the screenshot shows the Transit time tile stuck to the Pickup / Planned drop-off row — now spaced 8 px like the way back (also on one-off Planned drop-off) (`StepSchedule`). Tester to confirm that was the point.
 - ⬜ TRP-0041 map pin 1 not at Riyadh — the stop's saved coordinates are wrong (data), not code.
 - Already covered before this round: "Edit option" on screenshot time (tappable "Time to confirm"), timestamp check on the driver's log (request 70 suggestions, needs the new build).
 
