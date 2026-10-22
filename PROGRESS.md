@@ -763,6 +763,9 @@ names, unreliable arrivals and no reasons, and cannot be backfilled.
 - ✅ Driver's steps: any earlier step can be picked, also steps the driver skipped (customer-app trips skip most — only 1 step back was pickable, "not able to select 2-3 steps back"); "N steps undone" counts only done steps; photos "since then" count from the last step actually done, not every photo of the trip (`StepBackSheet`, `tripStepBack.ts` `sinceOf`).
 - 🔄 "UI alignment" on Create trip's Daily timing: the screenshot shows the Transit time tile stuck to the Pickup / Planned drop-off row — now spaced 8 px like the way back (also on one-off Planned drop-off) (`StepSchedule`). Tester to confirm that was the point.
 - ⬜ TRP-0041 map pin 1 not at Riyadh — the stop's saved coordinates are wrong (data), not code.
+- ✅ Owner (TestFlight 22 Oct): trip live map has only **Drive** and **Route** (2D / 3D removed; a saved 2D/3D view opens on Route) (`fleet/TripLiveScreen.tsx`).
+- ✅ Owner (TestFlight 22 Oct): Send status / ETA / location / delay — "Send as" **Link** (WhatsApp preview), **Picture** (the link's preview card `GET /public/og/t/:token/card.png` shared as a file with the message as caption, no link) or **Text**; preview drawn as the WhatsApp bubble with that picture on top; recipients as chips so the preview fits; Reset after editing (`ShareSheet.tsx`, also used by the live map's Share ETA). Not phone-tested; the card can't be fetched from the dev sandbox.
+- ⬜ New TestFlight notes 22 Oct (operator build 130, not looked at yet): "Driver not closed trip yet and not showing delay"; "Trip ledger not updated".
 - Already covered before this round: "Edit option" on screenshot time (tappable "Time to confirm"), timestamp check on the driver's log (request 70 suggestions, needs the new build).
 
 ### Operator app Home — Live trips cards — 🔄 built 2026-10-22, not yet tried on a phone

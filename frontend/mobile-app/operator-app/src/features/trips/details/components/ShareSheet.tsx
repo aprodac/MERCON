@@ -10,7 +10,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Check, MessageCircle, Play } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
-import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
+import { API_URL, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import { operatorService, type DriverUpdate, type OperatorTripDetail, type ShareRecipient, type TripPhase } from '../../../../lib/operator';
 import { customerContacts, digits, quickMessage, sortedStops, stopName, updateTitle, waLink, withTag, type Formatters, type QuickKind, type Remaining, type TagPerson } from '../tripDetailsModel';
@@ -37,6 +37,32 @@ interface Props {
 
 type Who = 'customer_group' | 'customer_contact' | 'driver' | 'internal' | 'other';
 
+/**
+ * How a quick message goes out (owner, TestFlight 22 Oct): with the tracking
+ * link (WhatsApp shows its preview picture above it), as that picture with the
+ * message under it and no link, or as text only.
+ */
+type Attach = 'link' | 'picture' | 'text';
+const ATTACH: { id: Attach; label: string; detail: string }[] = [
+  { id: 'link', label: 'Link', detail: 'Live link · WhatsApp shows the picture above it' },
+  { id: 'picture', label: 'Picture', detail: 'The picture with the message under it · no link' },
+  { id: 'text', label: 'Text', detail: 'Just the message' },
+];
+
+/** The message without its "Track live: …" line. */
+const withoutLink = (msg: string) => msg.replace(/\n*^Track live: \S+[ \t]*$/gm, '').replace(/\s+$/, '');
+
+/**
+ * The preview card the server draws for a trip link (GET /public/og/t/:token/card.png,
+ * trackingController) — the picture WhatsApp shows above the link. Renewed
+ * every 10 minutes like the link's own preview.
+ */
+export function trackingCardUrl(trackingUrl: string | null): string | null {
+  const token = trackingUrl ? /\/t\/([^/?#]+)/.exec(trackingUrl)?.[1] : null;
+  if (!token || !API_URL) return null;
+  return `${API_URL.replace(/\/+$/, '')}/public/og/t/${token}/card.png?v=${Math.floor(Date.now() / 600_000)}`;
+}
+
 const QUICK_TITLE: Record<QuickKind, string> = { status: 'Send status', eta: 'Send ETA', location: 'Send location', delay: 'Send delay notice', assignment: 'Send assignment' };
 
 export function ShareSheet({ target, onClose, trip, phase, f, position, remaining, trackingUrl, onNeedTracking, whatsappApi, onShared }: Props) {
@@ -57,6 +83,10 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
   // 2–4 photos go as one combined picture so WhatsApp shows them together with the message under them.
   const [combine, setCombine] = useState(true);
   const [sending, setSending] = useState(false);
+  const [attach, setAttach] = useState<Attach>('link');
+  const [cardFailed, setCardFailed] = useState(false);
+  // The quick message was typed over (shows Reset).
+  const [textEdited, setTextEdited] = useState(false);
   // Assignment message: who at the customer gets @tagged — a saved contact, someone typed in, or nobody.
   const contacts = useMemo(() => customerContacts(trip), [trip]);
   const [tagPick, setTagPick] = useState<number | 'none' | 'other'>(0);
@@ -112,6 +142,9 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
       setText('');
     } else {
       const first = target.kind === 'assignment' && contacts.length ? contacts[0] : null;
+      setAttach('link');
+      setTextEdited(false);
+      setCardFailed(false);
       setOneByOne(false);
       setStep(0);
       // Batch: the message is written once the trips have loaded.
@@ -128,7 +161,8 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
   useEffect(() => {
     if (!target || target.type !== 'quick' || isBatch) return;
     if (text !== generated.current) return;
-    const msg = quickMessage(target.kind, { trip, phase, f, position, remaining, trackingUrl, tag });
+    const full = quickMessage(target.kind, { trip, phase, f, position, remaining, trackingUrl, tag });
+    const msg = attach === 'link' ? full : withoutLink(full);
     if (msg !== text) {
       generated.current = msg;
       setText(msg);
@@ -192,6 +226,20 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
     return o;
   }, [trip, customerPhone, driverPhone, groupName]);
 
+  const cardUrl = !update && !isBatch && !cardFailed ? trackingCardUrl(trackingUrl) : null;
+  // Picture / Text only make sense while there's a link to leave out.
+  const canAttach = !update && !isBatch && !!trackingUrl;
+  const mode: Attach = canAttach ? attach : 'text';
+  const switchAttach = (next: Attach) => {
+    tap();
+    setAttach(next);
+    const msg = next === 'link'
+      ? (/^Track live: /m.test(text) || !trackingUrl ? text : `${text}\n\nTrack live: ${trackingUrl}`)
+      : withoutLink(text);
+    if (text === generated.current) generated.current = msg;
+    setText(msg);
+  };
+
   const current = options.find((o) => o.id === who) ?? options[0];
   const needsNumber = who === 'other' || (who === 'customer_contact' && !customerPhone);
   const phone = needsNumber ? otherPhone.trim() : current.phone;
@@ -228,6 +276,26 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
   const send = async () => {
     if (needsNumber && !digits(otherPhone)) {
       Alert.alert('Enter the WhatsApp number');
+      return;
+    }
+    if (!update && mode === 'picture') {
+      if (!cardUrl) {
+        Alert.alert('No picture yet', 'The tracking picture isn’t ready. Send the link or the text instead.');
+        return;
+      }
+      setSending(true);
+      try {
+        // The picture as a file, the message as its caption — no link in the chat.
+        const r = await shareMediaFiles([{
+          id: `track-card-${/\/card\.png\?v=(\d+)/.exec(cardUrl)?.[1] ?? '0'}-${trip.id.slice(0, 8)}`,
+          kind: 'photo', stage: 'other', url: cardUrl, mime: 'image/png', captured_at: new Date().toISOString(),
+        }], text);
+        if (!r.dismissed) onClose();
+      } catch (e) {
+        Alert.alert('Could not send', getApiErrorMessage(e));
+      } finally {
+        setSending(false);
+      }
       return;
     }
     if (!update) {
@@ -311,29 +379,29 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
       {/* flexShrink lets the options scroll while the send button below stays on screen */}
       <ScrollView style={{ flexShrink: 1 }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12, paddingBottom: 8 }}>
         <Text style={s.label}>To</Text>
-        <View style={{ gap: 6 }}>
+        {/* Chips, so the preview fits on screen; the picked one's detail under them. */}
+        <View style={s.chips}>
           {options.map((o) => {
             const on = o.id === who;
             return (
-              <TouchableOpacity key={o.id} style={[s.opt, on && s.optOn]} activeOpacity={0.8} onPress={() => { tap(); setWho(o.id); }}>
-                <View style={[s.radio, on && s.radioOn]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.optLabel} numberOfLines={1}>{o.label}</Text>
-                  <Text style={s.optDetail} numberOfLines={1}>{o.detail}</Text>
-                </View>
-                {o.id === 'customer_group' && !groupName && trip.customer?.id ? (
-                  <TouchableOpacity
-                    style={s.addGroup}
-                    hitSlop={6}
-                    onPress={() => { const id = trip.customer!.id; onClose(); router.push({ pathname: '/customer-edit', params: { id } }); }}
-                    accessibilityLabel="Add the customer's WhatsApp group"
-                  >
-                    <Text style={s.addGroupText}>Add group</Text>
-                  </TouchableOpacity>
-                ) : null}
+              <TouchableOpacity key={o.id} style={[s.chip, on && s.chipOn]} activeOpacity={0.8} onPress={() => { tap(); setWho(o.id); }} accessibilityRole="radio" accessibilityState={{ selected: on }}>
+                <Text style={[s.chipText, on && s.chipTextOn]} numberOfLines={1}>{o.label}</Text>
               </TouchableOpacity>
             );
           })}
+        </View>
+        <View style={s.toDetail}>
+          <Text style={[s.optDetail, { flex: 1 }]} numberOfLines={1}>{current.detail}</Text>
+          {current.id === 'customer_group' && !groupName && trip.customer?.id ? (
+            <TouchableOpacity
+              style={s.addGroup}
+              hitSlop={6}
+              onPress={() => { const id = trip.customer!.id; onClose(); router.push({ pathname: '/customer-edit', params: { id } }); }}
+              accessibilityLabel="Add the customer's WhatsApp group"
+            >
+              <Text style={s.addGroupText}>Add group</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
         {needsNumber ? (
           <TextInput
@@ -470,14 +538,56 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
                 <Switch value={oneByOne} onValueChange={switchOneByOne} trackColor={{ true: WA }} disabled={!batchData} />
               </View>
             ) : null}
-            <Text style={s.label}>{isBatch && oneByOne ? `Message · trip ${step + 1} of ${batchIds.length}` : 'Message'}</Text>
+            {canAttach ? (
+              <>
+                <Text style={s.label}>Send as</Text>
+                <View style={s.seg}>
+                  {ATTACH.map((a) => (
+                    <TouchableOpacity key={a.id} style={[s.segBtn, mode === a.id && s.segOn]} onPress={() => switchAttach(a.id)} accessibilityRole="radio" accessibilityState={{ selected: mode === a.id }}>
+                      <Text style={[s.segText, mode === a.id && s.segTextOn]}>{a.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <Text style={[s.optDetail, { marginTop: -6 }]}>{ATTACH.find((a) => a.id === mode)?.detail}</Text>
+              </>
+            ) : null}
+            <Text style={s.label}>{isBatch && oneByOne ? `Message · trip ${step + 1} of ${batchIds.length}` : isBatch ? 'Message' : 'Preview'}</Text>
             {isBatch && !batchData ? (
               batchError
                 ? <Text style={s.optDetail}>Couldn’t load the trips: {batchError}</Text>
                 : <View style={[s.input, s.message, { alignItems: 'center', justifyContent: 'center' }]}><ActivityIndicator color={WA} /></View>
-            ) : (
+            ) : isBatch ? (
               <TextInput style={[s.input, s.message]} value={text} onChangeText={setText} multiline textAlignVertical="top" />
+            ) : (
+              // As it lands in WhatsApp: the picture on top (the link's preview, or the picture itself), the message under it.
+              <View style={s.chat}>
+                <View style={s.bubbleWrap}>
+                  {mode !== 'text' && cardUrl ? (
+                    <View style={mode === 'link' ? s.linkCard : null}>
+                      <Image source={{ uri: cardUrl }} style={s.cardImg} resizeMode="cover" onError={() => setCardFailed(true)} accessibilityLabel="Tracking preview picture" />
+                      {mode === 'link' && trackingUrl ? <Text style={s.linkHost} numberOfLines={1}>{trackingUrl.replace(/^https?:\/\//, '').split('/')[0]}</Text> : null}
+                    </View>
+                  ) : null}
+                  <TextInput
+                    style={[s.bubbleCaption, s.captionInput]}
+                    value={text}
+                    onChangeText={(v) => { setText(v); setTextEdited(true); }}
+                    multiline
+                    scrollEnabled={false}
+                    textAlignVertical="top"
+                    accessibilityLabel="Message"
+                  />
+                </View>
+              </View>
             )}
+            {!isBatch && textEdited ? (
+              <View style={s.editRow}>
+                <Text style={[s.optDetail, { flex: 1 }]}>Edited · sent as you wrote it</Text>
+                <TouchableOpacity onPress={() => { tap(); setText(mode === 'link' ? generated.current : withoutLink(generated.current)); setTextEdited(false); }} hitSlop={8}>
+                  <Text style={s.resetText}>Reset</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
             {isAssignment && tag ? (
               <Text style={s.optDetail}>If @{tag.name} shows as plain text in WhatsApp, type @ and pick the name before sending.</Text>
             ) : null}
@@ -489,7 +599,7 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
       <View style={s.footer}>
         <TouchableOpacity style={[s.sendBtn, sending && { opacity: 0.7 }]} activeOpacity={0.85} onPress={send} disabled={sending}>
           <MessageCircle size={19} color={Colors.white} strokeWidth={2.3} />
-          <Text style={s.sendText}>{sending ? (update && !direct ? 'Getting photos ready…' : 'Sending…') : update ? (direct ? `Send ${attached}` : `Share ${attached || 'photos'}`) : isBatch && oneByOne ? `Open WhatsApp · ${step + 1} of ${batchIds.length}` : 'Open WhatsApp'}</Text>
+          <Text style={s.sendText}>{sending ? (update && !direct ? 'Getting photos ready…' : 'Sending…') : update ? (direct ? `Send ${attached}` : `Share ${attached || 'photos'}`) : isBatch && oneByOne ? `Open WhatsApp · ${step + 1} of ${batchIds.length}` : mode === 'picture' ? 'Share picture' : 'Open WhatsApp'}</Text>
         </TouchableOpacity>
         {update ? <Text style={[s.optDetail, { textAlign: 'center' }]}>Marked as sent for everyone, so nothing goes out twice</Text> : null}
       </View>
@@ -501,11 +611,6 @@ const s = StyleSheet.create({
   addGroup: { paddingHorizontal: 10, height: 28, borderRadius: 8, justifyContent: 'center', backgroundColor: '#E3F7EA' },
   addGroupText: { fontSize: 12, fontWeight: '800', color: '#0F6B37' },
   label: { fontSize: 12, fontWeight: '800', color: '#3B3B44' },
-  opt: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 11, borderRadius: 14, borderWidth: 1.5, borderColor: '#EEF0F4' },
-  optOn: { borderColor: WA, backgroundColor: '#F2FBF5' },
-  radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#B8BCC8' },
-  radioOn: { borderWidth: 6, borderColor: WA },
-  optLabel: { fontSize: 14, fontWeight: '700', color: INK },
   optDetail: { fontSize: 12, color: MUTED },
   input: { minHeight: 46, borderRadius: 12, backgroundColor: '#F5F6F9', paddingHorizontal: 12, fontSize: 14, color: INK },
   message: { minHeight: 150, paddingTop: 12, lineHeight: 20 },
@@ -515,6 +620,7 @@ const s = StyleSheet.create({
   pickCheck: { position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: Colors.white, backgroundColor: 'rgba(0,0,0,0.25)', alignItems: 'center', justifyContent: 'center' },
   pickSent: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(20,20,26,0.55)', color: Colors.white, fontSize: 9, fontWeight: '700', textAlign: 'center' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  toDetail: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: -4, minHeight: 28 },
   chip: { borderRadius: 999, borderWidth: 1.5, borderColor: '#E4E7EE', paddingHorizontal: 12, paddingVertical: 8, maxWidth: '100%' },
   chipOn: { borderColor: WA, backgroundColor: '#F2FBF5' },
   chipText: { fontSize: 13, fontWeight: '700', color: INK },
@@ -535,6 +641,14 @@ const s = StyleSheet.create({
   bubbleMore: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
   bubbleMoreText: { color: Colors.white, fontSize: 20, fontWeight: '800' },
   footer: { gap: 8, paddingTop: 10 },
+  seg: { flexDirection: 'row', backgroundColor: '#F1F2F6', borderRadius: 12, padding: 3, gap: 3 },
+  segBtn: { flex: 1, height: 36, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  segOn: { backgroundColor: Colors.white, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  segText: { fontSize: 13, fontWeight: '700', color: MUTED },
+  segTextOn: { color: INK },
+  linkCard: { borderRadius: 9, overflow: 'hidden', backgroundColor: '#C9E9C2' },
+  cardImg: { width: '100%', aspectRatio: 1200 / 630, borderRadius: 9, backgroundColor: '#C9E9C2' },
+  linkHost: { fontSize: 11, color: '#4B5563', paddingHorizontal: 8, paddingVertical: 5 },
   sendBtn: { height: 52, borderRadius: 14, backgroundColor: WA, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 4 },
   sendText: { color: Colors.white, fontSize: 16, fontWeight: '800' },
 });

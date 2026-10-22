@@ -5,9 +5,8 @@
  * road ahead, the rest of the trip, where it has driven, its stops and breaks
  * — and the same ETA as the Fleet map and the web (useTripRoute).
  *
- *   Views     2D (flat, truck and next stop), 3D (tilted, buildings rise
- *             close in), Drive (low behind the truck, facing the road ahead)
- *             and Route (the whole trip, flat). Light or dark map. Both are
+ *   Views     Drive (low behind the truck, facing the road ahead) and
+ *             Route (the whole trip, flat). Light or dark map. Both are
  *             remembered for next time (useFleetPrefs). Dragging the map
  *             stops following the truck until Recenter.
  *   Cards     the web live map's (TripLivePanels.tsx): top, km by road to
@@ -23,7 +22,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, LayoutAnimation, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Box, ChevronDown, Compass, LocateFixed, Map as MapIcon, Moon, Navigation, Route, Sun, type LucideIcon } from 'lucide-react-native';
+import { ChevronDown, Compass, LocateFixed, Moon, Navigation, Route, Sun, type LucideIcon } from 'lucide-react-native';
 import { FleetMap, type FleetMapHandle, type FocusMode, type MapView } from './FleetMap';
 import { TripShareFlow } from './FleetShare';
 import { HaltSheet } from './HaltSheet';
@@ -37,9 +36,9 @@ import type { TripHalt } from '../../lib/operator';
 
 type Mode = NonNullable<FleetPrefs['tripView']>;
 
+// Only Drive and Route (owner, TestFlight 22 Oct: "only drive and route needed"):
+// Drive is the tilted close-up, Route the flat whole trip, so 2D / 3D said the same twice.
 const MODES: { id: Mode; label: string; icon: LucideIcon; a11y: string }[] = [
-  { id: 'flat', label: '2D', icon: MapIcon, a11y: 'Flat map' },
-  { id: 'tilted', label: '3D', icon: Box, a11y: 'Tilted 3D map' },
   { id: 'drive', label: 'Drive', icon: Navigation, a11y: 'Behind the truck' },
   { id: 'route', label: 'Route', icon: Route, a11y: 'Whole trip' },
 ];
@@ -64,12 +63,13 @@ export default function TripLiveScreen() {
 
   const prefs = useFleetPrefs();
   const [theme, setTheme] = useState<MapTheme>('light');
-  const [mode, setMode] = useState<Mode>('flat');
+  const [mode, setMode] = useState<Mode>('route');
   const [prefsApplied, setPrefsApplied] = useState(false);
   if (prefs.ready && !prefsApplied) {
     setPrefsApplied(true);
     if (prefs.prefs.theme) setTheme(prefs.prefs.theme);
-    if (prefs.prefs.tripView) setMode(prefs.prefs.tripView);
+    // A saved 2D / 3D view from an older build opens on Route.
+    if (prefs.prefs.tripView) setMode(prefs.prefs.tripView === 'drive' ? 'drive' : 'route');
   }
 
   const mapRef = useRef<FleetMapHandle>(null);
@@ -86,8 +86,7 @@ export default function TripLiveScreen() {
     setFollowing(true);
     prefs.save({ tripView: m });
     if (m === 'drive') mapRef.current?.driverView();
-    else if (m === 'route') mapRef.current?.tripOverview();
-    else mapRef.current?.set3D(m === 'tilted');
+    else mapRef.current?.tripOverview();
   };
   // The camera can only move once the map is up: frame the saved view on its first report.
   const framed = useRef(false);
@@ -148,7 +147,7 @@ export default function TripLiveScreen() {
         interactive
         isolate
         theme={theme}
-        tilted={mode === 'tilted'}
+        tilted={false}
         focusMode={FOCUS[mode]}
         routeLine={route.routeLine}
         restLine={route.restLine}
