@@ -7,7 +7,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, Image, ScrollView, Linking, Alert, Switch, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Check, MessageCircle, Play } from 'lucide-react-native';
+import { Check, ChevronDown, MessageCircle, Play } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { API_URL, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
@@ -84,6 +84,7 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
   const [combine, setCombine] = useState(true);
   const [sending, setSending] = useState(false);
   const [attach, setAttach] = useState<Attach>('link');
+  const [toOpen, setToOpen] = useState(false);
   const [cardFailed, setCardFailed] = useState(false);
   // The quick message was typed over (shows Reset).
   const [textEdited, setTextEdited] = useState(false);
@@ -128,6 +129,7 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
   function resetFor(target: ShareTarget) {
     // Customer messages go to the customer's WhatsApp group unless the operator picks someone else.
     setWho('customer_group');
+    setToOpen(false);
     setOtherPhone('');
     setTagPick(contacts.length ? 0 : 'none');
     setOtherTag('');
@@ -379,29 +381,37 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
       {/* flexShrink lets the options scroll while the send button below stays on screen */}
       <ScrollView style={{ flexShrink: 1 }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12, paddingBottom: 8 }}>
         <Text style={s.label}>To</Text>
-        {/* Chips, so the preview fits on screen; the picked one's detail under them. */}
-        <View style={s.chips}>
-          {options.map((o) => {
+        {/* A drop-down: one line for who gets it, the list only while choosing (owner, 22 Oct). */}
+        <View style={s.drop}>
+          <TouchableOpacity style={s.dropHead} activeOpacity={0.8} onPress={() => { tap(); setToOpen((v) => !v); }} accessibilityRole="button" accessibilityLabel={`To: ${current.label}`} accessibilityState={{ expanded: toOpen }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[s.dropLabel, toOpen && { color: MUTED }]} numberOfLines={1}>{toOpen ? 'Send to…' : current.label}</Text>
+              {toOpen ? null : <Text style={s.optDetail} numberOfLines={1}>{current.detail}</Text>}
+            </View>
+            {!toOpen && current.id === 'customer_group' && !groupName && trip.customer?.id ? (
+              <TouchableOpacity
+                style={s.addGroup}
+                hitSlop={6}
+                onPress={() => { const id = trip.customer!.id; onClose(); router.push({ pathname: '/customer-edit', params: { id } }); }}
+                accessibilityLabel="Add the customer's WhatsApp group"
+              >
+                <Text style={s.addGroupText}>Add group</Text>
+              </TouchableOpacity>
+            ) : null}
+            <ChevronDown size={18} color={MUTED} style={toOpen ? { transform: [{ rotate: '180deg' }] } : undefined} />
+          </TouchableOpacity>
+          {toOpen ? options.map((o) => {
             const on = o.id === who;
             return (
-              <TouchableOpacity key={o.id} style={[s.chip, on && s.chipOn]} activeOpacity={0.8} onPress={() => { tap(); setWho(o.id); }} accessibilityRole="radio" accessibilityState={{ selected: on }}>
-                <Text style={[s.chipText, on && s.chipTextOn]} numberOfLines={1}>{o.label}</Text>
+              <TouchableOpacity key={o.id} style={s.dropItem} activeOpacity={0.7} onPress={() => { tap(); setWho(o.id); setToOpen(false); }} accessibilityRole="radio" accessibilityState={{ selected: on }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={[s.dropItemText, on && { color: '#0F6B37' }]} numberOfLines={1}>{o.label}</Text>
+                  <Text style={s.optDetail} numberOfLines={1}>{o.detail}</Text>
+                </View>
+                {on ? <Check size={16} color={WA} strokeWidth={3} /> : null}
               </TouchableOpacity>
             );
-          })}
-        </View>
-        <View style={s.toDetail}>
-          <Text style={[s.optDetail, { flex: 1 }]} numberOfLines={1}>{current.detail}</Text>
-          {current.id === 'customer_group' && !groupName && trip.customer?.id ? (
-            <TouchableOpacity
-              style={s.addGroup}
-              hitSlop={6}
-              onPress={() => { const id = trip.customer!.id; onClose(); router.push({ pathname: '/customer-edit', params: { id } }); }}
-              accessibilityLabel="Add the customer's WhatsApp group"
-            >
-              <Text style={s.addGroupText}>Add group</Text>
-            </TouchableOpacity>
-          ) : null}
+          }) : null}
         </View>
         {needsNumber ? (
           <TextInput
@@ -620,7 +630,11 @@ const s = StyleSheet.create({
   pickCheck: { position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: Colors.white, backgroundColor: 'rgba(0,0,0,0.25)', alignItems: 'center', justifyContent: 'center' },
   pickSent: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(20,20,26,0.55)', color: Colors.white, fontSize: 9, fontWeight: '700', textAlign: 'center' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  toDetail: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: -4, minHeight: 28 },
+  drop: { borderRadius: 14, borderWidth: 1.5, borderColor: '#E4E7EE', overflow: 'hidden' },
+  dropHead: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10 },
+  dropLabel: { fontSize: 14, fontWeight: '700', color: INK },
+  dropItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#EEF0F4' },
+  dropItemText: { fontSize: 14, fontWeight: '600', color: INK },
   chip: { borderRadius: 999, borderWidth: 1.5, borderColor: '#E4E7EE', paddingHorizontal: 12, paddingVertical: 8, maxWidth: '100%' },
   chipOn: { borderColor: WA, backgroundColor: '#F2FBF5' },
   chipText: { fontSize: 13, fontWeight: '700', color: INK },
