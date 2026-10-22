@@ -24,7 +24,7 @@ import { EmptyHint, PageTitle } from '@/components/pageCues';
 import { Card, Chip, INK, MUTED, PAGE, tap } from '../../trips/details/components/parts';
 import { TONE, type Tone } from '../../trips/details/tripDetailsModel';
 import {
-  ACTIVITY_LABEL, LEVEL_LABEL, LEVEL_TONE, LOC_TEXT, NOTIF_TEXT, PUSH_LABEL, activityDetail, driverPhoneApi, driverPhoneKey, isAlarming, timeAgo, tripTrailKey,
+  ACTIVITY_LABEL, LEVEL_LABEL, LEVEL_TONE, LOC_TEXT, NOTIF_TEXT, PUSH_LABEL, activityDetail, driverPhoneApi, driverPhoneKey, isAlarming, isOlderVersion, timeAgo, tripTrailKey,
   type ActivityRow, type DriverDevice, type NotificationTrail, type PushStatus,
 } from './driverPhone';
 
@@ -180,7 +180,7 @@ function Fact({ icon: Icon, label, value, bad, warn }: { icon: LucideIcon; label
   );
 }
 
-const newer = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true }) < 0;
+const newer = isOlderVersion;
 
 function DeviceCard({ d, minVersion, latestVersion }: { d: DriverDevice; minVersion: string | null; latestVersion: string | null }) {
   const reports = d.health_reported_at != null;

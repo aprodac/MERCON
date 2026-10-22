@@ -12,7 +12,7 @@ import { ChevronRight, Smartphone } from 'lucide-react-native';
 import { Tile } from '@/components/pageCues';
 import { INK, MUTED, tap } from '../../trips/details/components/parts';
 import { TONE } from '../../trips/details/tripDetailsModel';
-import { LEVEL_LABEL, LEVEL_TONE, batteryText, currentDevice, driverPhoneApi, driverPhoneKey, timeAgo } from './driverPhone';
+import { LEVEL_LABEL, LEVEL_TONE, appUpdateState, batteryText, currentDevice, driverPhoneApi, driverPhoneKey, timeAgo } from './driverPhone';
 
 export function PhoneActivityRow({
   driverId, driverName, tripId, tripRef, compact, style,
@@ -25,12 +25,18 @@ export function PhoneActivityRow({
   const line = data
     ? [LEVEL_LABEL[data.status.level], battery && `${battery} battery`, `seen ${timeAgo(data.status.lastSeenAt)}`].filter(Boolean).join(' · ')
     : isError ? 'Phone status unavailable' : 'Checking phone…';
-  const why = data?.status.reasons[0];
+  const why = data?.status.reasons.find((r) => !/is not the latest|too old/i.test(r));
   // Which app build the driver runs (TestFlight 20 Oct: "show the driver's app version").
   const os = device?.os_name ? [device.os_name, device.os_version].filter(Boolean).join(' ') : null;
   const version = device?.app_version
     ? [`App ${device.app_version}${device.build_number ? ` (${device.build_number})` : ''}`, os].filter(Boolean).join(' · ')
-    : data ? 'App version not reported yet' : null;
+    : data ? (data.devices.length ? 'App version not reported yet' : 'App never installed') : null;
+  // …and whether an update is still to install (TestFlight 22 Oct).
+  const update = appUpdateState(device?.app_version, data);
+  const updateText = update === 'required' ? `Update required (min ${data!.minVersion})`
+    : update === 'waiting' ? `Update to ${data!.latestVersion} waiting`
+    : update === 'latest' ? 'Latest version' : null;
+  const updateColor = update === 'required' ? TONE.red.fg : update === 'waiting' ? TONE.amber.fg : TONE.green.fg;
 
   const open = () => {
     tap();
@@ -48,6 +54,7 @@ export function PhoneActivityRow({
         </View>
         {why ? <Text style={[s.why, tone && { color: tone.fg }]} numberOfLines={1}>{why}</Text> : null}
         {version ? <Text style={s.why} numberOfLines={1}>{version}</Text> : null}
+        {updateText ? <Text style={[s.why, { color: updateColor, fontWeight: '700' }]} numberOfLines={1}>{updateText}</Text> : null}
       </View>
       <Text style={s.link}>{tripId ? 'Trail' : 'Activity'}</Text>
       <ChevronRight size={16} color="#A1A1AA" />

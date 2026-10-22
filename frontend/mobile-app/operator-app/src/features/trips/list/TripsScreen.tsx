@@ -28,7 +28,6 @@ import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import type { OperatorTrip } from '../../../lib/operator';
 import { TripCard } from './TripCard';
-import { TruckDayView } from './TruckDayView';
 import { AppTopBar } from '@/components/AppTopBar';
 import { Chips } from '@/features/notifications/components/parts';
 import { useNow, useTripList, HISTORY_DAYS, SCHEDULE_AFTER, type View as ListView } from './useTripList';
@@ -67,7 +66,6 @@ export default function TripsScreen() {
   const [historyDay, setHistoryDay] = useState<string | null>(null);
   const [historyFilter, setHistoryFilter] = useState<'all' | 'done' | 'cancelled' | 'deleted'>('all');
   // Schedule as a list of cards, or one row per truck across the day.
-  const [byTruck, setByTruck] = useState(false);
   const [actionsFor, setActionsFor] = useState<OperatorTrip | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -286,7 +284,7 @@ export default function TripsScreen() {
             />
           ) : view === 'schedule' ? (
             <FlatList
-              data={byTruck ? [] : dayTrips}
+              data={dayTrips}
               keyExtractor={(t) => t.id}
               contentContainerStyle={s.list}
               refreshControl={refreshControl}
@@ -295,13 +293,6 @@ export default function TripsScreen() {
               ListHeaderComponent={(
                 <View style={{ gap: 10, marginBottom: 4 }}>
                   <DateStrip days={days} selected={selectedDay} today={todayKey} counts={perDay} onSelect={(k) => { tap(); setDay(k); }} f={f} />
-                  <View style={s.modeRow}>
-                    {([['List', false], ['By truck', true]] as const).map(([label, on]) => (
-                      <TouchableOpacity key={label} style={[s.modeBtn, byTruck === on && s.modeBtnOn]} onPress={() => { tap(); setByTruck(on); }} accessibilityRole="tab" accessibilityState={{ selected: byTruck === on }}>
-                        <Text style={[s.modeText, byTruck === on && s.modeTextOn]}>{label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
                   <View style={s.dayHead}>
                     <Text style={s.dayTitle}>{dayLabel(selectedDay, todayKey, f)}</Text>
                     {selectedDay !== todayKey ? (
@@ -317,9 +308,7 @@ export default function TripsScreen() {
                   </View>
                 </View>
               )}
-              ListEmptyComponent={data.windowLoading ? <Loading /> : byTruck ? (
-                <TruckDayView trips={data.window} dayKey={selectedDay} f={f} clashes={clashes} onOpen={(t) => open(t)} />
-              ) : (
+              ListEmptyComponent={data.windowLoading ? <Loading /> : (
                 <Empty
                   icon={CalendarDays}
                   title="No trips to run this day"
@@ -556,11 +545,6 @@ const s = StyleSheet.create({
   sectionDot: { width: 6, height: 6, borderRadius: 3 },
   sectionTitle: { fontSize: 13, fontWeight: '600', color: '#3F3F46' },
   sectionCount: { fontSize: 13, fontWeight: '500', color: '#A1A1AA' },
-  modeRow: { flexDirection: 'row', alignSelf: 'flex-start', backgroundColor: '#EDEDF0', borderRadius: 10, padding: 3, gap: 3 },
-  modeBtn: { paddingHorizontal: 14, height: 30, borderRadius: 8, justifyContent: 'center' },
-  modeBtnOn: { backgroundColor: Colors.white },
-  modeText: { fontSize: 13, fontWeight: '600', color: MUTED },
-  modeTextOn: { color: INK },
   dayHead: { flexDirection: 'row', alignItems: 'baseline', gap: 10, marginTop: 4 },
   todayLink: { fontSize: 13, fontWeight: '700', color: '#C4432F' },
   dayMonth: { fontSize: 9, lineHeight: 11, fontWeight: '800', letterSpacing: 0.4, color: '#C4432F', textTransform: 'uppercase' },
