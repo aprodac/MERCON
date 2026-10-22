@@ -47,6 +47,8 @@ interface StopRow {
 /** A send that didn't go through: kept so one tap retries it. */
 interface Failed { photo: CapturedPhoto; target: Target | null; entry: string; uploaded: boolean }
 
+/** A trip planned to start more than this far ahead asks before its first screenshot. */
+const EARLY_SEND_MS = 3 * 60 * 60 * 1000;
 const newEntryId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 const metaOf = (d: Doc) => ((d as { ai_extracted_json?: Record<string, unknown> }).ai_extracted_json ?? {}) as Record<string, unknown>;
 
@@ -104,8 +106,31 @@ function useExternalTrip() {
     }
   };
 
+  /**
+   * The trip's first send while it is still hours away: ask first. Drivers
+   * finished yesterday's trip early and sent its last screenshots on today's
+   * (TestFlight 21 Oct, TRP-0048 planned 18:00 got the night's screenshots).
+   */
+  const rightTrip = (): Promise<boolean> => {
+    const plannedStart = trip?.planned_start ?? rows[0]?.stop.planned_arrival ?? null;
+    const startMs = plannedStart ? Date.parse(plannedStart) : NaN;
+    if (entries.length > 0 || rows.some((r) => r.done) || !(startMs - Date.now() > EARLY_SEND_MS)) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      Alert.alert(
+        t('ext_early_title', 'Is this the right trip?'),
+        `${t('ext_early_body', 'This trip is planned for')} ${formatDayTime(plannedStart)}. ${t('ext_early_hint', 'A screenshot from an earlier trip goes on that trip, not this one.')}`,
+        [
+          { text: t('action_cancel', 'Cancel'), style: 'cancel', onPress: () => resolve(false) },
+          { text: t('ext_early_send', 'Send here'), onPress: () => resolve(true) },
+        ],
+        { cancelable: true, onDismiss: () => resolve(false) },
+      );
+    });
+  };
+
   /** Pick the screenshot and send it to `target` (null: just sent, placed later). */
   const sendTo = async (target: Target | null, label: string, photo?: CapturedPhoto | null) => {
+    if (!(await rightTrip())) return;
     const shot = photo ?? (await pickFromGallery());
     if (!shot) return;
     await deliver({ photo: shot, target, entry: newEntryId(), uploaded: false }, label);
