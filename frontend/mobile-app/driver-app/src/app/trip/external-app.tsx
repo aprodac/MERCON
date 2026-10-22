@@ -1,16 +1,8 @@
-import { useLocalSearchParams } from 'expo-router';
-import TripLogScreen from '@/screens/TripLogScreen';
-import ExternalTripScreen, { type ExternalStyle } from '@/screens/ExternalTripScreen';
-
-const STYLES: ExternalStyle[] = ['next', 'list', 'tag'];
+import ExternalTripScreen from '@/screens/ExternalTripScreen';
 
 /**
- * Route: /trip/external-app — customer-app trips. Without `style`: the trip log
- * (shared-types tripLog). `?style=next|list|tag`: the stop-by-stop screens
- * with one screenshot per stop (ExternalTripScreen), three ideas to choose from.
+ * Route: /trip/external-app — customer-app trips: stop by stop, one screenshot
+ * of the customer's app per stop, and the driver can add a stop the office
+ * didn't plan (ExternalTripScreen). Replaced the free-form trip log on 22 Oct.
  */
-export default function ExternalAppRoute() {
-  const { style } = useLocalSearchParams<{ style?: string }>();
-  const picked = STYLES.find((x) => x === style);
-  return picked ? <ExternalTripScreen style={picked} /> : <TripLogScreen />;
-}
+export default ExternalTripScreen;

@@ -1,19 +1,16 @@
 /**
  * Customer-app trips (iMile, JD…) the way the normal trip works: the stops the
- * office planned, in order, and at each one ONE screenshot of the customer's
- * app (not three photos). A stop the office didn't plan can be added by the
- * driver. Each send is still a trip-log entry (shared-types tripLog); saying
- * where it was made puts it on that stop (POST /mobile/trips/:id/log/:entry/stop),
- * so the office sees the stop reached and checks the time off the screenshot.
- *
- * Three ways to show it, for the owner to choose from (route param `style`):
- *   next — one big card for the next stop and one button, like the normal trip
- *   list — every stop with its own button, any order
- *   tag  — one "Send screenshot" button, then "where is this?" with the next stop picked
+ * office planned, in order, one big card for the next stop, and at each stop
+ * ONE screenshot of the customer's app (not three photos). A stop the office
+ * didn't plan can be added by the driver ("Not at <stop>? Add a stop"). Each
+ * send is a trip-log entry (shared-types tripLog) put on its stop
+ * (POST /mobile/trips/:id/log/:entry/stop), so the office sees the stop reached
+ * and checks the time off the screenshot. Chosen by the owner on 22 Oct
+ * (idea 1 of three) to replace the free-form trip log.
  */
 import React, { useMemo, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, Alert, ActivityIndicator, RefreshControl, Linking, Modal, TextInput,
+  View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator, RefreshControl, Linking, Modal, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -22,7 +19,6 @@ import { tripLogEntries, TRIP_LOG_OPERATION } from '@mercon/shared-types';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { tripService, stopLabel, type MobileTrip, type TripStop } from '@mercon/mobile-shared/lib/trips';
 import { pickFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
-import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import { formatTime, formatDayTime } from '@mercon/mobile-shared/lib/dates';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
@@ -31,8 +27,6 @@ import { useCurrentTrip } from '../hooks/use-current-trip';
 import { DelayButton } from '../components/DelayButton';
 import { DelayReportModal } from '../components/DelayReportModal';
 import { showToast } from '../components/AppToast';
-
-export type ExternalStyle = 'next' | 'list' | 'tag';
 
 type Doc = NonNullable<MobileTrip['documents']>[number];
 type Target = { stop_id: string } | { new_stop: { name: string; stop_type: 'Pickup' | 'Dropoff' } };
@@ -160,7 +154,7 @@ function useExternalTrip() {
 
 type Model = ReturnType<typeof useExternalTrip>;
 
-export default function ExternalTripScreen({ style }: { style: ExternalStyle }) {
+export default function ExternalTripScreen() {
   const router = useRouter();
   const { t } = useLanguage();
   const m = useExternalTrip();
@@ -193,7 +187,7 @@ export default function ExternalTripScreen({ style }: { style: ExternalStyle }) 
         </View>
         <Text style={s.title} numberOfLines={1}>{trip.customer?.name ?? t('tlog_title', 'Trip log')}</Text>
         <Text style={s.sub} numberOfLines={1}>
-          {[trip.ref_id, `${doneCount} ${t('ext_of', 'of')} ${m.rows.length} ${t('ext_stops_done', 'stops done')}`].filter(Boolean).join(' · ')}
+          {[trip.ref_id, m.rows.length ? `${doneCount} ${t('ext_of', 'of')} ${m.rows.length} ${t('ext_stops_done', 'stops done')}` : null].filter(Boolean).join(' · ')}
         </Text>
         <View style={s.bar}>
           {m.rows.map((r, i) => <View key={r.stop.id} style={[s.barSeg, r.done && s.barDone, i === m.next && s.barNext]} />)}
@@ -202,7 +196,7 @@ export default function ExternalTripScreen({ style }: { style: ExternalStyle }) 
 
       <ScrollView
         style={s.body}
-        contentContainerStyle={{ padding: 16, paddingBottom: style === 'list' ? 120 : 190, gap: 12 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 150, gap: 12 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await m.refetch(); setRefreshing(false); }} />}
       >
         {m.failed ? (
@@ -211,15 +205,12 @@ export default function ExternalTripScreen({ style }: { style: ExternalStyle }) 
             <Text style={s.failedText}>{t('tlog_failed', 'Not sent. Tap to try again')}</Text>
           </TouchableOpacity>
         ) : null}
-        {style === 'next' ? <NextStopView m={m} onAdd={() => setAdding(true)} /> : null}
-        {style === 'list' ? <StopListView m={m} onAdd={() => setAdding(true)} /> : null}
-        {style === 'tag' ? <StopListView m={m} compact /> : null}
+        <NextStopView m={m} onAdd={() => setAdding(true)} />
         {m.loose.length ? <LooseSends m={m} /> : null}
       </ScrollView>
 
       <View style={s.footer}>
-        {style === 'tag' ? <TagFooter m={m} onNew={() => setAdding(true)} /> : null}
-        {style === 'next' && m.next < 0 ? (
+        {m.next < 0 && m.rows.length > 0 ? (
           <Text style={s.hint}>{t('ext_all_done', 'Every stop has its screenshot. Finish the trip when you are done.')}</Text>
         ) : null}
         <TouchableOpacity style={[s.finishBtn, m.next < 0 && m.rows.length > 0 && s.finishReady]} activeOpacity={0.85} onPress={m.finish} disabled={m.finishing}>
@@ -234,7 +225,7 @@ export default function ExternalTripScreen({ style }: { style: ExternalStyle }) 
   );
 }
 
-/** Idea 1 — like the normal trip: the next stop big, one button, the rest as a short list. */
+/** The next stop big with one button, then every stop as a short list. */
 function NextStopView({ m, onAdd }: { m: Model; onAdd: () => void }) {
   const { t } = useLanguage();
   const r = m.next >= 0 ? m.rows[m.next] : null;
@@ -256,11 +247,24 @@ function NextStopView({ m, onAdd }: { m: Model; onAdd: () => void }) {
           <Text style={s.oneShot}>{t('ext_one_shot', 'One screenshot of the customer app is enough.')}</Text>
         </View>
       ) : null}
+      {m.rows.length === 0 ? (
+        // No stops planned (the office didn't know them at booking): the driver adds each one.
+        <View style={s.nextCard}>
+          <Text style={s.eyebrow}>{t('ext_no_stops', 'No stops planned yet')}</Text>
+          <Text style={s.nextWhen}>{t('ext_no_stops_hint', 'At each place, add the stop and send one screenshot of the customer app.')}</Text>
+          <TouchableOpacity style={s.bigBtn} activeOpacity={0.85} onPress={onAdd} disabled={!!m.sending}>
+            {m.sending ? <ActivityIndicator color="#fff" /> : <Plus size={22} color="#fff" strokeWidth={2.6} />}
+            <Text style={s.bigText}>{m.sending ? t('tlog_sending', 'Sending…') : t('ext_add_stop_here', 'Add the stop you are at')}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+{m.rows.length ? (
       <TouchableOpacity style={s.addLink} onPress={onAdd} activeOpacity={0.8}>
         <Plus size={16} color={Colors.primary} strokeWidth={2.6} />
         <Text style={s.addLinkText}>{r ? `${t('ext_not_at', 'Not at')} ${r.name}? ${t('ext_add_stop', 'Add a stop')}` : t('ext_add_stop', 'Add a stop')}</Text>
       </TouchableOpacity>
-      <View style={s.listCard}>
+      ) : null}
+      {m.rows.length ? <View style={s.listCard}>
         {m.rows.map((row, i) => (
           <View key={row.stop.id} style={[s.miniRow, i > 0 && s.rowBorder]}>
             <Bubble done={row.done} next={i === m.next} n={i + 1} />
@@ -273,152 +277,12 @@ function NextStopView({ m, onAdd }: { m: Model; onAdd: () => void }) {
             </Text>
           </View>
         ))}
-      </View>
+      </View> : null}
     </>
   );
 }
 
-/** Idea 2 — every stop with its own button (any order); idea 3 uses it read-only (`compact`). */
-function StopListView({ m, onAdd, compact }: { m: Model; onAdd?: () => void; compact?: boolean }) {
-  const { t } = useLanguage();
-  return (
-    <>
-      {m.rows.map((r, i) => {
-        const isNext = i === m.next;
-        return (
-          <View key={r.stop.id} style={s.row}>
-            <View style={s.rail}>
-              <Bubble done={r.done} next={isNext} n={i + 1} />
-              {i < m.rows.length - 1 ? <View style={[s.line, r.done && { backgroundColor: '#16A34A' }]} /> : null}
-            </View>
-            <View style={[s.stopCard, isNext && s.stopCardNext]}>
-              <View style={s.cardHead}>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={s.stopName} numberOfLines={1}>{r.name}</Text>
-                  <Text style={s.miniSub} numberOfLines={1}>
-                    {r.kind}{r.added ? ` · ${t('ext_added_by_you', 'added by you')}` : ''}
-                    {!r.done && r.stop.planned_arrival ? ` · ${t('ext_planned', 'Planned')} ${formatTime(r.stop.planned_arrival)}` : ''}
-                  </Text>
-                </View>
-                {r.done ? (
-                  <View style={s.doneChip}><Check size={12} color="#15803D" strokeWidth={3} /><Text style={s.doneChipText}>{r.doneAt ? formatTime(r.doneAt) : t('ext_done', 'Done')}</Text></View>
-                ) : isNext ? <View style={s.nextChip}><Text style={s.nextChipText}>{t('tlog_next', 'Next')}</Text></View> : null}
-              </View>
-              {r.shots.length ? (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingTop: 10 }}>
-                  {r.shots.map((d) => <Image key={d.id} source={{ uri: resolveMediaUrl(d.file_url) ?? undefined }} style={s.thumb} />)}
-                </ScrollView>
-              ) : null}
-              {!compact && !r.done ? (
-                <TouchableOpacity
-                  style={[s.stopBtn, isNext ? s.stopBtnNext : s.stopBtnLater]}
-                  activeOpacity={0.85}
-                  disabled={!!m.sending}
-                  onPress={() => void m.sendTo({ stop_id: r.stop.id }, r.name)}
-                >
-                  {m.sending === r.name ? <ActivityIndicator color={isNext ? '#fff' : Colors.gray900} /> : <Camera size={18} color={isNext ? '#fff' : Colors.gray900} />}
-                  <Text style={[s.stopBtnText, !isNext && { color: Colors.gray900 }]}>{t('ext_send_screenshot', 'Send screenshot')}</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          </View>
-        );
-      })}
-      {onAdd ? (
-        <TouchableOpacity style={s.addCard} onPress={onAdd} activeOpacity={0.8}>
-          <Plus size={18} color={Colors.primary} strokeWidth={2.6} />
-          <View style={{ flex: 1 }}>
-            <Text style={s.addLinkText}>{t('ext_add_stop', 'Add a stop')}</Text>
-            <Text style={s.miniSub}>{t('ext_add_stop_hint', 'A stop the office did not plan — send its screenshot')}</Text>
-          </View>
-        </TouchableOpacity>
-      ) : null}
-    </>
-  );
-}
 
-/** Idea 3 — one button; after picking the screenshot, "where is this?" with the next stop already chosen. */
-function TagFooter({ m, onNew }: { m: Model; onNew: () => void }) {
-  const { t } = useLanguage();
-  const [photo, setPhoto] = useState<CapturedPhoto | null>(null);
-  const [choice, setChoice] = useState<string | null>(null);
-  // A new stop needs its name first: keep the screenshot until the sheet is filled in.
-  const [held, setHeld] = useState<CapturedPhoto | null>(null);
-  const [newOpen, setNewOpen] = useState(false);
-  const pick = async () => {
-    const shot = await pickFromGallery();
-    if (!shot) return;
-    setChoice(m.next >= 0 ? m.rows[m.next].stop.id : null);
-    setPhoto(shot);
-  };
-  const send = () => {
-    if (!photo) return;
-    const shot = photo;
-    setPhoto(null);
-    if (choice === 'new') return onNewWith(shot);
-    const r = m.rows.find((x) => x.stop.id === choice);
-    if (r) void m.sendTo({ stop_id: r.stop.id }, r.name, shot);
-  };
-  const onNewWith = (shot: CapturedPhoto) => { setHeld(shot); setNewOpen(true); };
-  const options = m.rows.filter((r) => !r.done);
-  return (
-    <>
-      <Text style={s.hint}>{t('ext_tag_hint', 'At each stop, send one screenshot of the customer app.')}</Text>
-      <TouchableOpacity style={s.bigBtn} activeOpacity={0.85} onPress={() => void pick()} disabled={!!m.sending}>
-        {m.sending ? <ActivityIndicator color="#fff" /> : <Camera size={22} color="#fff" strokeWidth={2.4} />}
-        <Text style={s.bigText}>{m.sending ? t('tlog_sending', 'Sending…') : t('ext_send_screenshot', 'Send screenshot')}</Text>
-      </TouchableOpacity>
-      <Modal visible={!!photo} transparent animationType="slide" onRequestClose={() => setPhoto(null)}>
-        <View style={s.overlay}>
-          <View style={s.sheet}>
-            <View style={s.sheetHead}>
-              <Text style={s.sheetTitle}>{t('ext_where', 'Where is this screenshot from?')}</Text>
-              <TouchableOpacity onPress={() => setPhoto(null)} hitSlop={10}><X size={20} color={Colors.gray500} /></TouchableOpacity>
-            </View>
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              {photo ? <Image source={{ uri: photo.uri }} style={s.preview} /> : null}
-              <ScrollView style={{ flex: 1, maxHeight: 320 }} contentContainerStyle={{ gap: 8 }}>
-                {options.map((r) => {
-                  const on = choice === r.stop.id;
-                  const isNext = m.rows.indexOf(r) === m.next;
-                  return (
-                    <TouchableOpacity key={r.stop.id} style={[s.option, on && s.optionOn]} onPress={() => setChoice(r.stop.id)} activeOpacity={0.8}>
-                      <View style={[s.radio, on && s.radioOn]} />
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={s.optionName} numberOfLines={1}>{r.name}</Text>
-                        <Text style={s.miniSub} numberOfLines={1}>{r.kind}{isNext ? ` · ${t('tlog_next', 'Next')}` : ''}</Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-                <TouchableOpacity style={[s.option, choice === 'new' && s.optionOn]} onPress={() => setChoice('new')} activeOpacity={0.8}>
-                  <View style={[s.radio, choice === 'new' && s.radioOn]} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.optionName}>{t('ext_somewhere_else', 'Somewhere else')}</Text>
-                    <Text style={s.miniSub}>{t('ext_new_stop', 'A new stop the office did not plan')}</Text>
-                  </View>
-                </TouchableOpacity>
-              </ScrollView>
-            </View>
-            <TouchableOpacity style={[s.bigBtn, !choice && { opacity: 0.4 }]} disabled={!choice} onPress={send} activeOpacity={0.85}>
-              <Text style={s.bigText}>{t('ext_send', 'Send')}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-      <AddStopSheet
-        visible={newOpen}
-        onClose={() => { setNewOpen(false); setHeld(null); }}
-        onAdd={(name, type) => { setNewOpen(false); if (held) void m.sendTo({ new_stop: { name, stop_type: type } }, name, held); setHeld(null); }}
-        withPhoto
-      />
-      {/* Plain "add a stop" without a screenshot already picked. */}
-      <TouchableOpacity onPress={onNew} style={{ alignSelf: 'center' }} hitSlop={8}>
-        <Text style={s.addLinkText}>{`+ ${t('ext_add_stop', 'Add a stop')}`}</Text>
-      </TouchableOpacity>
-    </>
-  );
-}
 
 /** Sends not on a stop yet — tap a stop to put them there. */
 function LooseSends({ m }: { m: Model }) {
@@ -532,23 +396,6 @@ const s = StyleSheet.create({
   bubbleDone: { backgroundColor: '#16A34A', borderColor: '#16A34A' },
   bubbleNext: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   bubbleText: { fontSize: 12, fontWeight: '800', color: Colors.gray500 },
-  row: { flexDirection: 'row', gap: 12 },
-  rail: { width: 26, alignItems: 'center', paddingTop: 14 },
-  line: { flex: 1, width: 2, backgroundColor: Colors.gray300, marginTop: 4, marginBottom: -12 },
-  stopCard: { flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 14, borderWidth: 1.5, borderColor: 'transparent' },
-  stopCardNext: { borderColor: Colors.primary },
-  cardHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  stopName: { fontSize: 17, fontWeight: '800', color: Colors.gray900 },
-  doneChip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#E8F5EE', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
-  doneChipText: { fontSize: 12, fontWeight: '800', color: '#15803D' },
-  nextChip: { backgroundColor: Colors.primary, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
-  nextChipText: { fontSize: 12, fontWeight: '800', color: '#fff' },
-  thumb: { width: 60, height: 108, borderRadius: 8, backgroundColor: Colors.gray200 },
-  stopBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 14, paddingVertical: 12, marginTop: 12 },
-  stopBtnNext: { backgroundColor: Colors.primary },
-  stopBtnLater: { backgroundColor: Colors.gray100 },
-  stopBtnText: { fontSize: 15, fontWeight: '800', color: '#fff' },
-  addCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, borderWidth: 1.5, borderStyle: 'dashed', borderColor: Colors.primary, padding: 14, marginLeft: 38 },
   footer: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#fff', padding: 16, paddingBottom: 28, borderTopLeftRadius: 24, borderTopRightRadius: 24, gap: 10, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, elevation: 8 },
   hint: { fontSize: 12.5, color: Colors.gray500, textAlign: 'center' },
   finishBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: Colors.gray100, borderRadius: 16, paddingVertical: 13 },
@@ -558,12 +405,6 @@ const s = StyleSheet.create({
   sheet: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 18, paddingBottom: 30, gap: 10 },
   sheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   sheetTitle: { fontSize: 19, fontWeight: '800', color: Colors.gray900, flex: 1 },
-  preview: { width: 92, height: 170, borderRadius: 10, backgroundColor: Colors.gray200 },
-  option: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, borderWidth: 1.5, borderColor: Colors.gray200, padding: 12 },
-  optionOn: { borderColor: Colors.primary, backgroundColor: '#FFF4F1' },
-  optionName: { fontSize: 15, fontWeight: '800', color: Colors.gray900 },
-  radio: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: Colors.gray300 },
-  radioOn: { borderColor: Colors.primary, borderWidth: 6 },
   label: { fontSize: 13, fontWeight: '700', color: Colors.gray700, marginTop: 6 },
   input: { borderWidth: 1, borderColor: Colors.gray300, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 12, fontSize: 16, color: Colors.gray900 },
   seg: { flex: 1, alignItems: 'center', borderRadius: 12, paddingVertical: 12, backgroundColor: Colors.gray100 },
