@@ -14,11 +14,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Camera, Check, Flag, MapPin, Navigation, Plus, RotateCcw, X } from 'lucide-react-native';
+import { ArrowLeft, Camera, Check, Flag, LocateFixed, MapPin, Navigation, Plus, RotateCcw, X } from 'lucide-react-native';
 import { tripLogEntries, TRIP_LOG_OPERATION } from '@mercon/shared-types';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { tripService, stopLabel, type MobileTrip, type TripStop } from '@mercon/mobile-shared/lib/trips';
-import { pickFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
+import { getDeviceLocationTag, pickFromGallery, type CapturedPhoto, type LocationTag } from '@mercon/mobile-shared/lib/camera';
 import { formatTime, formatDayTime } from '@mercon/mobile-shared/lib/dates';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
@@ -29,7 +29,8 @@ import { DelayReportModal } from '../components/DelayReportModal';
 import { showToast } from '../components/AppToast';
 
 type Doc = NonNullable<MobileTrip['documents']>[number];
-type Target = { stop_id: string } | { new_stop: { name: string; stop_type: 'Pickup' | 'Dropoff' } };
+type NewStop = { name?: string; stop_type: 'Pickup' | 'Dropoff'; lat?: number; lng?: number };
+type Target = { stop_id: string } | { new_stop: NewStop };
 
 interface StopRow {
   stop: TripStop;
@@ -171,9 +172,9 @@ export default function ExternalTripScreen() {
   }
   const trip = m.trip;
   const doneCount = m.rows.filter((r) => r.done).length;
-  const addStop = (name: string, type: 'Pickup' | 'Dropoff') => {
+  const addStop = (stop: NewStop) => {
     setAdding(false);
-    void m.sendTo({ new_stop: { name, stop_type: type } }, name);
+    void m.sendTo({ new_stop: stop }, stop.name ?? t('ext_new_stop_short', 'New stop'));
   };
 
   return (
@@ -310,15 +311,32 @@ function LooseSends({ m }: { m: Model }) {
   );
 }
 
-function AddStopSheet({ visible, onClose, onAdd, withPhoto }: { visible: boolean; onClose: () => void; onAdd: (name: string, type: 'Pickup' | 'Dropoff') => void; withPhoto?: boolean }) {
+/**
+ * A stop the office didn't plan. Where the phone is now is found when the sheet
+ * opens and saved as the stop's pin; the name is optional — left empty, the
+ * town the phone is in is used (TestFlight 22 Oct: "saving without typing a
+ * name should be possible, using the current location").
+ */
+function AddStopSheet({ visible, onClose, onAdd }: { visible: boolean; onClose: () => void; onAdd: (stop: NewStop) => void }) {
   const { t } = useLanguage();
   const [name, setName] = useState('');
   const [type, setType] = useState<'Pickup' | 'Dropoff'>('Dropoff');
+  const [loc, setLoc] = useState<LocationTag | null>(null);
+  const [locating, setLocating] = useState(false);
   const [shownFor, setShownFor] = useState(false);
   if (visible !== shownFor) {
     setShownFor(visible);
-    if (visible) { setName(''); setType('Dropoff'); }
+    if (visible) {
+      setName(''); setType('Dropoff'); setLoc(null); setLocating(true);
+      getDeviceLocationTag().then(setLoc).catch(() => setLoc(null)).finally(() => setLocating(false));
+    }
   }
+  const where = loc ? loc.address || loc.city || `${loc.latitude.toFixed(4)}, ${loc.longitude.toFixed(4)}` : null;
+  const save = () => onAdd({
+    name: name.trim() || loc?.city || undefined,
+    stop_type: type,
+    ...(loc ? { lat: loc.latitude, lng: loc.longitude } : {}),
+  });
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={s.overlay}>
@@ -328,8 +346,23 @@ function AddStopSheet({ visible, onClose, onAdd, withPhoto }: { visible: boolean
             <TouchableOpacity onPress={onClose} hitSlop={10}><X size={20} color={Colors.gray500} /></TouchableOpacity>
           </View>
           <Text style={s.miniSub}>{t('ext_add_stop_sub', 'A stop the office did not plan. The office sees it on the trip.')}</Text>
-          <Text style={s.label}>{t('ext_place', 'Place')}</Text>
-          <TextInput value={name} onChangeText={setName} placeholder={t('ext_place_hint', 'e.g. Taif, Majzuah')} placeholderTextColor={Colors.gray400} style={s.input} autoFocus />
+          <View style={s.locRow}>
+            {locating ? <ActivityIndicator size="small" color={Colors.primary} /> : <LocateFixed size={18} color={loc ? '#15803D' : Colors.gray400} />}
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={s.locTitle}>{t('ext_your_location', 'Your location')}</Text>
+              <Text style={s.miniSub} numberOfLines={2}>
+                {locating ? t('ext_finding_location', 'Finding where you are…') : where ?? t('ext_no_location', 'Location not available — the screenshot\'s place is used')}
+              </Text>
+            </View>
+          </View>
+          <Text style={s.label}>{t('ext_place_optional', 'Name (optional)')}</Text>
+          <TextInput
+            value={name}
+            onChangeText={setName}
+            placeholder={loc?.city ? `${t('ext_place_default', 'Leave empty to use')} ${loc.city}` : t('ext_place_hint', 'e.g. Taif, Majzuah')}
+            placeholderTextColor={Colors.gray400}
+            style={s.input}
+          />
           <Text style={s.label}>{t('ext_what', 'What happens here')}</Text>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             {([['Pickup', t('ext_loading', 'Loading')], ['Dropoff', t('ext_dropoff', 'Drop-off')]] as const).map(([v, label]) => (
@@ -338,9 +371,9 @@ function AddStopSheet({ visible, onClose, onAdd, withPhoto }: { visible: boolean
               </TouchableOpacity>
             ))}
           </View>
-          <TouchableOpacity style={[s.bigBtn, !name.trim() && { opacity: 0.4 }]} disabled={!name.trim()} onPress={() => onAdd(name.trim(), type)} activeOpacity={0.85}>
-            {withPhoto ? null : <Camera size={20} color="#fff" />}
-            <Text style={s.bigText}>{withPhoto ? t('ext_send', 'Send') : t('ext_add_and_send', 'Add stop and send screenshot')}</Text>
+          <TouchableOpacity style={[s.bigBtn, locating && { opacity: 0.6 }]} disabled={locating} onPress={save} activeOpacity={0.85}>
+            <Camera size={20} color="#fff" />
+            <Text style={s.bigText}>{t('ext_add_and_send', 'Add stop and send screenshot')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -405,6 +438,8 @@ const s = StyleSheet.create({
   sheet: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 18, paddingBottom: 30, gap: 10 },
   sheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   sheetTitle: { fontSize: 19, fontWeight: '800', color: Colors.gray900, flex: 1 },
+  locRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Colors.gray100, borderRadius: 12, padding: 12, marginTop: 4 },
+  locTitle: { fontSize: 14, fontWeight: '800', color: Colors.gray900 },
   label: { fontSize: 13, fontWeight: '700', color: Colors.gray700, marginTop: 6 },
   input: { borderWidth: 1, borderColor: Colors.gray300, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 12, fontSize: 16, color: Colors.gray900 },
   seg: { flex: 1, alignItems: 'center', borderRadius: 12, paddingVertical: 12, backgroundColor: Colors.gray100 },

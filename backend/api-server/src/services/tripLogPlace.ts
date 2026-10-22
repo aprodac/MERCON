@@ -28,6 +28,8 @@ export interface PlaceLogInput {
   verifiedBy?: string | null;
   /** The driver placed it: kept as "to check" for the office, and tagged so. */
   byDriver?: boolean;
+  /** A new stop: where the phone is now (else the screenshot's GPS). */
+  gps?: { lat: number; lng: number };
 }
 
 /** Where a stop sits in time: when it was reached, else when it was planned. */
@@ -35,7 +37,7 @@ const whenOf = (s: { actual_arrival: Date | null; planned_arrival: Date | null }
   (s.actual_arrival ?? s.planned_arrival)?.getTime() ?? null;
 
 export async function placeLogEntry(tripId: string, entry: string, input: PlaceLogInput): Promise<string> {
-  const { action, stop_id, stop_type, name, arrive_at, depart_at, needs_check, verifiedBy = null, byDriver = false } = input;
+  const { action, stop_id, stop_type, name, arrive_at, depart_at, needs_check, verifiedBy = null, byDriver = false, gps } = input;
   const trip = await prisma.trip.findFirst({
     where: { id: tripId, deletedAt: null },
     select: {
@@ -87,9 +89,9 @@ export async function placeLogEntry(tripId: string, entry: string, input: PlaceL
           stop_sequence: trip.stops.length + 1,
           leg_index: (trip.stops[pos] ?? trip.stops[trip.stops.length - 1])?.leg_index ?? 0,
           stop_type: stop_type === 'Pickup' ? StopType.Pickup : StopType.Dropoff,
-          location_name: (name?.trim() || e.place || 'Stop').slice(0, 120),
-          location_lat: e.gps?.lat ?? null,
-          location_lng: e.gps?.lng ?? null,
+          location_name: (name?.trim() || e.place || (byDriver ? 'Stop added by driver' : 'Stop')).slice(0, 120),
+          location_lat: gps?.lat ?? e.gps?.lat ?? null,
+          location_lng: gps?.lng ?? e.gps?.lng ?? null,
           actual_arrival: placedAt,
           ...(departure ? { actual_departure: departure } : {}),
         },

@@ -475,7 +475,7 @@ export const tripService = {
    * Say where a trip log send was made: at one of the trip's stops, or at a
    * stop the office didn't set (a new stop). Returns the trip as it is now.
    */
-  async placeTripLogEntry(id: string, entry: string, at: { stop_id: string } | { new_stop: { name: string; stop_type: 'Pickup' | 'Dropoff' } }): Promise<MobileTrip> {
+  async placeTripLogEntry(id: string, entry: string, at: { stop_id: string } | { new_stop: { name?: string; stop_type: 'Pickup' | 'Dropoff'; lat?: number; lng?: number } }): Promise<MobileTrip> {
     const { data } = await api.post(`/mobile/trips/${id}/log/${encodeURIComponent(entry)}/stop`, at);
     return data.data as MobileTrip;
   },
