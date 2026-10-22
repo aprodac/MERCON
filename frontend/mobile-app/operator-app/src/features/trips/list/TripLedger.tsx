@@ -4,16 +4,18 @@
  * and price, with the deleted ones in place (struck through) so the numbers run
  * without unexplained gaps. A month at a time (by planned day), or all time.
  * Owner request 22 Oct: "a view where we can see all trips and the trip ID count,
- * like a ledger".
+ * like a ledger" — and select several and delete them ("Select", or long-press
+ * a row), with the app's usual rule: not running, not invoiced (canDeleteTrip).
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl, ActivityIndicator } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl, ActivityIndicator, Alert } from 'react-native';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Check, ChevronLeft, ChevronRight, Trash2, X } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
-import { api } from '@mercon/mobile-shared/lib/api';
+import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import type { OperatorTrip } from '../../../lib/operator';
 import { PHASE_STYLE, phaseOf, plateOf, routeOf, statusText, type TimeFmt } from './tripListModel';
+import { canDeleteTrip, deleteTrips } from '../edit/movePlan';
 
 const INK = '#3E3C3D';
 const MUTED = '#6E6E80';
@@ -42,10 +44,16 @@ interface Row {
   trip: OperatorTrip | null;
 }
 
+/**
+ * 41 for "TRP-0041" and "TRP-DEL-0041"; a trip deleted twice under one number
+ * gets a suffix ("TRP-DEL-0042-3b3af753"), which isn't part of the number.
+ */
 const numberOf = (ref?: string | null) => {
-  const m = /(\d+)\s*$/.exec(ref ?? '');
+  const m = /^[A-Z]+-(?:DEL-)?(\d+)/i.exec(ref ?? '') ?? /(\d+)\s*$/.exec(ref ?? '');
   return m ? Number(m[1]) : null;
 };
+/** "TRP-DEL-0042-3b3af753" → "TRP-0042". */
+const liveRef = (name: string) => name.replace(/-DEL-/i, '-').replace(/^([A-Z]+-\d+)-[0-9a-f]{4,}$/i, '$1');
 const DELETED_TONE = { bg: '#F1F1F3', fg: '#9898A4' };
 
 export function TripLedger({ f, todayKey, scope, onOpen }: {
@@ -57,6 +65,10 @@ export function TripLedger({ f, todayKey, scope, onOpen }: {
 }) {
   /** 0 = this month, 1 = last month …; null = all time. */
   const [back, setBack] = useState<number | null>(0);
+  const queryClient = useQueryClient();
+  /** Select mode: the trip ids picked for deleting. null = not selecting. */
+  const [picked, setPicked] = useState<Set<string> | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [y, m] = todayKey.split('-').map(Number);
   const first = back === null ? null : new Date(Date.UTC(y, m - 1 - back, 1));
   const monthKey = first ? first.toISOString().slice(0, 7) : 'all';
@@ -114,7 +126,7 @@ export function TripLedger({ f, todayKey, scope, onOpen }: {
       .map((d) => ({
         key: d.id,
         no: numberOf(d.name),
-        ref: d.name.replace('-DEL-', '-'),
+        ref: liveRef(d.name),
         day: d.trip?.planned_start ?? null,
         customer: d.trip?.customer ?? '—',
         route: d.trip?.from || d.trip?.to ? `${d.trip?.from ?? '?'} → ${d.trip?.to ?? '?'}${d.trip?.round ? ' · round' : ''}` : '—',
@@ -146,6 +158,47 @@ export function TripLedger({ f, todayKey, scope, onOpen }: {
   const pad = (n: number) => `TRP-${String(n).padStart(4, '0')}`;
   const title = first ? first.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : 'All time';
 
+  const deletable = (r: Row) => !!r.trip && canDeleteTrip(r.trip.status);
+  const selectable = rows.filter(deletable);
+  const toggle = (r: Row) => {
+    if (!picked) return;
+    if (!deletable(r)) {
+      Alert.alert(r.ref, r.deleted ? 'Already deleted — restore it from the Recycle bin.' : `${r.status} trips can't be deleted. Cancel a running trip first; invoiced trips stay.`);
+      return;
+    }
+    const next = new Set(picked);
+    if (next.has(r.key)) next.delete(r.key); else next.add(r.key);
+    setPicked(next);
+  };
+  const allPicked = !!picked && selectable.length > 0 && selectable.every((r) => picked.has(r.key));
+  const removePicked = () => {
+    if (!picked?.size) return;
+    const ids = [...picked];
+    const refs = rows.filter((r) => picked.has(r.key)).map((r) => r.ref);
+    Alert.alert(
+      `Delete ${ids.length} trip${ids.length === 1 ? '' : 's'}?`,
+      `${refs.slice(0, 8).join(', ')}${refs.length > 8 ? ` +${refs.length - 8} more` : ''}\n\nThey disappear from the trip lists, the driver app and the customer link. Admins can restore them from the Recycle bin.`,
+      [
+        { text: 'Keep', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive', onPress: async () => {
+            setDeleting(true);
+            try {
+              const r = await deleteTrips(ids);
+              if (r.kept.length) Alert.alert(`Deleted ${r.deleted} of ${ids.length}`, `Kept because they are invoiced or paid: ${r.kept.join(', ')}`);
+              setPicked(null);
+              await queryClient.invalidateQueries({ queryKey: ['trips'] });
+            } catch (e) {
+              Alert.alert('Could not delete', getApiErrorMessage(e));
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const header = (
     <View style={{ gap: 10, marginBottom: 8 }}>
       <View style={s.periodRow}>
@@ -159,6 +212,9 @@ export function TripLedger({ f, todayKey, scope, onOpen }: {
         <View style={{ flex: 1 }} />
         <TouchableOpacity style={[s.allBtn, back === null && s.allOn]} onPress={() => setBack((b) => (b === null ? 0 : null))} accessibilityRole="button">
           <Text style={[s.allText, back === null && { color: '#fff' }]}>All time</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[s.allBtn, picked && s.allOn]} onPress={() => setPicked((p) => (p ? null : new Set()))} accessibilityRole="button">
+          <Text style={[s.allText, picked && { color: '#fff' }]}>{picked ? 'Done' : 'Select'}</Text>
         </TouchableOpacity>
       </View>
 
@@ -183,7 +239,14 @@ export function TripLedger({ f, todayKey, scope, onOpen }: {
         </View>
       </View>
 
+      {picked ? (
+        <TouchableOpacity style={s.selAll} onPress={() => setPicked(allPicked ? new Set() : new Set(selectable.map((r) => r.key)))} accessibilityRole="button">
+          <Box on={allPicked} />
+          <Text style={s.selAllText}>{allPicked ? 'Clear selection' : `Select all that can be deleted (${selectable.length})`}</Text>
+        </TouchableOpacity>
+      ) : null}
       <View style={s.headRow}>
+        {picked ? <View style={{ width: 22 }} /> : null}
         <Text style={[s.h, s.cNo]}>No.</Text>
         <Text style={[s.h, { flex: 1 }]}>Customer · route</Text>
         <Text style={[s.h, s.cAmt]}>SAR</Text>
@@ -192,6 +255,7 @@ export function TripLedger({ f, todayKey, scope, onOpen }: {
   );
 
   return (
+    <View style={{ flex: 1 }}>
     <FlatList
       data={rows}
       keyExtractor={(r) => r.key}
@@ -201,11 +265,14 @@ export function TripLedger({ f, todayKey, scope, onOpen }: {
       renderItem={({ item: r, index }) => (
         <TouchableOpacity
           style={[s.row, index % 2 === 1 && s.rowAlt, index === 0 && s.rowFirst, index === rows.length - 1 && s.rowLast]}
-          disabled={!r.trip}
-          onPress={() => r.trip && onOpen(r.trip)}
+          disabled={!r.trip && !picked}
+          onPress={() => (picked ? toggle(r) : r.trip && onOpen(r.trip))}
+          onLongPress={() => { if (!picked && deletable(r)) setPicked(new Set([r.key])); }}
           activeOpacity={0.7}
           accessibilityLabel={`${r.ref}, ${r.customer}, ${r.status}`}
+          accessibilityState={picked ? { checked: picked.has(r.key), disabled: !deletable(r) } : undefined}
         >
+          {picked ? <View style={{ paddingTop: 2 }}><Box on={picked.has(r.key)} off={!deletable(r)} /></View> : null}
           <View style={s.cNo}>
             <Text style={[s.no, r.deleted && s.struck]}>{r.no != null ? String(r.no).padStart(4, '0') : '—'}</Text>
             <Text style={s.day}>{r.day ? f.day(r.day) : ''}</Text>
@@ -224,11 +291,32 @@ export function TripLedger({ f, todayKey, scope, onOpen }: {
       )}
       ListEmptyComponent={trips.isLoading ? <ActivityIndicator color={Colors.primary} style={{ marginTop: 30 }} /> : <Text style={s.empty}>No trips in {title.toLowerCase() === 'all time' ? 'any month' : title}.</Text>}
     />
+    {picked ? (
+      <View style={s.bar}>
+        <TouchableOpacity style={s.barCancel} onPress={() => setPicked(null)} accessibilityLabel="Stop selecting" hitSlop={6}>
+          <X size={18} color={INK} />
+        </TouchableOpacity>
+        <Text style={s.barText}>{picked.size} selected</Text>
+        <TouchableOpacity style={[s.barDelete, (!picked.size || deleting) && { opacity: 0.4 }]} disabled={!picked.size || deleting} onPress={removePicked} accessibilityRole="button">
+          {deleting ? <ActivityIndicator color="#fff" /> : <Trash2 size={17} color="#fff" />}
+          <Text style={s.barDeleteText}>Delete</Text>
+        </TouchableOpacity>
+      </View>
+    ) : null}
+    </View>
+  );
+}
+
+function Box({ on, off }: { on: boolean; off?: boolean }) {
+  return (
+    <View style={[s.box, on && s.boxOn, off && s.boxOff]}>
+      {on ? <Check size={13} color="#fff" strokeWidth={3} /> : null}
+    </View>
   );
 }
 
 const s = StyleSheet.create({
-  list: { paddingHorizontal: 16, paddingBottom: 140 },
+  list: { paddingHorizontal: 16, paddingBottom: 200 },
   periodRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   step: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   off: { opacity: 0.35 },
@@ -260,5 +348,15 @@ const s = StyleSheet.create({
   statusText: { fontSize: 11, fontWeight: '700' },
   amt: { fontSize: 14, fontWeight: '700', color: INK, fontVariant: ['tabular-nums'] },
   struck: { textDecorationLine: 'line-through', color: '#A1A1AA' },
+  selAll: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 4 },
+  selAllText: { fontSize: 14, fontWeight: '700', color: INK },
+  box: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: '#B8BCC8', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  boxOn: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  boxOff: { backgroundColor: '#F1F1F3', borderColor: '#E4E4E7' },
+  bar: { position: 'absolute', left: 16, right: 16, bottom: 110, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderRadius: 18, padding: 10, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
+  barCancel: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#F1F3F7', alignItems: 'center', justifyContent: 'center' },
+  barText: { flex: 1, fontSize: 15, fontWeight: '800', color: INK },
+  barDelete: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#D92D20', borderRadius: 12, paddingHorizontal: 16, height: 40 },
+  barDeleteText: { color: '#fff', fontSize: 15, fontWeight: '800' },
   empty: { textAlign: 'center', color: MUTED, marginTop: 30, fontSize: 14 },
 });
