@@ -29,7 +29,7 @@ import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import type { OperatorTrip } from '../../../lib/operator';
 import { TripCard } from './TripCard';
 import { AppTopBar } from '@/components/AppTopBar';
-import { Chips } from '@/features/notifications/components/parts';
+import { FilterChips } from '@/components/FilterChips';
 import { TripLedger } from './TripLedger';
 import { useNow, useTripList, HISTORY_DAYS, SCHEDULE_AFTER, type View as ListView } from './useTripList';
 import { askDeleteTrip, canDeleteTrip } from '../edit/movePlan';
@@ -295,7 +295,7 @@ export default function TripsScreen() {
               renderItem={({ item }) => renderCard(item)}
               ItemSeparatorComponent={Gap}
               ListHeaderComponent={(
-                <View style={{ gap: 10, marginBottom: 4 }}>
+                <View style={{ gap: 12, marginBottom: 12 }}>
                   <DateStrip days={days} selected={selectedDay} today={todayKey} counts={perDay} onSelect={(k) => { tap(); setDay(k); }} f={f} />
                   <View style={s.dayHead}>
                     <Text style={s.dayTitle}>{dayLabel(selectedDay, todayKey, f)}</Text>
@@ -330,7 +330,7 @@ export default function TripsScreen() {
               renderItem={({ item }) => renderCard(item)}
               ItemSeparatorComponent={Gap}
               ListHeaderComponent={(
-                <View style={{ gap: 10, marginBottom: 4 }}>
+                <View style={{ gap: 12, marginBottom: 12 }}>
                   <DateStrip days={historyDays} selected={historySelected} today={todayKey} counts={historyPerDay} onSelect={(k) => { tap(); setHistoryDay(k); }} f={f} />
                   <View style={s.dayHead}>
                     <Text style={s.dayTitle}>{dayLabel(historySelected, todayKey, f)}</Text>
@@ -345,14 +345,15 @@ export default function TripsScreen() {
                       {historyCount?.cancelled ? <Text> · {historyCount.cancelled} cancelled</Text> : null}
                     </Text>
                   </View>
-                  <Chips
+                  <FilterChips
                     value={historyFilter}
-                    onChange={setHistoryFilter}
-                    options={[
-                      { value: 'all', label: 'All', count: historyAll.length },
-                      { value: 'done', label: 'Delivered', count: historyCount?.done ?? 0 },
-                      { value: 'cancelled', label: 'Cancelled', count: historyCount?.cancelled ?? 0 },
-                      { value: 'deleted', label: 'Deleted', count: deletedOnDay.length },
+                    onChange={(v) => setHistoryFilter(v)}
+                    // Counts only when there is something, so all four fit on a phone.
+                    items={[
+                      { key: 'all', label: 'All', count: historyAll.length || undefined },
+                      { key: 'done', label: 'Delivered', count: historyCount?.done || undefined },
+                      { key: 'cancelled', label: 'Cancelled', count: historyCount?.cancelled || undefined },
+                      { key: 'deleted', label: 'Deleted', count: deletedOnDay.length || undefined },
                     ]}
                   />
                   {historyFilter === 'deleted' ? deletedOnDay.map((d) => (
@@ -534,22 +535,23 @@ const s = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10, gap: 12 },
   h1: { fontSize: 24, fontWeight: '700', color: INK, letterSpacing: -0.4 },
   h1sub: { fontSize: 13, fontWeight: '600', color: MUTED, marginTop: 1 },
-  searchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, height: 46, borderRadius: 14, backgroundColor: Colors.white, paddingHorizontal: 13, borderWidth: 1, borderColor: '#EEF0F4' },
+  searchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, height: 44, borderRadius: 14, backgroundColor: Colors.white, paddingHorizontal: 13, borderWidth: 1, borderColor: '#E9EAEE' },
   searchInput: { flex: 1, fontSize: 15, color: INK, paddingVertical: 0 },
-  segment: { flexDirection: 'row', gap: 4, marginHorizontal: 16, marginTop: 12, backgroundColor: '#E4E7EE', borderRadius: 13, padding: 3 },
-  segItem: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, height: 38, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 4 },
-  segOn: { backgroundColor: Colors.white, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
-  segText: { fontSize: 13, fontWeight: '700', color: '#4A4A55' },
+  // One tab bar, same gutter as the search bar; the content below starts 12 under it.
+  segment: { flexDirection: 'row', gap: 2, marginHorizontal: 16, marginTop: 10, backgroundColor: '#E6E8ED', borderRadius: 12, padding: 3 },
+  segItem: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, height: 36, borderRadius: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: 2 },
+  segOn: { backgroundColor: Colors.white, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
+  segText: { fontSize: 13, fontWeight: '600', color: '#6E6E80' },
   segTextOn: { color: INK, fontWeight: '800' },
-  badge: { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#D92D20', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  badge: { minWidth: 17, height: 17, borderRadius: 9, backgroundColor: '#D92D20', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   badgeText: { color: Colors.white, fontSize: 11, fontWeight: '800' },
-  list: { padding: 16, paddingBottom: 120, flexGrow: 1 },
+  list: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 120, flexGrow: 1 },
   resultsHead: { fontSize: 13, fontWeight: '700', color: MUTED, marginBottom: 10 },
-  sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 12, paddingBottom: 8 },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 4, paddingBottom: 10 },
   sectionDot: { width: 6, height: 6, borderRadius: 3 },
-  sectionTitle: { fontSize: 13, fontWeight: '600', color: '#3F3F46' },
+  sectionTitle: { fontSize: 13, fontWeight: '700', color: '#3F3F46' },
   sectionCount: { fontSize: 13, fontWeight: '500', color: '#A1A1AA' },
-  dayHead: { flexDirection: 'row', alignItems: 'baseline', gap: 10, marginTop: 4 },
+  dayHead: { flexDirection: 'row', alignItems: 'baseline', gap: 10, marginTop: 2 },
   todayLink: { fontSize: 13, fontWeight: '700', color: '#C4432F' },
   dayMonth: { fontSize: 9, lineHeight: 11, fontWeight: '800', letterSpacing: 0.4, color: '#C4432F', textTransform: 'uppercase' },
   dayTitle: { fontSize: 18, fontWeight: '800', color: INK },
@@ -566,7 +568,7 @@ const s = StyleSheet.create({
   dayDots: { flexDirection: 'row', alignItems: 'center', gap: 3, height: 14 },
   dayDot: { width: 6, height: 6, borderRadius: 3 },
   dayCountSmall: { fontSize: 11, fontWeight: '800', color: MUTED },
-  empty: { alignItems: 'center', gap: 6, backgroundColor: Colors.white, borderRadius: 18, padding: 24, marginTop: 8 },
+  empty: { alignItems: 'center', gap: 6, backgroundColor: Colors.white, borderRadius: 18, padding: 24 },
   emptyIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#F4F5F8', alignItems: 'center', justifyContent: 'center' },
   emptyTitle: { fontSize: 16, fontWeight: '800', color: INK },
   emptyText: { fontSize: 13, color: MUTED, textAlign: 'center' },

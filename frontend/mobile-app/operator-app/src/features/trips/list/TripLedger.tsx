@@ -164,7 +164,8 @@ export function TripLedger({ f, todayKey, scope, onOpen }: {
   // In all time, numbers between the first and last that no trip has (not even a deleted one).
   const missing = back === null && lo != null && hi != null ? hi - lo + 1 - new Set(nums).size : 0;
   const pad = (n: number) => `TRP-${String(n).padStart(4, '0')}`;
-  const title = first ? first.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : 'All time';
+  // Short month ("Oct 2026") so it stays on one line next to All time / Select.
+  const title = first ? first.toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : 'All time';
 
   const deletable = (r: Row) => !!r.trip && canDeleteTrip(r.trip.status);
   const selectable = rows.filter(deletable);
@@ -208,12 +209,12 @@ export function TripLedger({ f, todayKey, scope, onOpen }: {
   };
 
   const header = (
-    <View style={{ gap: 10, marginBottom: 8 }}>
+    <View style={{ gap: 12, marginBottom: 8 }}>
       <View style={s.periodRow}>
         <TouchableOpacity style={s.step} onPress={() => setBack((b) => (b === null ? 0 : Math.min(b + 1, 35)))} accessibilityLabel="Previous month" hitSlop={8}>
           <ChevronLeft size={18} color={INK} />
         </TouchableOpacity>
-        <Text style={s.period}>{title}</Text>
+        <Text style={s.period} numberOfLines={1}>{title}</Text>
         <TouchableOpacity style={[s.step, (back === 0 || back === null) && s.off]} disabled={back === 0 || back === null} onPress={() => setBack((b) => Math.max((b ?? 1) - 1, 0))} accessibilityLabel="Next month" hitSlop={8}>
           <ChevronRight size={18} color={INK} />
         </TouchableOpacity>
@@ -327,15 +328,16 @@ function Box({ on, off }: { on: boolean; off?: boolean }) {
 }
 
 const s = StyleSheet.create({
-  list: { paddingHorizontal: 16, paddingBottom: 200 },
-  periodRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  step: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  list: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 200 },
+  periodRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  step: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E4E6EB', alignItems: 'center', justifyContent: 'center' },
   off: { opacity: 0.35 },
-  period: { fontSize: 16, fontWeight: '800', color: INK },
-  allBtn: { paddingHorizontal: 12, height: 32, borderRadius: 999, backgroundColor: '#fff', justifyContent: 'center' },
-  allOn: { backgroundColor: INK },
-  allText: { fontSize: 13, fontWeight: '700', color: INK },
-  summary: { backgroundColor: '#fff', borderRadius: 16, padding: 14, gap: 10 },
+  period: { fontSize: 16, fontWeight: '800', color: INK, marginHorizontal: 2 },
+  // Same pill as the list filter chips (components/FilterChips).
+  allBtn: { paddingHorizontal: 14, height: 34, borderRadius: 17, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E4E6EB', justifyContent: 'center' },
+  allOn: { backgroundColor: INK, borderColor: INK },
+  allText: { fontSize: 13, fontWeight: '600', color: INK },
+  summary: { backgroundColor: '#fff', borderRadius: 16, padding: 16, gap: 12 },
   sumTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   bigNum: { fontSize: 30, fontWeight: '800', color: INK, fontVariant: ['tabular-nums'] },
   bigLabel: { fontSize: 12.5, fontWeight: '600', color: MUTED },
@@ -343,7 +345,7 @@ const s = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   chip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
   chipText: { fontSize: 12, fontWeight: '700' },
-  headRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, marginTop: 4 },
+  headRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, marginTop: 2 },
   h: { fontSize: 11, fontWeight: '800', color: MUTED, letterSpacing: 0.4, textTransform: 'uppercase' },
   cNo: { width: 74 },
   sortBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
