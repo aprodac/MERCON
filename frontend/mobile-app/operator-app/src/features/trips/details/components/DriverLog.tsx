@@ -93,7 +93,8 @@ export function DriverLog({ trip, f, onOpen, onPick, onDone }: {
             {/* Time and place on the left, what happened to it on the right. */}
             <View style={s.head}>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={s.time}>{f.smart(e.at)}</Text>
+                {/* Numbered in the order sent (owner, 23 Oct). */}
+                <Text style={s.time}><Text style={s.num}>#{i + 1}</Text>{'  '}{f.smart(e.at)}</Text>
                 {e.place ? (
                   <View style={s.placeRow}>
                     <MapPin size={12} color={MUTED} />
@@ -229,6 +230,7 @@ const s = StyleSheet.create({
   rowLine: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E4E4E7' },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   time: { fontSize: 14, fontWeight: '800', color: INK },
+  num: { color: '#C4432F', fontWeight: '800' },
   placeRow: { flexDirection: 'row', alignItems: 'center', gap: 3, flexShrink: 1 },
   place: { fontSize: 12.5, color: MUTED, fontWeight: '600' },
   thumb: { width: 48, height: 72, borderRadius: 8, backgroundColor: '#F1F3F7', borderWidth: StyleSheet.hairlineWidth, borderColor: '#E4E4E7' },
