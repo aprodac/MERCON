@@ -1,6 +1,5 @@
 /**
  * One trip as a compact card (owner, 23 Oct: about 40% shorter), top to bottom:
- *   coloured top edge by state (late red · not started amber · on the road blue …)
  *   customer (logo, name, trip no. · time — finished: started → delivered)   status
  *   route on one line   Riyadh → Jeddah   [↺ Round trip] [Leg 1 going] [+N stops]
  *   how late, and the driver's delay reason (delayed trips only)
@@ -17,7 +16,7 @@ import { CompanyAvatar, initialsOf, niceName, shortName } from '../create/compon
 import { DriverAvatar } from '../../drivers/components/DriverAvatar';
 import { legLabel } from '../tripLegs';
 import {
-  PHASE_STYLE, delayReasonOf, driverNameOf, driverPhoneOf, isLateToStart, lateLineOf, phaseOf, plateOf, routeOf, statusText,
+  PHASE_STYLE, delayReasonOf, driverNameOf, driverPhoneOf, lateLineOf, phaseOf, plateOf, routeOf, statusText,
   type TimeFmt,
 } from './tripListModel';
 
@@ -49,8 +48,6 @@ function TripCardBase({ trip: t, f, now, showDay, clash, onPress, onLongPress }:
   const open = phase === 'draft' || phase === 'planned' || phase === 'running' || phase === 'delayed';
   const reason = phase === 'delayed' ? delayReasonOf(t) : null;
   const late = lateLineOf(t, now, f.time);
-  // The state at a glance while scrolling: the card's top edge.
-  const edge = phase === 'delayed' && isLateToStart(t) ? '#F59E0B' : ps.dot;
 
   const when = done && t.actual_end ? t.actual_end : t.planned_start ?? t.createdAt ?? null;
   // With the day shown, today and tomorrow say so ("Today · 20:00") instead of dropping the date.
@@ -76,7 +73,7 @@ function TripCardBase({ trip: t, f, now, showDay, clash, onPress, onLongPress }:
       onPress={() => onPress(t)}
       onLongPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {}); onLongPress(t); }}
       delayLongPress={300}
-      style={[s.card, { borderTopColor: edge }, (phase === 'delayed' || !!clash) && s.cardUrgent, muted && { opacity: 0.65 }]}
+      style={[s.card, (phase === 'delayed' || !!clash) && s.cardUrgent, muted && { opacity: 0.65 }]}
     >
       {/* Customer · status */}
       <View style={s.top}>
@@ -157,7 +154,7 @@ export const TripCard = memo(TripCardBase);
 const s = StyleSheet.create({
   card: {
     backgroundColor: Colors.white, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 12, gap: 10,
-    borderWidth: 1, borderColor: '#ECECEF', borderTopWidth: 3,
+    borderWidth: 1, borderColor: '#ECECEF',
     shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 2,
   },
   cardUrgent: { borderColor: '#FDD5D1' },

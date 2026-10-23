@@ -44,12 +44,12 @@ const kindOf = (u: LiveUnit, t: Trip, now: number): Kind =>
   allStopsDone(t) ? 'confirm' : isDelayed(u) ? 'late' : isSilent(u, now) ? 'silent' : 'ok';
 
 const RANK: Record<Kind, number> = { late: 0, silent: 1, confirm: 2, ok: 3 };
-/** Each card's colour by its state: the edge along its top and its status pill. */
-const TONE: Record<Kind, { edge: string; bg: string }> = {
-  late: { edge: RED, bg: '#FEF3F2' },
-  silent: { edge: '#F59E0B', bg: '#FFFAEB' },
-  confirm: { edge: '#F59E0B', bg: '#FFFAEB' },
-  ok: { edge: '#16A34A', bg: '#ECFDF3' },
+/** Each card's status pill is tinted by its state. */
+const TONE: Record<Kind, { bg: string }> = {
+  late: { bg: '#FEF3F2' },
+  silent: { bg: '#FFFAEB' },
+  confirm: { bg: '#FFFAEB' },
+  ok: { bg: '#ECFDF3' },
 };
 const CHIPS: { kind: Kind; label: string; color: string }[] = [
   { kind: 'late', label: 'Late', color: RED },
@@ -189,7 +189,7 @@ function TripCard({ row, now, time, width, onOpen, onTrack }: {
   const feedLive = u.feed ? u.feed !== 'none' : !!u.position?.fresh;
 
   return (
-    <TouchableOpacity style={[s.card, { width, borderTopColor: tone.edge }]} onPress={() => { tap(); onOpen(); }} activeOpacity={0.85}
+    <TouchableOpacity style={[s.card, { width }]} onPress={() => { tap(); onOpen(); }} activeOpacity={0.85}
       accessibilityRole="button" accessibilityLabel={`${plate}, ${niceName(t.customer_name) || t.ref_id}, ${st.text}`}>
       <View style={s.map}>
         {u.position ? (
@@ -293,7 +293,7 @@ const s = StyleSheet.create({
   emptyText: { fontSize: 14, color: MUTED },
 
   strip: { gap: 10, paddingHorizontal: 16 },
-  card: { backgroundColor: Colors.white, borderRadius: 20, borderWidth: 1, borderColor: LINE, borderTopWidth: 4, overflow: 'hidden' },
+  card: { backgroundColor: Colors.white, borderRadius: 20, borderWidth: 1, borderColor: LINE, overflow: 'hidden' },
   map: { height: MAP_H, backgroundColor: '#EFEFF1' },
   noMap: { alignItems: 'center', justifyContent: 'center', gap: 6 },
   noMapText: { fontSize: 12, fontWeight: '600', color: '#A1A1AA' },
