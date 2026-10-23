@@ -15,6 +15,8 @@ import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import { operatorService, type DriverUpdate, type OperatorTripDetail, type ShareRecipient, type TripPhase } from '../../../../lib/operator';
 import { customerContacts, digits, quickMessage, sortedStops, stopName, updateTitle, waLink, withTag, type Formatters, type QuickKind, type Remaining, type TagPerson } from '../tripDetailsModel';
 import { INK, MUTED, WA, tap } from './parts';
+import { photoSetWhere } from '../../../dashboard/actions/actionModel';
+import { niceName } from '../../create/components/ui';
 import { shareMediaFiles } from '../shareMedia';
 import { batchMessage, batchSingle, loadBatch, type Batch } from '../assignmentBatch';
 
@@ -258,7 +260,7 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
   // Same wording as the server's message (services/operatorInbox.ts), minus its link — the photos go as files.
   const caption = update
     ? [
-        `*${[trip.ref_id, updateTitle(update)].filter(Boolean).join(' · ')}${update.stop ? ` · ${update.stop.name}` : ''}*`,
+        `*${[trip.ref_id, updateTitle(update), photoSetWhere(update, niceName)].filter(Boolean).join(' · ')}*`,
         // One labelled fact per line (TestFlight: "make the message aligned, it's mixed").
         trip.customer?.name ? `Customer: ${trip.customer.name}` : null,
         update.trip.route ? `Route: ${update.trip.route}` : null,
