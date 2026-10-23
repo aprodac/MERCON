@@ -3,53 +3,77 @@ import { formatFleetStatusMessage, formatTripStatusMessage, formatWhatsAppPhone,
 
 const base: StatusTrip = {
   from: 'KHA',
-  to: 'KHA(LOCAL)',
-  vehicleClass: '10 Ton',
+  to: 'NAJ',
+  vehicleClass: '5 Ton',
   lineType: 'Round trip',
-  driverName: 'Mohammed Faizan Faiz Ahmed',
-  driverPhone: '0550975991',
-  plate: 'VSA-3071',
+  driverName: 'Shahbaz',
+  driverPhone: '0510785259',
+  plate: 'DRA-6487',
   status: 'Scheduled',
   startsAt: '09:00',
   trackingUrl: 'https://track.mercon.tech/t/abc',
 };
 
+const running: StatusTrip = {
+  ...base,
+  from: 'RUH',
+  to: 'BAH',
+  driverName: 'Wisal Zar',
+  plate: 'VTA-3241',
+  status: 'InTransit',
+  eta: { time: '14:20', inText: '1 h 24 min', minutes: 84, kmLeft: 95.6, to: 'Bah' },
+};
+
 describe('shared WhatsApp status message', () => {
-  it('formats a scheduled trip in the dispatch format', () => {
-    expect(formatTripStatusMessage(base, { tag: 'iMile Delivery Saudi Logistics' })).toBe(
+  it('a trip that has not started gets the dispatch format', () => {
+    expect(formatTripStatusMessage({ ...base, notes: ['With tailgate'] }, { tag: '~Taha', billing: 'MONTHLY' })).toBe(
       [
-        '@iMile Delivery Saudi Logistics',
-        '1. KHA >>> KHA(LOCAL) 10 TON (ROUND TRIP)',
-        'Driver Name # MOHAMMED FAIZAN FAIZ AHMED',
-        'Number # +966 550975991',
-        'Truck no # VSA-3071',
-        'Status # Scheduled · starts 09:00',
+        '@~Taha',
+        '*(MONTHLY VEHICLE)*',
+        '1. KHA>>>NAJ 05 TON (ROUND TRIP)',
+        'Driver Name # SHAHBAZ',
+        'Number # +966 51 078 5259',
+        'Truck no # DRA-6487',
+        'WITH TAILGATE',
         '',
         'Track live: https://track.mercon.tech/t/abc',
       ].join('\n'),
     );
   });
 
-  it('adds the live ETA on a running trip, and the delay', () => {
-    const text = formatTripStatusMessage({
-      ...base,
-      status: 'Delayed',
-      eta: { time: '14:20', inText: '1 h 40 min', kmLeft: 85.4, to: 'Al Abha', late: '40 min late' },
-    });
-    expect(text).toContain('Status # Delayed');
-    expect(text).toContain('ETA # 14:20 (in 1 h 40 min · 85 KM to AL ABHA) · 40 min late');
+  it('a running trip gets the vehicle status update', () => {
+    expect(formatTripStatusMessage(running, { tag: '~Mazher (ibaad)', billing: 'MONTHLY' })).toBe(
+      [
+        '@~Mazher (ibaad)',
+        '🚛 Vehicle Status Update',
+        'Truck: *VTA-3241*',
+        'Driver: WISAL ZAR',
+        'Route: RUH>>>BAH',
+        'Distance left: 96 KM TO BAH',
+        'ETA: 1.4HRS',
+        'Status: In Transit',
+        '',
+        'Track live: https://track.mercon.tech/t/abc',
+      ].join('\n'),
+    );
+  });
+
+  it('adds the delay to the ETA, and falls back to the clock time without minutes', () => {
+    expect(formatTripStatusMessage({ ...running, status: 'Delayed', eta: { ...running.eta!, late: '40 min late' } })).toContain('ETA: 1.4HRS (40 min late)\nStatus: Delayed');
+    expect(formatTripStatusMessage({ ...running, eta: { time: '14:20' } })).toContain('ETA: 14:20');
   });
 
   it('falls back to the planned arrival, never both', () => {
-    const text = formatTripStatusMessage({ ...base, status: 'InTransit', plannedArrival: '18:00' });
-    expect(text).toContain('Planned arrival # 18:00');
-    expect(text).not.toContain('ETA #');
+    const text = formatTripStatusMessage({ ...running, eta: null, plannedArrival: '18:00' });
+    expect(text).toContain('ETA: 18:00 (planned)');
+    expect(text).not.toContain('Distance left');
   });
 
   it('says delivered, without an ETA, once finished', () => {
-    const text = formatTripStatusMessage({ ...base, status: 'Completed', deliveredAt: '13:52', eta: { time: '14:20' } });
-    expect(text).toContain('Status # Delivered · 13:52');
-    expect(text).not.toContain('ETA #');
+    const text = formatTripStatusMessage({ ...running, status: 'Completed', deliveredAt: '13:52' });
+    expect(text).toContain('Status: Delivered · 13:52');
+    expect(text).not.toContain('ETA:');
+    expect(text).not.toContain('Distance left');
   });
 
   it('marks what is missing instead of inventing it', () => {
@@ -67,44 +91,41 @@ describe('shared WhatsApp status message', () => {
     );
     const parts = text.split('\n\n');
     expect(parts[0]).toBe('@iMile\nAll your trucks: https://track.mercon.tech/c/all');
-    expect(parts[1].startsWith('1. KHA >>> KHA(LOCAL)')).toBe(true);
+    expect(parts[1].startsWith('1. KHA>>>NAJ')).toBe(true);
     expect(parts[1]).toContain('Track live: https://track.mercon.tech/t/abc');
-    expect(parts[2].startsWith('2. KHA >>> KHA(LOCAL)')).toBe(true);
+    expect(parts[2].startsWith('2. KHA>>>NAJ')).toBe(true);
     expect(parts[2]).toContain('Truck no # ABC-1234');
+  });
+
+  it('several running trips share one status update title', () => {
+    const text = formatFleetStatusMessage([running, { ...running, plate: 'ABC-1234' }], { tag: 'iMile' });
+    const parts = text.split('\n\n');
+    expect(parts[0]).toBe('@iMile\n🚛 Vehicle Status Update');
+    expect(parts[1].startsWith('1. Truck: *VTA-3241*')).toBe(true);
+    expect(parts[2].startsWith('2. Truck: *ABC-1234*')).toBe(true);
   });
 
   it('writes local trips, truck classes and trip types the way the groups do', () => {
     const text = formatTripStatusMessage({ ...base, from: 'RUH', to: 'RUH', local: true, vehicleClass: '5 ton', lineType: 'SINGLE_TRIP' });
-    expect(text).toContain('1. RUH >>> RUH(LOCAL) 05 TON (SINGLE TRIP)');
+    expect(text).toContain('1. RUH>>>RUH(LOCAL) 05 TON (SINGLE TRIP)');
   });
 
-  it('the assignment message is the same format without status or ETA', () => {
-    const text = formatTripStatusMessage(
-      { ...base, status: 'InTransit', eta: { time: '14:20' }, notes: ['With tailgate'] },
-      { tag: 'Rashed Ahmed', brief: true },
-    );
-    expect(text).toBe(
-      [
-        '@Rashed Ahmed',
-        '1. KHA >>> KHA(LOCAL) 10 TON (ROUND TRIP)',
-        'Driver Name # MOHAMMED FAIZAN FAIZ AHMED',
-        'Number # +966 550975991',
-        'Truck no # VSA-3071',
-        'WITH TAILGATE',
-        '',
-        'Track live: https://track.mercon.tech/t/abc',
-      ].join('\n'),
-    );
+  it('the assignment message keeps the dispatch format even once the trip runs', () => {
+    const text = formatTripStatusMessage({ ...running, notes: ['With tailgate'] }, { tag: 'Rashed Ahmed', brief: true });
+    expect(text).toContain('1. RUH>>>BAH 05 TON (ROUND TRIP)\nDriver Name # WISAL ZAR');
+    expect(text).not.toContain('Status');
+    expect(text).not.toContain('ETA');
   });
 
   it('dates each trip when a message spans several days', () => {
     expect(formatTripStatusMessage({ ...base, date: 'Tue 6 Oct 09:00' }).split('\n')[1]).toBe('Date # Tue 6 Oct 09:00');
   });
 
-  it('normalises Saudi numbers', () => {
-    expect(formatWhatsAppPhone('0550975991')).toBe('+966 550975991');
-    expect(formatWhatsAppPhone('+966 55 097 5991')).toBe('+966 550975991');
-    expect(formatWhatsAppPhone('550975991')).toBe('+966 550975991');
+  it('writes Saudi numbers in groups', () => {
+    expect(formatWhatsAppPhone('0510785259')).toBe('+966 51 078 5259');
+    expect(formatWhatsAppPhone('+966 51 078 5259')).toBe('+966 51 078 5259');
+    expect(formatWhatsAppPhone('966510785259')).toBe('+966 51 078 5259');
+    expect(formatWhatsAppPhone('510785259')).toBe('+966 51 078 5259');
     expect(formatWhatsAppPhone('+971501234567')).toBe('+971501234567');
     expect(formatWhatsAppPhone('')).toBeNull();
   });

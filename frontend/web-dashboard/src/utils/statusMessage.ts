@@ -58,7 +58,7 @@ export function statusTripOf(t: Trip, tz = DEFAULT_TZ, trackingUrl?: string | nu
   return {
     from: placeOf(stops[0]),
     to: placeOf(last),
-    // Both ends in one city → "RUH >>> RUH(LOCAL)" (same rule as the operator app).
+    // Both ends in one city → "RUH>>>RUH(LOCAL)" (same rule as the operator app).
     local: stops.length > 1 && !!cityOf(stops[0]) && cityOf(stops[0]) === cityOf(last),
     vehicleClass: t.quotation_vehicle_class || t.vehicle_type || t.rateCard?.vehicle_type || (t.is_third_party ? t.third_party_vehicle_type : null) || null,
     lineType: lineTypeOf(t),
