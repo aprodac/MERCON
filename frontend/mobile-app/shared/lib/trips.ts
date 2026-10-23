@@ -482,6 +482,12 @@ export const tripService = {
     return data.data as MobileTrip;
   },
 
+  /** "Arrived" at a stop of a trip-log trip: the server stamps the arrival once. Returns the trip as it is now. */
+  async arriveAtTripLogStop(id: string, stopId: string, gps?: { lat: number; lng: number }): Promise<MobileTrip> {
+    const { data } = await api.post(`/mobile/trips/${id}/log/arrive`, { stop_id: stopId, ...(gps ?? {}) });
+    return data.data as MobileTrip;
+  },
+
   /** Take back a trip log send made by mistake (only shortly after sending). */
   async undoTripLogEntry(id: string, entry: string): Promise<void> {
     await api.delete(`/mobile/trips/${id}/log/${encodeURIComponent(entry)}`);
