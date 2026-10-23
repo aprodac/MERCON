@@ -1,3 +1,6 @@
+FIX: TRIPS NOT HIDDEN
+1. A trip in Emergency now shows in Now / Schedule lists instead of disappearing.
+
 NEW: SUGGESTED STOP FROM THE SCREENSHOTS (customer-app trips)
 1. Driver sends trip-log screenshots; a minute later each send in Driver's log shows "Suggested: Stop 1 · Riyadh DC · LOAD · Arrived 06:10 · Left 06:55".
 2. Tap Confirm: it makes the stop (or adds to the planned one) and saves both times. Nothing is saved unless you tap.

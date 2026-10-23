@@ -10,6 +10,6 @@ import { useCurrentTrip } from '../hooks/use-current-trip';
 
 export function TripLogRedirect({ children }: { children: React.ReactNode }) {
   const { trip } = useCurrentTrip();
-  if (trip?.driver_workflow_state === TRIP_LOG_STATE) return <Redirect href="/trip/external-app" />;
+  if (trip?.driver_workflow_state === TRIP_LOG_STATE) return <Redirect href={{ pathname: '/trip/external-app', params: { tripId: trip.id } } as any} />;
   return <>{children}</>;
 }

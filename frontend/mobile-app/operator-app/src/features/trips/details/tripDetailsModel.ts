@@ -520,6 +520,7 @@ export function statusTripOf(
     eta = {
       time: f.smart(arrival.toISOString()),
       inText: formatDuration(remaining.sec),
+      minutes: Math.round(remaining.sec / 60),
       kmLeft: remaining.approx ? null : remaining.km,
       to: remaining.to,
       late: lateMin != null && lateMin > ON_TIME_GRACE_MIN ? `${formatDuration(lateMin * 60)} late` : null,
@@ -554,7 +555,7 @@ export function statusMessageOf(trip: OperatorTripDetail, ctx: { phase: TripPhas
   });
 }
 
-/** Both stops in the same city — the route then reads "RUH >>> RUH(LOCAL)". */
+/** Both stops in the same city — the route then reads "RUH>>>RUH(LOCAL)". */
 function sameCity(a: Stop | undefined, b: Stop | undefined): boolean {
   const key = (s: Stop | undefined) => (s?.location?.city || s?.location?.code || '').trim().toLowerCase();
   return !!key(a) && key(a) === key(b);
@@ -562,16 +563,16 @@ function sameCity(a: Stop | undefined, b: Stop | undefined): boolean {
 
 /**
  * The reply in the customer's group once a truck is assigned, in the operators' own format:
- *   @Rashed Ahmed
- *   1. RUH >>> RUH(LOCAL) 05 TON (SINGLE TRIP)
- *   Driver Name # RIZWAN / Number # +966 580130492 / Truck no # DRA-9973
+ *   @Taha / *(MONTHLY VEHICLE)*
+ *   1. KHA>>>NAJ 05 TON (ROUND TRIP)
+ *   Driver Name # SHAHBAZ / Number # +966 51 078 5259 / Truck no # DRA-6487
  *   WITH TAILGATE (when the truck has one) · the tracking link
  */
 function assignmentMessage(trip: OperatorTripDetail, trackingUrl: string | null | undefined, tag: TagPerson | null | undefined, f: Formatters): string {
-  // The one shared format (@mercon/shared-types statusMessage), without the Status / ETA lines.
+  // The one shared format (@mercon/shared-types statusMessage): the dispatch layout.
   const t = statusTripOf(trip, { phase: 'planned', f, remaining: null, trackingUrl });
   const notes = !trip.is_third_party && trip.vehicle?.has_tailgate ? ['WITH TAILGATE'] : null;
-  return formatTripStatusMessage({ ...t, notes }, { tag: tag?.name ?? null, brief: true });
+  return formatTripStatusMessage({ ...t, notes }, { tag: tag?.name ?? null, billing: isMonthly(trip) ? 'MONTHLY' : 'EXTRA', brief: true });
 }
 
 /** The message for a quick send — every line the operator can still edit before sending. */
