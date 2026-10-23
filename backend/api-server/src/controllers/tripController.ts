@@ -241,6 +241,13 @@ const CONFLICT_TEXT: Record<string, string> = {
 };
 const conflictError = (code: string) => ({ success: false, error: { code, message: CONFLICT_TEXT[code] ?? code } });
 
+
+const TRIP_STATUSES = new Set<string>(Object.values(TripStatus));
+/** The valid TripStatus values in a ?status= filter ("A,B" or repeated); unknown ones are ignored. */
+function tripStatusesOf(raw: unknown): TripStatus[] {
+  const parts = (Array.isArray(raw) ? raw : [raw]).flatMap((v) => String(v ?? '').split(','));
+  return parts.map((v) => v.trim()).filter((v): v is TripStatus => TRIP_STATUSES.has(v));
+}
 export const getTrips = async (req: Request, res: Response) => {
   try {
     const { status, driver_id, vehicle_id, customer_id, rate_card_id, search, date_filter, start_date, end_date, page = '1', per_page = '20' } = req.query;
@@ -252,13 +259,10 @@ export const getTrips = async (req: Request, res: Response) => {
 
     const whereClause: Prisma.TripWhereInput = { deletedAt: null };
     if (status) {
-      if (typeof status === 'string' && status.includes(',')) {
-        whereClause.status = { in: status.split(',') as TripStatus[] };
-      } else if (Array.isArray(status)) {
-        whereClause.status = { in: status as TripStatus[] };
-      } else {
-        whereClause.status = status as TripStatus;
-      }
+      // Unknown statuses are dropped rather than failing the whole list: an
+      // app build asked for "Emergency" (not a TripStatus) and got no trips at all.
+      const wanted = tripStatusesOf(status);
+      whereClause.status = wanted.length === 1 ? wanted[0] : { in: wanted };
     }
     if (driver_id) whereClause.driverId = driver_id as string;
     if (vehicle_id) whereClause.vehicleId = vehicle_id as string;
@@ -3231,8 +3235,8 @@ export const getMonthlyTripBoard = async (req: Request, res: Response) => {
     if (driver_id && isUuid(driver_id)) whereClause.driverId = driver_id as string;
     if (vehicle_id && isUuid(vehicle_id)) whereClause.vehicleId = vehicle_id as string;
     if (typeof status === 'string' && status.trim()) {
-      const values = status.split(',').map((s) => s.trim()).filter(Boolean) as TripStatus[];
-      whereClause.status = values.length > 1 ? { in: values } : values[0];
+      const values = tripStatusesOf(status);
+      whereClause.status = values.length === 1 ? values[0] : { in: values };
     }
     // The tier/category a trip was booked under is copied onto the trip at
     // creation, but older trips predate those columns and only carry it on
