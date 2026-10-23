@@ -652,8 +652,11 @@ export const TRANSLATIONS: Record<string, TranslationItem> = {
   tlog_next: { en: 'Next', ur: 'اگلا' },
 
   // Customer-app trips stop by stop, one screenshot per stop (2026-10-22, replaced the trip log screen)
-  ext_dropoff: { en: 'Drop-off', ur: 'ان لوڈنگ' },
-  ext_loading: { en: 'Loading', ur: 'لوڈنگ' },
+  ext_dropoff: { en: 'Offload', ur: 'ان لوڈ' },
+  ext_loading: { en: 'Load', ur: 'لوڈ' },
+  ext_arrived_at: { en: 'Arrived at', ur: 'پہنچ گئے:' },
+  ext_arrived_time: { en: 'Arrived', ur: 'پہنچے' },
+  ext_tap_arrived_first: { en: "Tap 'Arrived' first", ur: "پہلے 'پہنچ گئے' دبائیں" },
   ext_return: { en: 'return', ur: 'واپسی' },
   ext_sent: { en: 'Screenshot sent', ur: 'اسکرین شاٹ بھیج دیا گیا' },
   ext_finish_left: { en: 'No screenshot yet for', ur: 'ابھی تک اسکرین شاٹ نہیں' },
