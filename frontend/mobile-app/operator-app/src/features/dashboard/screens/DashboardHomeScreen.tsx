@@ -20,7 +20,8 @@
  * operator screen shares one persistent nav instead of remounting it.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { RefreshControl, ScrollView, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { Toast } from '@mercon/mobile-shared/components/Toast';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -39,6 +40,24 @@ import { FleetMapCard } from '../home/FleetMapCard';
 import { FleetUtilisation } from '../home/FleetUtilisation';
 import { dateLabel, greeting, toStartToday } from '../home/today';
 import { needTiles } from '../home/needsTiles';
+
+/** A soft brand-coral wash behind the greeting and the top card, fading into the page (owner, 23 Oct: "some life lacking"). */
+function WarmBackdrop() {
+  return (
+    <View style={styles.backdrop} pointerEvents="none">
+      <Svg width="100%" height="100%">
+        <Defs>
+          <LinearGradient id="homeWarm" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#FFD9CC" stopOpacity="0.9" />
+            <Stop offset="0.55" stopColor="#FFEDE6" stopOpacity="0.6" />
+            <Stop offset="1" stopColor="#F6F6F7" stopOpacity="0" />
+          </LinearGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#homeWarm)" />
+      </Svg>
+    </View>
+  );
+}
 
 export default function DashboardHomeScreen() {
   const router = useRouter();
@@ -65,6 +84,7 @@ export default function DashboardHomeScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F6F6F7' }} edges={['top']}>
+      <WarmBackdrop />
       <AppTopBar urgent={inbox.counts.now} actions={[{ icon: Search, label: 'Search trips', onPress: () => router.push('/trips') }]} />
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 120, gap: 24 }}
@@ -117,3 +137,8 @@ export default function DashboardHomeScreen() {
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  // Behind the top bar and the top of the page, edge to edge; the page scrolls over it.
+  backdrop: { position: 'absolute', top: 0, left: 0, right: 0, height: 420 },
+});

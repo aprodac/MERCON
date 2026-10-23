@@ -16,7 +16,7 @@ export function FleetMapCard({ units, onOpenMap }: { units: LiveUnit[]; onOpenMa
   const onRoad = units.filter(isOnRoad).length;
   return (
     <TouchableOpacity style={s.row} onPress={() => { tap(); onOpenMap(); }} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Open fleet map">
-      <View style={s.icon}><MapIcon size={18} color={INK} strokeWidth={2.1} /></View>
+      <View style={s.icon}><MapIcon size={18} color={BLUE} strokeWidth={2.2} /></View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={s.title}>Fleet map</Text>
         <Text style={s.sub} numberOfLines={1}>
@@ -29,9 +29,11 @@ export function FleetMapCard({ units, onOpenMap }: { units: LiveUnit[]; onOpenMa
   );
 }
 
+const BLUE = '#2563EB';
+
 const s = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: Colors.white, borderRadius: 18, borderWidth: 1, borderColor: LINE, paddingHorizontal: 14, paddingVertical: 12 },
-  icon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1F1F3' },
+  icon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EAF1FF' },
   title: { fontSize: 15, fontWeight: '700', color: INK },
   sub: { fontSize: 12, color: MUTED, marginTop: 1 },
 });

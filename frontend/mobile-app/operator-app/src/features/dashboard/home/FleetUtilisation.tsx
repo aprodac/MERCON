@@ -57,7 +57,7 @@ function TypeRow({ c }: { c: FleetCategoryUtilization }) {
   ].filter((p) => p.count > 0);
   return (
     <View style={s.typeRow}>
-      <View style={s.typeIcon}><Truck size={16} color={INK} strokeWidth={2} /></View>
+      <View style={s.typeIcon}><Truck size={16} color={CORAL} strokeWidth={2.2} /></View>
       <View style={{ flex: 1, gap: 6, minWidth: 0 }}>
         <View style={s.typeHead}>
           <Text style={s.typeName} numberOfLines={1}>{c.assetType}</Text>
@@ -126,7 +126,7 @@ export function FleetUtilisation({ onAll }: { onAll: () => void }) {
               </Text>
             </View>
             <View style={[s.chev, expanded && { transform: [{ rotate: '180deg' }] }]}>
-              <ChevronDown size={17} color={INK} />
+              <ChevronDown size={17} color={CORAL} />
             </View>
           </TouchableOpacity>
 
@@ -173,7 +173,7 @@ const s = StyleSheet.create({
   big: { fontSize: 32, fontWeight: '800', color: CORAL, letterSpacing: -1, fontVariant: ['tabular-nums'] },
   lead: { fontSize: 15, fontWeight: '700', color: INK },
   muted: { fontSize: 12, color: MUTED, marginTop: 1 },
-  chev: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1F1F3' },
+  chev: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF0EB' },
   caption: { fontSize: 11, fontWeight: '700', color: MUTED, letterSpacing: 0.6, textTransform: 'uppercase' },
   bar: { flexDirection: 'row', overflow: 'hidden', backgroundColor: '#F1F1F3', gap: 2 },
   legend: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 6 },
@@ -190,7 +190,7 @@ const s = StyleSheet.create({
 
   types: { gap: 12, borderTopWidth: 1, borderTopColor: LINE, paddingTop: 14 },
   typeRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  typeIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1F1F3' },
+  typeIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF0EB' },
   typeHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
   typeName: { flexShrink: 1, fontSize: 14, fontWeight: '700', color: INK },
   typeMeta: { fontSize: 12, color: MUTED, fontVariant: ['tabular-nums'] },

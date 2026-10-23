@@ -9,7 +9,7 @@
  * then no GPS, then the rest; chips narrow it to one of those.
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Image, StyleSheet, Linking } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Image, StyleSheet, Linking, useWindowDimensions } from 'react-native';
 import { MapPin, Maximize2, Navigation, Phone, UserX } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
@@ -25,7 +25,9 @@ import { SectionHead } from './SectionHead';
 const RED = '#D92D20';
 const AMBER = '#B54708';
 const GREEN = '#15803D';
-const CARD_W = 268;
+// Smaller than before (owner, 23 Oct): narrower so the next card peeks in, a lower map.
+const CARD_W = 250;
+const MAP_H = 120;
 /** Each card is a live map; past this many the "All on the road" link takes over. */
 const SHOWN = 10;
 
@@ -42,6 +44,13 @@ const kindOf = (u: LiveUnit, t: Trip, now: number): Kind =>
   allStopsDone(t) ? 'confirm' : isDelayed(u) ? 'late' : isSilent(u, now) ? 'silent' : 'ok';
 
 const RANK: Record<Kind, number> = { late: 0, silent: 1, confirm: 2, ok: 3 };
+/** Each card's colour by its state: the edge along its top and its status pill. */
+const TONE: Record<Kind, { edge: string; bg: string }> = {
+  late: { edge: RED, bg: '#FEF3F2' },
+  silent: { edge: '#F59E0B', bg: '#FFFAEB' },
+  confirm: { edge: '#F59E0B', bg: '#FFFAEB' },
+  ok: { edge: '#16A34A', bg: '#ECFDF3' },
+};
 const CHIPS: { kind: Kind; label: string; color: string }[] = [
   { kind: 'late', label: 'Late', color: RED },
   { kind: 'silent', label: 'No GPS', color: AMBER },
@@ -102,6 +111,9 @@ export function LiveTrips({ units, tz, now, onOpenTrip, onTrack, onAll }: {
   }, [rows]);
   const active = kind && counts[kind] > 0 ? kind : null;
   const shown = (active ? rows.filter((r) => r.kind === active) : rows).slice(0, SHOWN);
+  // One trip on the road takes the full width instead of leaving a gap beside it.
+  const { width: screenW } = useWindowDimensions();
+  const cardW = shown.length === 1 ? screenW - 32 : CARD_W;
 
   const time = (iso: string | null) => {
     if (!iso) return null;
@@ -131,9 +143,9 @@ export function LiveTrips({ units, tz, now, onOpenTrip, onTrack, onAll }: {
           </ScrollView>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.bleed} contentContainerStyle={s.strip}
-            decelerationRate="fast" snapToInterval={CARD_W + 10}>
+            decelerationRate="fast" snapToInterval={cardW + 10}>
             {shown.map((r) => (
-              <TripCard key={r.trip.id} row={r} now={now} time={time}
+              <TripCard key={r.trip.id} row={r} now={now} time={time} width={cardW}
                 onOpen={() => onOpenTrip(r.trip.id)} onTrack={() => onTrack(r.trip.id)} />
             ))}
           </ScrollView>
@@ -152,8 +164,9 @@ function Chip({ label, count, color, on, onPress }: { label: string; count: numb
   );
 }
 
-function TripCard({ row, now, time, onOpen, onTrack }: {
+function TripCard({ row, now, time, width, onOpen, onTrack }: {
   row: Row;
+  width: number;
   now: number;
   time: (iso: string | null) => string | null;
   onOpen: () => void;
@@ -163,6 +176,8 @@ function TripCard({ row, now, time, onOpen, onTrack }: {
   const st = statusOf(row, now);
   const driver = u.driver;
   const driverPhoto = driver?.avatar_url ? resolveMediaUrl(driver.avatar_url) : null;
+  const logo = t.customer_logo_url ? resolveMediaUrl(t.customer_logo_url) : null;
+  const tone = TONE[kind];
   const plate = u.vehicle?.plate_number ?? t.ref_id ?? 'Trip';
   const route = routeLine(t.stops);
   const next = t.next_stop_index != null ? t.stops[t.next_stop_index] : null;
@@ -174,7 +189,7 @@ function TripCard({ row, now, time, onOpen, onTrack }: {
   const feedLive = u.feed ? u.feed !== 'none' : !!u.position?.fresh;
 
   return (
-    <TouchableOpacity style={s.card} onPress={() => { tap(); onOpen(); }} activeOpacity={0.85}
+    <TouchableOpacity style={[s.card, { width, borderTopColor: tone.edge }]} onPress={() => { tap(); onOpen(); }} activeOpacity={0.85}
       accessibilityRole="button" accessibilityLabel={`${plate}, ${niceName(t.customer_name) || t.ref_id}, ${st.text}`}>
       <View style={s.map}>
         {u.position ? (
@@ -187,7 +202,7 @@ function TripCard({ row, now, time, onOpen, onTrack }: {
             <Text style={s.noMapText}>No location yet</Text>
           </View>
         )}
-        <View style={s.pill} pointerEvents="none">
+        <View style={[s.pill, { backgroundColor: tone.bg }]} pointerEvents="none">
           <View style={[s.dot, { backgroundColor: st.dot }]} />
           <Text style={[s.pillText, { color: st.color }]} numberOfLines={1}>{st.text}</Text>
         </View>
@@ -200,6 +215,7 @@ function TripCard({ row, now, time, onOpen, onTrack }: {
 
       <View style={s.body}>
         <View style={s.top}>
+          {logo ? <Image source={{ uri: logo }} style={s.logo} resizeMode="contain" /> : null}
           <Text style={s.plate} numberOfLines={1}>{plate}</Text>
           <Text style={s.customer} numberOfLines={1}>· {niceName(t.customer_name) || t.ref_id}</Text>
         </View>
@@ -277,8 +293,8 @@ const s = StyleSheet.create({
   emptyText: { fontSize: 14, color: MUTED },
 
   strip: { gap: 10, paddingHorizontal: 16 },
-  card: { width: CARD_W, backgroundColor: Colors.white, borderRadius: 20, borderWidth: 1, borderColor: LINE, overflow: 'hidden' },
-  map: { height: 164, backgroundColor: '#EFEFF1' },
+  card: { backgroundColor: Colors.white, borderRadius: 20, borderWidth: 1, borderColor: LINE, borderTopWidth: 4, overflow: 'hidden' },
+  map: { height: MAP_H, backgroundColor: '#EFEFF1' },
   noMap: { alignItems: 'center', justifyContent: 'center', gap: 6 },
   noMapText: { fontSize: 12, fontWeight: '600', color: '#A1A1AA' },
   pill: {
@@ -294,8 +310,9 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.95)', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2,
   },
 
-  body: { padding: 12, gap: 6 },
-  top: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
+  body: { paddingHorizontal: 12, paddingVertical: 10, gap: 5 },
+  top: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  logo: { width: 22, height: 22, borderRadius: 6, backgroundColor: '#F4F4F5' },
   plate: { fontSize: 16, fontWeight: '800', color: INK },
   customer: { flex: 1, fontSize: 13, color: MUTED },
   route: { fontSize: 13, fontWeight: '600', color: INK, marginBottom: 2 },
