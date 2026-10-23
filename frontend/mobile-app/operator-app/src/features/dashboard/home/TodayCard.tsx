@@ -2,13 +2,17 @@
  * Home's top card: how today is going (a ring of done / on the road / to
  * start) and, below it in the same card, what needs you — one tile per kind
  * that has something in it (never a 0 tile), most important first, so the
- * order changes as things happen. Three show; "Show more" opens up to six.
- * A tile opens that kind's own page; the header opens Notifications → To do.
+ * order changes as things happen. Folded by default (owner, 23 Oct: "too much
+ * space"): one line with the count and a row of small chips; the chevron opens
+ * the tiles (three, "Show more" up to six) and the phone remembers which way it
+ * was left. A tile or chip opens that kind's own page; "To do" opens
+ * Notifications → To do.
  */
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, LayoutAnimation } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, LayoutAnimation, ScrollView } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { ChevronDown, ChevronRight, CircleCheckBig } from 'lucide-react-native';
+import { safeSecureStore } from '@mercon/mobile-shared/lib/secure-store';
 import type { ActionKind, Urgency } from '../actions/actionModel';
 import { KIND } from '../actions/NeedsAction';
 import { tap } from '../../notifications/components/parts';
@@ -27,6 +31,8 @@ const TILE: Record<Urgency, { bg: string; fg: string }> = {
   today: { bg: 'rgba(245,158,11,0.20)', fg: '#FDE68A' },
   watch: { bg: 'rgba(255,255,255,0.08)', fg: 'rgba(255,255,255,0.72)' },
 };
+/** Whether "what needs you" was left open on this phone. */
+const EXPANDED_KEY = 'home.needs.expanded';
 const BAR: Record<Urgency, string> = { now: '#F04438', today: '#F59E0B', watch: 'rgba(255,255,255,0.25)' };
 
 function Ring({ done, running, toStart }: { done: number; running: number; toStart: number }) {
@@ -85,6 +91,19 @@ export function TodayCard({ done, running, toStart, needs, loading, onTrips, onT
   onKind: (kind: ActionKind) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    let live = true;
+    safeSecureStore.getItemAsync(EXPANDED_KEY).then((v) => { if (live && v === '1') setExpanded(true); }).catch(() => {});
+    return () => { live = false; };
+  }, []);
+  const toggleExpanded = () => {
+    tap();
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    const next = !expanded;
+    setExpanded(next);
+    safeSecureStore.setItemAsync(EXPANDED_KEY, next ? '1' : '0').catch(() => {});
+  };
   const rows = [
     { key: 'done', label: 'Done', n: done, color: COLORS.done, onPress: () => onTrips('history') },
     { key: 'running', label: 'On the road', n: running, color: COLORS.running, onPress: () => onTrips('now') },
@@ -117,19 +136,35 @@ export function TodayCard({ done, running, toStart, needs, loading, onTrips, onT
       </View>
 
       <View style={s.needs}>
-        <TouchableOpacity style={s.needsHead} onPress={() => { tap(); onTodo(); }} activeOpacity={0.6} accessibilityRole="button">
-          {total === 0 ? <CircleCheckBig size={16} color={COLORS.done} strokeWidth={2.4} /> : null}
-          <Text style={s.needsTitle}>
-            {total === 0 ? 'Nothing needs you right now' : `${total} ${total === 1 ? 'thing needs' : 'things need'} you`}
-          </Text>
-          {urgent > 0 ? (
-            <View style={s.urgent}>
-              <View style={s.urgentDot} />
-              <Text style={s.urgentText}>{urgent} urgent</Text>
-            </View>
-          ) : <Text style={s.needsLink}>To do</Text>}
-          <ChevronRight size={16} color="rgba(255,255,255,0.7)" />
-        </TouchableOpacity>
+        <View style={s.needsHead}>
+          <TouchableOpacity
+            style={s.needsTitleBtn}
+            onPress={total > 0 ? toggleExpanded : () => { tap(); onTodo(); }}
+            activeOpacity={0.6}
+            accessibilityRole="button"
+            accessibilityState={total > 0 ? { expanded } : undefined}
+          >
+            {total === 0 ? <CircleCheckBig size={16} color={COLORS.done} strokeWidth={2.4} /> : null}
+            <Text style={s.needsTitle} numberOfLines={1}>
+              {total === 0 ? 'Nothing needs you right now' : `${total} ${total === 1 ? 'thing needs' : 'things need'} you`}
+            </Text>
+            {urgent > 0 ? (
+              <View style={s.urgent}>
+                <View style={s.urgentDot} />
+                <Text style={s.urgentText}>{urgent} urgent</Text>
+              </View>
+            ) : null}
+            {total > 0 ? (
+              <View style={expanded ? { transform: [{ rotate: '180deg' }] } : undefined}>
+                <ChevronDown size={17} color="rgba(255,255,255,0.75)" />
+              </View>
+            ) : null}
+          </TouchableOpacity>
+          <TouchableOpacity style={s.todoBtn} onPress={() => { tap(); onTodo(); }} hitSlop={8} accessibilityRole="button" accessibilityLabel="Open To do">
+            <Text style={s.needsLink}>To do</Text>
+            <ChevronRight size={15} color="rgba(255,255,255,0.7)" />
+          </TouchableOpacity>
+        </View>
 
         {split.length > 1 ? (
           <View style={s.bar}>
@@ -137,7 +172,29 @@ export function TodayCard({ done, running, toStart, needs, loading, onTrips, onT
           </View>
         ) : null}
 
-        {shown.length ? (
+        {!expanded && needs.length ? (
+          // Folded: the same kinds as small chips on one line.
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips}>
+            {needs.slice(0, MOST).map((t) => {
+              const tone = TILE[t.urgency];
+              return (
+                <TouchableOpacity
+                  key={t.kind}
+                  style={[s.chip, { backgroundColor: tone.bg }]}
+                  onPress={() => { tap(); onKind(t.kind); }}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${t.count} ${TILE_LABEL[t.kind]}`}
+                >
+                  <Text style={s.chipNum}>{t.count}</Text>
+                  <Text style={[s.chipLabel, { color: tone.fg }]} numberOfLines={1}>{TILE_LABEL[t.kind]}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        ) : null}
+
+        {expanded && shown.length ? (
           <View style={s.tiles}>
             {shown.map((t) => {
               const tone = TILE[t.urgency];
@@ -164,7 +221,7 @@ export function TodayCard({ done, running, toStart, needs, loading, onTrips, onT
           </View>
         ) : null}
 
-        {more > 0 ? (
+        {expanded && more > 0 ? (
           <TouchableOpacity style={s.more} onPress={toggle} activeOpacity={0.6} accessibilityRole="button" accessibilityState={{ expanded: open }}>
             <Text style={s.moreText}>{open ? 'Show less' : `Show ${more} more`}</Text>
             <View style={open ? { transform: [{ rotate: '180deg' }] } : undefined}>
@@ -189,12 +246,18 @@ const s = StyleSheet.create({
   legendNum: { fontSize: 16, fontWeight: '700', color: '#FFFFFF', fontVariant: ['tabular-nums'] },
 
   needs: { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.12)', paddingTop: 14, gap: 10 },
-  needsHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  needsTitle: { flex: 1, fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
+  needsHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  needsTitleBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 32 },
+  needsTitle: { flexShrink: 1, fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
+  todoBtn: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   needsLink: { fontSize: 13, color: 'rgba(255,255,255,0.7)' },
   urgent: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   urgentDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#F04438' },
   urgentText: { fontSize: 13, fontWeight: '600', color: '#FECACA' },
+  chips: { gap: 6 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, paddingHorizontal: 11, height: 30 },
+  chipNum: { fontSize: 13, fontWeight: '800', color: '#FFFFFF', fontVariant: ['tabular-nums'] },
+  chipLabel: { fontSize: 12, fontWeight: '600' },
   bar: { flexDirection: 'row', height: 5, borderRadius: 3, overflow: 'hidden', gap: 2 },
   tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tile: { flexGrow: 1, flexBasis: '30%', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, gap: 2 },

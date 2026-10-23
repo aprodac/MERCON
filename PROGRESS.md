@@ -765,6 +765,7 @@ names, unreliable arrivals and no reasons, and cannot be backfilled.
 - ⬜ TRP-0041 map pin 1 not at Riyadh — the stop's saved coordinates are wrong (data), not code.
 - ✅ Owner (TestFlight 22 Oct): trip live map has only **Drive** and **Route** (2D / 3D removed; a saved 2D/3D view opens on Route) (`fleet/TripLiveScreen.tsx`).
 - ✅ Owner (TestFlight 22 Oct): Send status / ETA / location / delay — "Send as" **Link** (WhatsApp preview), **Picture** (the link's preview card `GET /public/og/t/:token/card.png` shared as a file with the message as caption, no link) or **Text**; preview drawn as the WhatsApp bubble with that picture on top; recipients as a drop-down (one line, the list only while choosing) so the preview fits; Reset after editing (`ShareSheet.tsx`, also used by the live map's Share ETA). Not phone-tested; the card can't be fetched from the dev sandbox.
+- ✅ Owner (23 Oct): Home's "N things need you" folds — one line with the count, urgent count and small chips per kind; the chevron opens the tiles; the phone remembers open / folded (`home/TodayCard.tsx`).
 - ⬜ New TestFlight notes 22 Oct (operator build 130, not looked at yet): "Driver not closed trip yet and not showing delay"; "Trip ledger not updated".
 - Already covered before this round: "Edit option" on screenshot time (tappable "Time to confirm"), timestamp check on the driver's log (request 70 suggestions, needs the new build).
 
