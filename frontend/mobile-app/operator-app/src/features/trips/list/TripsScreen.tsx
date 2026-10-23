@@ -15,13 +15,13 @@
  */
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, TextInput, SectionList, FlatList, RefreshControl, ActivityIndicator, Linking,
+  View, Text, TouchableOpacity, StyleSheet, TextInput, SectionList, FlatList, RefreshControl, ActivityIndicator, Linking, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  BookOpen, Building2, CalendarDays, CircleCheckBig, History, AlertTriangle, MessageCircle, Phone, Plus, Radio, Search, Send, Trash2, Truck, UserRound, X, ArrowUpRight, type LucideIcon,
+  BookOpen, Building2, CalendarDays, CircleCheckBig, History, MessageCircle, Phone, Plus, Radio, Search, Send, Trash2, Truck, UserRound, X, ArrowUpRight, type LucideIcon,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
@@ -57,9 +57,12 @@ export default function TripsScreen() {
   );
   const [view, setView] = useState<ListView>(
     params.vehicleId || params.customerId ? 'history'
-      : params.view === 'delayed' || params.view === 'schedule' || params.view === 'history' || params.view === 'ledger' ? params.view
+      : params.view === 'schedule' || params.view === 'history' || params.view === 'ledger' ? params.view
       : 'now',
   );
+  // Delayed is a filter inside Now, not a tab of its own (owner, 23 Oct: "too many tabs").
+  // Links that still ask for the delayed view open Now on it.
+  const [nowFilter, setNowFilter] = useState<NowFilter>(params.view === 'delayed' ? 'delayed' : 'all');
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -126,12 +129,21 @@ export default function TripsScreen() {
     [data.open],
   );
 
-  // The sections are the grouping — no filter chips on top of them.
-  const nowSections = useMemo(() => [
-    { key: 'lateStart', title: 'Not started — past start time', tone: '#B54708', data: board.lateStart },
-    { key: 'attention', title: 'Needs attention', tone: '#D92D20', data: board.attention },
-    { key: 'road', title: 'On the road', tone: '#2F5FD0', data: board.road },
-  ].filter((sct) => sct.data.length > 0), [board]);
+  // All: the board's sections. A chip narrows Now to one group — Delayed
+  // (every delayed / emergency trip, started or not) or one of the sections.
+  const nowGroups = useMemo(() => [
+    { key: 'delayed' as const, label: 'Delayed', title: 'Delayed · longest first', tone: '#D92D20', data: delayedTrips },
+    { key: 'lateStart' as const, label: 'Not started', title: 'Not started — past start time', tone: '#B54708', data: board.lateStart },
+    { key: 'attention' as const, label: 'Needs attention', title: 'Needs attention', tone: '#D92D20', data: board.attention },
+    { key: 'road' as const, label: 'On the road', title: 'On the road', tone: '#2F5FD0', data: board.road },
+  ], [board, delayedTrips]);
+  const nowTotal = board.lateStart.length + board.attention.length + board.road.length;
+  const activeFilter = nowFilter !== 'all' && nowGroups.find((g) => g.key === nowFilter)?.data.length ? nowFilter : 'all';
+  const nowSections = useMemo(
+    () => (activeFilter === 'all' ? nowGroups.filter((g) => g.key !== 'delayed') : nowGroups.filter((g) => g.key === activeFilter))
+      .filter((g) => g.data.length > 0),
+    [nowGroups, activeFilter],
+  );
 
   // ── Schedule: open trips only — counts per day and the chosen day's trips ─
   // Only trips still to start: once a trip is on the road it's in Now (TestFlight: "Schedule shows on the road").
@@ -181,8 +193,7 @@ export default function TripsScreen() {
   );
 
   const views: { id: ListView; label: string; icon: LucideIcon; badge?: number }[] = [
-    { id: 'now', label: 'Now', icon: Radio },
-    { id: 'delayed', label: 'Delayed', icon: AlertTriangle, badge: delayedTrips.length || undefined },
+    { id: 'now', label: 'Now', icon: Radio, badge: delayedTrips.length || undefined },
     { id: 'schedule', label: 'Schedule', icon: CalendarDays },
     { id: 'history', label: 'History', icon: History },
     { id: 'ledger', label: 'Ledger', icon: BookOpen },
@@ -261,24 +272,21 @@ export default function TripsScreen() {
             })}
           </View>
 
-          {view === 'delayed' ? (
-            <FlatList
-              data={delayedTrips}
-              keyExtractor={(t) => t.id}
-              contentContainerStyle={s.list}
-              refreshControl={refreshControl}
-              renderItem={({ item }) => renderCard(item, true)}
-              ItemSeparatorComponent={Gap}
-              ListHeaderComponent={delayedTrips.length ? <Text style={s.resultsHead}>{delayedTrips.length} delayed · longest first</Text> : null}
-              ListEmptyComponent={data.openLoading ? <Loading /> : <Empty icon={CircleCheckBig} title="Nothing delayed" text="Every open trip is on schedule." good />}
-            />
-          ) : view === 'now' ? (
+          {view === 'now' ? (
             <SectionList
               sections={nowSections}
               keyExtractor={(t) => t.id}
               contentContainerStyle={s.list}
               refreshControl={refreshControl}
               stickySectionHeadersEnabled={false}
+              ListHeaderComponent={nowTotal > 0 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterBleed} contentContainerStyle={s.filters}>
+                  <FilterChip label="All" count={nowTotal} on={activeFilter === 'all'} onPress={() => setNowFilter('all')} />
+                  {nowGroups.filter((g) => g.data.length > 0).map((g) => (
+                    <FilterChip key={g.key} label={g.label} count={g.data.length} tone={g.tone} on={activeFilter === g.key} onPress={() => setNowFilter(g.key)} />
+                  ))}
+                </ScrollView>
+              ) : null}
               renderSectionHeader={({ section }) => <SectionHead title={section.title} count={section.data.length} tone={(section as any).tone} />}
               renderItem={({ item }) => renderCard(item, true)}
               ItemSeparatorComponent={Gap}
@@ -443,6 +451,18 @@ function Empty({ icon: Icon, title, text, good, action }: {
   );
 }
 
+type NowFilter = 'all' | 'delayed' | 'lateStart' | 'attention' | 'road';
+
+function FilterChip({ label, count, tone, on, onPress }: { label: string; count: number; tone?: string; on: boolean; onPress: () => void }) {
+  return (
+    <TouchableOpacity style={[s.fChip, on && s.fChipOn]} onPress={() => { if (!on) tap(); onPress(); }} activeOpacity={0.75} accessibilityRole="button" accessibilityState={{ selected: on }}>
+      {tone && !on ? <View style={[s.sectionDot, { backgroundColor: tone }]} /> : null}
+      <Text style={[s.fChipText, on && { color: Colors.white }]}>{label}</Text>
+      <Text style={[s.fChipCount, { color: on ? Colors.white : tone ?? MUTED }]}>{count}</Text>
+    </TouchableOpacity>
+  );
+}
+
 function SectionHead({ title, count, tone }: { title: string; count: number; tone?: string }) {
   return (
     <View style={s.sectionHead}>
@@ -547,6 +567,13 @@ const s = StyleSheet.create({
   badgeText: { color: Colors.white, fontSize: 11, fontWeight: '800' },
   list: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 120, flexGrow: 1 },
   resultsHead: { fontSize: 13, fontWeight: '700', color: MUTED, marginBottom: 10 },
+  // Bleed to the screen edges so the chips scroll under the page padding.
+  filterBleed: { marginHorizontal: -16, marginBottom: 12, flexGrow: 0 },
+  filters: { gap: 6, paddingHorizontal: 16 },
+  fChip: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 34, paddingHorizontal: 12, borderRadius: 17, backgroundColor: Colors.white, borderWidth: 1, borderColor: '#E9EAEE' },
+  fChipOn: { backgroundColor: INK, borderColor: INK },
+  fChipText: { fontSize: 13, fontWeight: '600', color: '#3F3F46' },
+  fChipCount: { fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
   sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 4, paddingBottom: 10 },
   sectionDot: { width: 6, height: 6, borderRadius: 3 },
   sectionTitle: { fontSize: 13, fontWeight: '700', color: '#3F3F46' },
