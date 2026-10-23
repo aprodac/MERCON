@@ -26,6 +26,7 @@ import {
 import * as Haptics from 'expo-haptics';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
+import { ErrorState } from '@mercon/mobile-shared/ui';
 import type { OperatorTrip } from '../../../lib/operator';
 import { TripCard } from './TripCard';
 import { AppTopBar } from '@/components/AppTopBar';
@@ -292,7 +293,8 @@ export default function TripsScreen() {
               renderSectionHeader={({ section }) => <SectionHead title={section.title} count={section.data.length} tone={(section as any).tone} />}
               renderItem={({ item }) => renderCard(item, true)}
               ItemSeparatorComponent={Gap}
-              ListEmptyComponent={data.openLoading ? <Loading /> : <Empty icon={CircleCheckBig} title="Nothing on the road" text="Trips show here once they start. Upcoming trips are in Schedule." good />}
+              // A failed load says so — it used to read "Nothing on the road" while trips were out.
+              ListEmptyComponent={data.openLoading ? <Loading /> : data.error ? <ErrorState message="Couldn't load trips." onRetry={refresh} /> : <Empty icon={CircleCheckBig} title="Nothing on the road" text="Trips show here once they start. Upcoming trips are in Schedule." good />}
             />
           ) : view === 'history' && historyMode === 'ledger' ? (
             <View style={{ flex: 1 }}>
@@ -325,7 +327,7 @@ export default function TripsScreen() {
                   </View>
                 </View>
               )}
-              ListEmptyComponent={data.windowLoading ? <Loading /> : (
+              ListEmptyComponent={data.windowLoading ? <Loading /> : data.error ? <ErrorState message="Couldn't load trips." onRetry={refresh} /> : (
                 <Empty
                   icon={CalendarDays}
                   title="No trips to run this day"

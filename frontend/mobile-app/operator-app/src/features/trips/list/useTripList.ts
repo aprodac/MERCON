@@ -21,7 +21,8 @@ export const SCHEDULE_BEFORE = 14;
 export const SCHEDULE_AFTER = 62;
 // How far back History's date strip goes; older trips are found with search.
 export const HISTORY_DAYS = 60;
-const OPEN_STATUSES = 'Draft,Scheduled,Loading,InTransit,Delayed,Emergency';
+// TripStatus values only — an unknown one ("Emergency") made the server refuse the whole list.
+const OPEN_STATUSES = 'Draft,Scheduled,Loading,InTransit,Delayed';
 
 /** A deleted trip as the Recycle Bin lists it. */
 export interface DeletedTrip { id: string; name: string; deletedAt: string }
