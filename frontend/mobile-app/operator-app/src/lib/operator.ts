@@ -296,7 +296,8 @@ export interface DriverUpdate {
   } | null;
   vehicle_plate: string | null;
   driver: { name: string; phone: string | null } | null;
-  stop: { id: string; name: string; type: string; sequence: number } | null;
+  /** `leg`: 1 going / 2 returning on a round trip, null one-way (absent from servers before 23 Oct). */
+  stop: { id: string; name: string; type: string; sequence: number; leg?: 1 | 2 | null } | null;
   /** Trip log send (customer-app trip): where the phone was — no stop yet. */
   place?: string | null;
   stage: LiveMediaStage;
