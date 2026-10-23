@@ -288,14 +288,14 @@ function NextStopView({ m, onAdd }: { m: Model; onAdd: () => void }) {
           <Text style={s.eyebrow}>{`${t('ext_stop', 'Stop')} ${m.next + 1} ${t('ext_of', 'of')} ${m.rows.length} · ${r.kind}`}</Text>
           <Text style={s.nextName} numberOfLines={2}>{r.name}</Text>
           <TouchableOpacity
-            style={[s.arriveBtn, r.arrivedAt && s.arriveDone]}
-            activeOpacity={0.85}
+            style={[s.arriveBtn, r.arrivedAt && s.bigOff]}
+            activeOpacity={1}
             disabled={!!r.arrivedAt || !!m.arriving}
             onPress={() => void m.arrive(r.stop.id)}
           >
             {m.arriving === r.stop.id ? <ActivityIndicator color="#fff" /> : null}
             <Text style={s.arriveText}>
-              {r.arrivedAt ? `✅ ${t('ext_arrived_time', 'Arrived')} ${formatTime(r.arrivedAt)}` : `📍 ${t('ext_arrived_at', 'Arrived at')} ${r.name}`}
+              {r.arrivedAt ? `✓ ${t('ext_arrived_time', 'Arrived')} ${formatTime(r.arrivedAt)}` : `📍 ${t('ext_arrived_at', 'Arrived at')} ${r.name}`}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -482,7 +482,6 @@ const s = StyleSheet.create({
   nextName: { fontSize: 28, fontWeight: '800', color: Colors.gray900 },
   nextWhen: { fontSize: 14, color: Colors.gray500, fontWeight: '600' },
   arriveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: '#16A34A', borderRadius: 18, paddingVertical: 18, paddingHorizontal: 12, marginTop: 10 },
-  arriveDone: { backgroundColor: '#15803D', opacity: 0.9 },
   arriveText: { color: '#fff', fontSize: 19, fontWeight: '800', flexShrink: 1, textAlign: 'center' },
   bigOff: { backgroundColor: Colors.gray300 },
   dirLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 4 },
