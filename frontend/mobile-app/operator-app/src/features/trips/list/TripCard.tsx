@@ -1,24 +1,22 @@
 /**
- * One trip as a card, top to bottom:
+ * One trip as a compact card (owner, 23 Oct: about 40% shorter), top to bottom:
  *   customer (logo, name, trip no. · time — finished: started → delivered)   status
- *   route panel   ○ from
- *                 ● to                                     +N stops
- *                 ↺ round trip · back to … (· leg 1 / 2 while running)
- *   delay reason bar (only when the driver gave one)
- *   driver · plate · call
- * Names wrap instead of truncating. Long-press for quick actions.
+ *   route on one line   Riyadh → Jeddah   [↺ Round trip] [Leg 1 going] [+N stops]
+ *   how late, and the driver's delay reason (delayed trips only)
+ *   driver (first and last name) · plate · call
+ * Long-press for quick actions.
  */
 import React, { memo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native';
-import { Phone, Truck, AlertCircle, RotateCcw } from 'lucide-react-native';
+import { Phone, Truck, AlertCircle, Clock3, RotateCcw } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import type { OperatorTrip } from '../../../lib/operator';
-import { CompanyAvatar, initialsOf, niceName } from '../create/components/ui';
+import { CompanyAvatar, initialsOf, niceName, shortName } from '../create/components/ui';
 import { DriverAvatar } from '../../drivers/components/DriverAvatar';
 import { legLabel } from '../tripLegs';
 import {
-  PHASE_STYLE, delayReasonOf, driverNameOf, driverPhoneOf, phaseOf, plateOf, routeOf, statusText,
+  PHASE_STYLE, delayReasonOf, driverNameOf, driverPhoneOf, lateLineOf, phaseOf, plateOf, routeOf, statusText,
   type TimeFmt,
 } from './tripListModel';
 
@@ -49,6 +47,7 @@ function TripCardBase({ trip: t, f, now, showDay, clash, onPress, onLongPress }:
   const muted = phase === 'cancelled';
   const open = phase === 'draft' || phase === 'planned' || phase === 'running' || phase === 'delayed';
   const reason = phase === 'delayed' ? delayReasonOf(t) : null;
+  const late = lateLineOf(t, now, f.time);
 
   const when = done && t.actual_end ? t.actual_end : t.planned_start ?? t.createdAt ?? null;
   // With the day shown, today and tomorrow say so ("Today · 20:00") instead of dropping the date.
@@ -78,9 +77,9 @@ function TripCardBase({ trip: t, f, now, showDay, clash, onPress, onLongPress }:
     >
       {/* Customer · status */}
       <View style={s.top}>
-        <CompanyAvatar name={t.customer?.name} url={t.customer?.logo_url} size={38} />
+        <CompanyAvatar name={t.customer?.name} url={t.customer?.logo_url} size={34} />
         <View style={{ flex: 1 }}>
-          <Text style={s.customer} numberOfLines={2}>{niceName(t.customer?.name) || 'No customer'}</Text>
+          <Text style={s.customer} numberOfLines={1}>{niceName(t.customer?.name) || 'No customer'}</Text>
           {/* Two lines: next to the status badge one line cut off the time ("Thu 10 Sep..."). */}
           <Text style={s.sub} numberOfLines={2}>{sub}</Text>
         </View>
@@ -90,32 +89,27 @@ function TripCardBase({ trip: t, f, now, showDay, clash, onPress, onLongPress }:
         </View>
       </View>
 
-      {/* Route panel */}
-      <View style={s.routeBox}>
-        <View style={s.route}>
-          <View style={s.rail}>
-            <View style={[s.ring, { borderColor: '#16A34A' }]} />
-            <View style={s.railLine} />
-            <View style={[s.pin, { backgroundColor: ps.dot }]} />
-          </View>
-          <View style={s.places}>
-            <Text style={s.place} numberOfLines={2}>{niceName(route.from)}</Text>
-            <Text style={s.place} numberOfLines={2}>{niceName(route.to)}</Text>
-          </View>
-          {route.via > 0 ? (
-            <View style={s.via}><Text style={s.viaText}>{`+${route.via} ${route.via === 1 ? 'stop' : 'stops'}`}</Text></View>
-          ) : null}
-        </View>
+      {/* Route on one line; round trip, leg and extra stops as small tags after it. */}
+      <View style={s.routeRow}>
+        <Text style={s.routeText} numberOfLines={2}>
+          {niceName(route.from)}<Text style={s.arrow}>{'  →  '}</Text>{niceName(route.to)}
+        </Text>
         {route.back ? (
-          <View style={s.backRow}>
-            <RotateCcw size={12} color={MUTED} strokeWidth={2.4} />
-            <Text style={s.backText} numberOfLines={1}>
-              {`Round trip · back to ${niceName(route.back)}`}
-              {route.leg ? <Text style={s.legText}>{`  ·  ${legLabel(route.leg)}`}</Text> : null}
-            </Text>
+          <View style={s.tag}>
+            <RotateCcw size={11} color={MUTED} strokeWidth={2.4} />
+            <Text style={s.tagText}>{niceName(route.back) === niceName(route.from) ? 'Round trip' : `Back to ${niceName(route.back)}`}</Text>
           </View>
         ) : null}
+        {route.leg ? <View style={[s.tag, s.legTag]}><Text style={[s.tagText, s.legText]}>{legLabel(route.leg)}</Text></View> : null}
+        {route.via > 0 ? <View style={s.tag}><Text style={s.tagText}>{`+${route.via} ${route.via === 1 ? 'stop' : 'stops'}`}</Text></View> : null}
       </View>
+
+      {late || reason ? (
+        <View style={s.reason}>
+          {late ? <Clock3 size={14} color={RED} strokeWidth={2.4} /> : <AlertCircle size={14} color={RED} strokeWidth={2.4} />}
+          <Text style={s.reasonText} numberOfLines={2}>{[late, reason].filter(Boolean).join(' · ')}</Text>
+        </View>
+      ) : null}
 
       {clash ? (
         <View style={s.reason}>
@@ -124,20 +118,13 @@ function TripCardBase({ trip: t, f, now, showDay, clash, onPress, onLongPress }:
         </View>
       ) : null}
 
-      {reason ? (
-        <View style={s.reason}>
-          <AlertCircle size={14} color={RED} strokeWidth={2.4} />
-          <Text style={s.reasonText} numberOfLines={2}>{reason}</Text>
-        </View>
-      ) : null}
-
       {/* Driver · plate · call */}
       <View style={s.foot}>
         {driver ? (
           <DriverAvatar initials={initialsOf(driver)} avatarUrl={t.is_third_party ? null : t.driver?.avatar_url} size={28} />
         ) : <View style={s.noDriver} />}
-        <Text style={[s.driver, !driver && open && { color: RED }]} numberOfLines={2}>
-          {driver ? niceName(driver) : open ? 'No driver yet' : '—'}
+        <Text style={[s.driver, !driver && open && { color: RED }]} numberOfLines={1}>
+          {driver ? shortName(driver) : open ? 'No driver yet' : '—'}
         </Text>
         {plate ? (
           <View style={s.plate}>
@@ -166,7 +153,7 @@ export const TripCard = memo(TripCardBase);
 
 const s = StyleSheet.create({
   card: {
-    backgroundColor: Colors.white, borderRadius: 18, padding: 14, gap: 12,
+    backgroundColor: Colors.white, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 12, gap: 10,
     borderWidth: 1, borderColor: '#ECECEF',
     shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 2,
   },
@@ -178,19 +165,13 @@ const s = StyleSheet.create({
   dot: { width: 6, height: 6, borderRadius: 3 },
   statusText: { fontSize: 12, fontWeight: '700' },
 
-  routeBox: { backgroundColor: '#F6F6F8', borderRadius: 14, paddingVertical: 12, paddingHorizontal: 12, gap: 8 },
-  route: { flexDirection: 'row', alignItems: 'stretch', gap: 12 },
-  rail: { alignItems: 'center', paddingVertical: 5 },
-  ring: { width: 10, height: 10, borderRadius: 5, borderWidth: 2, backgroundColor: Colors.white },
-  railLine: { flex: 1, width: 2, backgroundColor: '#D4D4D8', marginVertical: 3, minHeight: 12 },
-  pin: { width: 10, height: 10, borderRadius: 5 },
-  places: { flex: 1, justifyContent: 'space-between', gap: 10 },
-  backRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#E9E9EC' },
-  backText: { flex: 1, fontSize: 12, fontWeight: '600', color: MUTED },
-  legText: { color: '#1D4ED8', fontWeight: '700' },
-  place: { fontSize: 15, fontWeight: '600', color: '#3E3C3D', lineHeight: 20 },
-  via: { alignSelf: 'center', backgroundColor: Colors.white, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: '#E4E4E7' },
-  viaText: { fontSize: 11, fontWeight: '700', color: MUTED },
+  routeRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
+  routeText: { flexShrink: 1, fontSize: 15, fontWeight: '700', color: INK, lineHeight: 20, marginRight: 2 },
+  arrow: { color: '#A1A1AA', fontWeight: '600' },
+  tag: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 7, paddingHorizontal: 7, paddingVertical: 3, backgroundColor: '#F4F4F5' },
+  tagText: { fontSize: 11, fontWeight: '700', color: MUTED },
+  legTag: { backgroundColor: '#E7EEFC' },
+  legText: { color: '#1D4ED8' },
 
   reason: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FEF3F2', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
   reasonText: { flex: 1, fontSize: 12, fontWeight: '600', color: RED },

@@ -434,6 +434,8 @@ export const tripService = {
     reason?: string,
     /** TripStop id of an intermediate stop the driver just finished — stamps its arrival/departure. */
     completedStopId?: string,
+    /** Trip-log trips: the trip the driver believes they are finishing — the server refuses a mismatch. */
+    claimedTripId?: string,
   ): Promise<MobileTrip> {
     if (driver_workflow_state) {
       if (driver_workflow_state === 'COMPLETED') {
@@ -443,7 +445,7 @@ export const tripService = {
       }
     }
     const { data } = await api.post(`/mobile/trips/${id}/status`, {
-      status, driver_workflow_state, reason, notes: reason, completed_stop_id: completedStopId,
+      status, driver_workflow_state, reason, notes: reason, completed_stop_id: completedStopId, trip_id: claimedTripId,
     });
     const trip = data.data as MobileTrip;
     if (driver_workflow_state && !trip.driver_workflow_state) {

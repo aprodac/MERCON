@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TripStatus } from '@prisma/client';
 import { sameDayCheckRows, sameDayWarning } from '@mercon/shared-types';
-import { orderDriverQueue, tripAheadIn } from '../services/sameDayTrips';
+import { orderDriverQueue, tripAheadIn, tripOnTheRoadIn, tripLogFinishProblem, tripWaitingError } from '../services/sameDayTrips';
 
 const TZ = 'Asia/Riyadh';
 const trip = (id: string, start: string | null, created: string, status: TripStatus = TripStatus.Scheduled) => ({
@@ -43,5 +43,42 @@ describe('same-day trips', () => {
     const w = sameDayWarning([{ index: 0, driverId: 'd', driverName: 'Naseebullah', date: '2026-10-14', trips: [{ id: 'A', ref_id: 'TRP-0101', status: 'Scheduled', planned_start: '2026-10-14T05:00:00Z', route: 'Riyadh → Jeddah' }] }], TZ);
     assert.equal(w.title, 'Naseebullah already has a trip that day');
     assert.equal(w.lines[0], 'Naseebullah · Wed 14 Oct: TRP-0101 — Riyadh → Jeddah, 08:00');
+  });
+});
+
+describe('one trip on the road at a time', () => {
+  const road = (id: string, status: TripStatus, start: string) => ({ id, ref_id: id, status, actual_start: new Date(start), createdAt: new Date('2026-10-01T00:00:00Z') });
+
+  it('another trip on the road (any day) blocks a start with TRIP_WAITING', () => {
+    const blocking = tripOnTheRoadIn('TRP-0054', [road('TRP-0053', TripStatus.InTransit, '2026-10-21T17:38:00Z')]);
+    assert.equal(blocking?.id, 'TRP-0053');
+    assert.equal(tripWaitingError(blocking!).code, 'TRIP_WAITING');
+    assert.match(tripWaitingError(blocking!).message, /Finish TRP-0053 first/);
+  });
+
+  it('Loading and Delayed count as on the road', () => {
+    assert.ok(tripOnTheRoadIn('X', [road('A', TripStatus.Loading, '2026-10-21T00:00:00Z')]));
+    assert.ok(tripOnTheRoadIn('X', [road('A', TripStatus.Delayed, '2026-10-21T00:00:00Z')]));
+  });
+
+  it('a previous trip that is completed does not block', () => {
+    assert.equal(tripOnTheRoadIn('TRP-0054', [road('TRP-0053', TripStatus.Completed, '2026-10-21T17:38:00Z'), road('S', TripStatus.Scheduled, '2026-10-22T00:00:00Z')]), null);
+  });
+
+  it('the trip itself is never its own blocker', () => {
+    assert.equal(tripOnTheRoadIn('A', [road('A', TripStatus.InTransit, '2026-10-21T00:00:00Z')]), null);
+  });
+});
+
+describe('trip-log Finish names the trip', () => {
+  it('refuses when the body trip id is another trip', () => {
+    assert.equal(tripLogFinishProblem({ id: 'A', driver_workflow_state: 'TRIP_LOG' }, 'B'), 'trip id mismatch');
+  });
+  it('refuses a trip that was never started as a trip log', () => {
+    assert.equal(tripLogFinishProblem({ id: 'A', driver_workflow_state: null }, 'A'), 'trip not started');
+  });
+  it('allows the started trip, with or without the id (older apps)', () => {
+    assert.equal(tripLogFinishProblem({ id: 'A', driver_workflow_state: 'TRIP_LOG' }, 'A'), null);
+    assert.equal(tripLogFinishProblem({ id: 'A', driver_workflow_state: 'TRIP_LOG' }, undefined), null);
   });
 });
