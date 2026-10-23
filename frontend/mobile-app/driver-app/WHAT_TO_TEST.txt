@@ -1,3 +1,8 @@
+FIX: FINISH / SCREENSHOTS ON THE WRONG TRIP
+1. Open a customer-app trip from Home: the trip screen is that trip, and "Finish trip" names it (TRP number, route, date).
+2. With one trip on the road, tap Start on a second trip: it says "Finish TRP-00xx first" (any day, not only the same day).
+3. Finish the first trip, then Start the second: it starts normally.
+
 NEW: TRIP LOG for customer-app trips (iMile, JD, Shipa app trips)
 A. Start the trip on Home. You now get one "Trip log" screen instead of the step screens.
 B. At every stop, tap "Send screenshots" and pick one or many screenshots. Each send shows with its time and place.

@@ -13,7 +13,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator, RefreshControl, Linking, Modal, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, Camera, Check, Flag, LocateFixed, MapPin, Navigation, Plus, RotateCcw, X } from 'lucide-react-native';
 import { tripLogEntries, TRIP_LOG_OPERATION } from '@mercon/shared-types';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
@@ -23,7 +23,7 @@ import { formatTime, formatDayTime } from '@mercon/mobile-shared/lib/dates';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
-import { useCurrentTrip } from '../hooks/use-current-trip';
+import { useTripById } from '../hooks/use-trip-by-id';
 import { DelayButton } from '../components/DelayButton';
 import { DelayReportModal } from '../components/DelayReportModal';
 import { showToast } from '../components/AppToast';
@@ -55,7 +55,8 @@ const metaOf = (d: Doc) => ((d as { ai_extracted_json?: Record<string, unknown> 
 function useExternalTrip() {
   const { t } = useLanguage();
   const router = useRouter();
-  const { trip, refetch, setTrip } = useCurrentTrip({ pollMs: 30_000 });
+  const { tripId } = useLocalSearchParams<{ tripId?: string }>();
+  const { trip, refetch, setTrip } = useTripById(tripId, { pollMs: 30_000 });
   const [sending, setSending] = useState<string | null>(null);
   const [failed, setFailed] = useState<Failed | null>(null);
   const [finishing, setFinishing] = useState(false);
@@ -150,8 +151,14 @@ function useExternalTrip() {
     if (sending) return showToast(t('tlog_wait_uploads', 'Wait until all screenshots are sent.'), 'error');
     if (entries.length === 0) return showToast(t('tlog_finish_empty', 'Send at least one screenshot before finishing.'), 'error');
     const left = rows.filter((r) => !r.done).map((r) => r.name);
+    const names = rows.map((r) => r.name);
+    const which = [
+      trip.ref_id,
+      names.length > 1 ? `${names[0]} → ${names[names.length - 1]}` : names[0],
+      trip.planned_start ? formatDayTime(trip.planned_start) : null,
+    ].filter(Boolean).join(' · ');
     Alert.alert(
-      t('tlog_finish', 'Finish trip'),
+      `${t('tlog_finish', 'Finish trip')} ${which}`,
       left.length
         ? `${t('ext_finish_left', 'No screenshot yet for')}: ${left.join(', ')}. ${t('ext_finish_anyway', 'Finish anyway?')}`
         : t('ext_finish_confirm', 'All stops have a screenshot. Finish this trip?'),
@@ -162,7 +169,7 @@ function useExternalTrip() {
           onPress: async () => {
             setFinishing(true);
             try {
-              setTrip(await tripService.updateStatus(trip.id, 'Completed', 'COMPLETED'));
+              setTrip(await tripService.updateStatus(trip.id, 'Completed', 'COMPLETED', undefined, undefined, trip.id));
               router.replace({ pathname: '/trip/completed', params: { tripId: trip.id } } as any);
             } catch (err) {
               showToast(getApiErrorMessage(err), 'error');

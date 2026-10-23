@@ -70,6 +70,52 @@ export async function findTripAhead(trip: QueueTrip, driverId: string, tz?: stri
   return tripAheadIn(trip, others, zone);
 }
 
+/** Trips on the road — a driver can only be on one at a time. */
+export const ON_THE_ROAD_STATUSES: TripStatus[] = [TripStatus.Loading, TripStatus.InTransit, TripStatus.Delayed];
+
+/** The driver's other trip that is on the road (any day), from `others`. Oldest start first. */
+export function tripOnTheRoadIn<T extends { id: string; status: TripStatus; actual_start?: Date | null; createdAt: Date }>(tripId: string, others: T[]): T | null {
+  const open = others
+    .filter((o) => o.id !== tripId && ON_THE_ROAD_STATUSES.includes(o.status))
+    .sort((a, b) => (a.actual_start ?? a.createdAt).getTime() - (b.actual_start ?? b.createdAt).getTime());
+  return open[0] ?? null;
+}
+
+/**
+ * Another trip of this driver still on the road, whatever day it was planned
+ * for. findTripAhead only covers the same day: TRP-0054 (22 Oct) was started
+ * while TRP-0053 (21 Oct) was still open, and the driver's screenshots and
+ * Finish went to the wrong trip. Driver-side starts only; the office can still
+ * start or step a trip forward from the dashboard/operator app.
+ */
+export async function findTripOnTheRoad(tripId: string, driverId: string) {
+  const others = await prisma.trip.findMany({
+    where: { driverId, deletedAt: null, id: { not: tripId }, status: { in: ON_THE_ROAD_STATUSES } },
+    select: { id: true, ref_id: true, status: true, actual_start: true, createdAt: true },
+  });
+  return tripOnTheRoadIn(tripId, others);
+}
+
+/** 409 body for a driver-side start refused because another trip is on the road. */
+export const tripWaitingError = (blocking: { ref_id?: string | null }) => ({
+  code: 'TRIP_WAITING',
+  message: `Finish ${blocking.ref_id ?? 'your trip on the road'} first — this trip starts after it.`,
+});
+
+/**
+ * A driver's Finish on a trip-log trip must name the trip the driver is on:
+ * the body's trip id (when sent) must be the one in the URL, and the trip must
+ * actually have been started as a trip log. Returns the reason to refuse, or null.
+ */
+export function tripLogFinishProblem(
+  trip: { id: string; driver_workflow_state: string | null },
+  bodyTripId: unknown,
+): string | null {
+  if (typeof bodyTripId === 'string' && bodyTripId && bodyTripId !== trip.id) return 'trip id mismatch';
+  if (trip.driver_workflow_state !== 'TRIP_LOG') return 'trip not started';
+  return null;
+}
+
 export interface SameDayCheckItem {
   driverIds: string[];
   plannedStart: string;

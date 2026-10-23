@@ -249,7 +249,7 @@ const HomeScreen = () => {
     // Customer-app trips: Start, then the stop-by-stop screen (one screenshot per stop).
     if (usesTripLog(t)) {
       if (t.driver_workflow_state === TRIP_LOG_STATE) {
-        return { badgeLabel: 'On the road', btnLabel: 'Next stop', urLabel: 'اگلا اسٹاپ', onPress: () => router.push('/trip/external-app') };
+        return { badgeLabel: 'On the road', btnLabel: 'Next stop', urLabel: 'اگلا اسٹاپ', onPress: () => router.push({ pathname: '/trip/external-app', params: { tripId: t.id } } as any) };
       }
       return {
         badgeLabel: 'Assigned',
@@ -259,7 +259,7 @@ const HomeScreen = () => {
           setAdvancing(true);
           try {
             setTrip(await tripService.startTripLog(t.id));
-            router.push('/trip/external-app');
+            router.push({ pathname: '/trip/external-app', params: { tripId: t.id } } as any);
           } catch (err) {
             showToast(getApiErrorMessage(err), 'error');
           } finally {
@@ -591,7 +591,7 @@ const HomeScreen = () => {
 
                 const handleStopPress = (st: TimelineStop) => {
                   if (displayTrip.driver_workflow_state === TRIP_LOG_STATE) {
-                    router.push('/trip/external-app');
+                    router.push({ pathname: '/trip/external-app', params: { tripId: displayTrip.id } } as any);
                   } else if (st.isIntermediate) {
                     router.push({ pathname: '/trip/stop', params: { legIndex: String(st.legIndex ?? 0) } } as any);
                   } else {
@@ -608,7 +608,7 @@ const HomeScreen = () => {
                   const nextStop = stops[lastDone + 1];
                   return (
                     <View style={styles.routeContainer}>
-                      <TouchableOpacity style={styles.nextStopBox} activeOpacity={0.85} onPress={() => router.push('/trip/external-app')}>
+                      <TouchableOpacity style={styles.nextStopBox} activeOpacity={0.85} onPress={() => router.push({ pathname: '/trip/external-app', params: { tripId: displayTrip.id } } as any)}>
                         <View style={styles.nextStopHeader}>
                           <Text style={styles.nextStopLabel}>{L('NEXT STOP', 'اگلا اسٹاپ')}</Text>
                           <Text style={styles.nextStopMeta}>{L(`${lastDone + 1} of ${stops.length} done`, `${stops.length} میں سے ${lastDone + 1} مکمل`)}</Text>
