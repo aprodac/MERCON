@@ -2429,6 +2429,19 @@ export const updateTripStopsRoute = async (req: Request, res: Response) => {
         }).slice(frozenCount),
       });
 
+      // 2b. Stops the driver already reached keep their real arrival/departure,
+      // but their planned time follows the new plan: a Saturday trip the driver
+      // started on Friday can be re-planned to Friday (TestFlight 23 Oct).
+      for (let i = 0; i < frozenCount; i++) {
+        const raw = resolvedStops[i]?.planned_arrival;
+        const planned = i === 0 && parsedPlannedStart ? parsedPlannedStart
+          : i === resolvedStops.length - 1 && parsedPlannedEnd ? parsedPlannedEnd
+          : raw && !isNaN(Date.parse(raw)) ? new Date(raw) : null;
+        if (planned) {
+          await tx.tripStop.update({ where: { id: plan.frozenIds[i] }, data: { planned_arrival: planned } });
+        }
+      }
+
       // 3. Update trip planned times
       await tx.trip.update({
         where: { id: existingTrip.id },

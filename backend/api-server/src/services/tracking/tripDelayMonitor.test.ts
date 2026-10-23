@@ -216,6 +216,51 @@ describe('tripDelayMonitor and Trip Lifecycle Regression Suite', () => {
     }
   });
 
+  it('5b. Round trip "Loading" on the way back becomes Delayed when the last stop is overdue', async () => {
+    const mockTrips = [
+      {
+        id: 'trip-round',
+        ref_id: 'TRP-0020',
+        status: TripStatus.Loading,
+        driver_workflow_state: 'ARRIVED_AT_RETURN_PICKUP',
+        planned_start: new Date('2026-09-04T17:00:00Z'),
+        planned_end: new Date('2026-09-05T07:00:00Z'),
+        stops: [
+          { id: 'a', stop_sequence: 1, stop_type: StopType.Pickup, planned_arrival: new Date('2026-09-04T17:00:00Z'), actual_arrival: new Date('2026-09-04T17:10:00Z'), actual_departure: new Date('2026-09-04T17:50:00Z'), location_name: 'Riyadh' },
+          { id: 'b', stop_sequence: 2, stop_type: StopType.Dropoff, planned_arrival: new Date('2026-09-05T03:00:00Z'), actual_arrival: new Date('2026-09-05T03:20:00Z'), actual_departure: new Date('2026-09-05T03:40:00Z'), location_name: 'Jeddah' },
+          { id: 'c', stop_sequence: 3, stop_type: StopType.Pickup, planned_arrival: null, actual_arrival: new Date('2026-09-05T04:00:00Z'), actual_departure: null, location_name: 'Jeddah' },
+          // Due 07:00, now 12:00 and the truck is still loading in Jeddah.
+          { id: 'd', stop_sequence: 4, stop_type: StopType.Dropoff, planned_arrival: new Date('2026-09-05T07:00:00Z'), actual_arrival: null, actual_departure: null, location_name: 'Riyadh' },
+        ],
+      },
+    ];
+
+    const origFindMany = prisma.trip.findMany;
+    const origUpdate = prisma.trip.update;
+    const origFindFirst = prisma.notification.findFirst;
+    const origUserFindMany = prisma.user.findMany;
+
+    let updatedStatus: any = null;
+    prisma.trip.findMany = (async () => mockTrips) as any;
+    prisma.trip.update = (async ({ data }: any) => {
+      updatedStatus = data.status;
+      return { id: 'trip-round', ...data };
+    }) as any;
+    prisma.notification.findFirst = (async () => null) as any;
+    prisma.user.findMany = (async () => []) as any;
+
+    try {
+      const count = await checkTripsForDelay(testNow);
+      assert.equal(count, 1);
+      assert.equal(updatedStatus, TripStatus.Delayed);
+    } finally {
+      prisma.trip.findMany = origFindMany;
+      prisma.trip.update = origUpdate;
+      prisma.notification.findFirst = origFindFirst;
+      prisma.user.findMany = origUserFindMany;
+    }
+  });
+
   it('6. Delayed trip can legitimately return to InTransit through normal workflow', () => {
     assert.equal(isValidTransition(TripStatus.Delayed, TripStatus.InTransit), true);
   });
