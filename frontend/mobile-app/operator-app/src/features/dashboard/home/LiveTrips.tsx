@@ -10,7 +10,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Image, StyleSheet, Linking } from 'react-native';
-import { ChevronRight, MapPin, Maximize2, Navigation, Phone, UserX } from 'lucide-react-native';
+import { MapPin, Maximize2, Navigation, Phone, UserX } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import { isOnRoad, type LiveUnit } from '../../../lib/operator';
@@ -20,6 +20,7 @@ import { initialsOf, niceName, shortName } from '../../trips/create/components/u
 import { durationText } from '../actions/actionModel';
 import { INK, LINE, MUTED, tap } from '../../notifications/components/parts';
 import { TripStepBar, routeLine } from '@/components/TripStepBar';
+import { SectionHead } from './SectionHead';
 
 const RED = '#D92D20';
 const AMBER = '#B54708';
@@ -113,15 +114,7 @@ export function LiveTrips({ units, tz, now, onOpenTrip, onTrack, onAll }: {
 
   return (
     <View style={{ gap: 10 }}>
-      <View style={s.head}>
-        <Text style={s.h2}>Live trips</Text>
-        {rows.length ? (
-          <TouchableOpacity onPress={() => { tap(); onAll(); }} hitSlop={8} style={s.link}>
-            <Text style={s.linkText}>All {rows.length} on the road</Text>
-            <ChevronRight size={15} color={MUTED} />
-          </TouchableOpacity>
-        ) : null}
-      </View>
+      <SectionHead title="Live trips" count={rows.length} link={rows.length ? 'All on the road' : undefined} onLink={onAll} />
 
       {rows.length === 0 ? (
         <View style={s.empty}>
@@ -271,10 +264,6 @@ function TripCard({ row, now, time, onOpen, onTrack }: {
 }
 
 const s = StyleSheet.create({
-  head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 2 },
-  h2: { fontSize: 17, fontWeight: '700', color: INK, letterSpacing: -0.2 },
-  link: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  linkText: { fontSize: 14, fontWeight: '500', color: MUTED },
 
   // Bleed to the screen edges so the strips scroll under the page padding.
   bleed: { marginHorizontal: -16, flexGrow: 0 },

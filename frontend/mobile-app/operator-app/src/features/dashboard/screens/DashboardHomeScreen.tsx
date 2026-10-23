@@ -6,10 +6,12 @@
  *                   you as tiles by kind, most important first
  *   LiveTrips       a card per trip on the road (its own map, status,
  *                   route, next stop, driver), late ones first
- *   FleetMapCard    every truck on one small map; opens the Fleet map
- *   FleetUtilisation share of trucks that ran a trip today / week / month,
- *                   the fleet right now (on trip · free · maintenance), by body type
- *   FromDrivers     photo sets drivers sent that the customer hasn't had yet
+ *   FleetMapCard    one slim row (trucks on the map · on the road); opens the Fleet map
+ *   FleetUtilisation folded to one line by default; opens to the share of
+ *                   trucks that ran a trip today / week / month, the fleet
+ *                   right now (on trip · free · maintenance), by body type
+ * Photo sets drivers sent that the customer hasn't had yet are "Photos to
+ * send" in TodayCard (the "From drivers" strip was removed, owner 23 Oct).
  * Everything to act on in full lives on Notifications → To do.
  * Composes hooks + components only — no direct API calls here.
  *
@@ -35,7 +37,6 @@ import { TodayCard } from '../home/TodayCard';
 import { LiveTrips } from '../home/LiveTrips';
 import { FleetMapCard } from '../home/FleetMapCard';
 import { FleetUtilisation } from '../home/FleetUtilisation';
-import { FromDrivers } from '../home/FromDrivers';
 import { dateLabel, greeting, toStartToday } from '../home/today';
 import { needTiles } from '../home/needsTiles';
 
@@ -109,7 +110,6 @@ export default function DashboardHomeScreen() {
 
         <FleetUtilisation onAll={() => router.push('/vehicles')} />
 
-        <FromDrivers updates={inbox.updates} now={now} onSend={(u) => openTrip(u.trip.id, { share: 'update', update: u.key })} />
       </ScrollView>
       {/* Finished trips waiting for an answer on extra charges */}
       <ChargeAssistant userName={me?.name || me?.username || undefined} />
