@@ -57,9 +57,12 @@ export default function TripsScreen() {
   );
   const [view, setView] = useState<ListView>(
     params.vehicleId || params.customerId ? 'history'
-      : params.view === 'schedule' || params.view === 'history' || params.view === 'ledger' ? params.view
+      : params.view === 'schedule' || params.view === 'history' ? params.view
+      // The ledger is History's second view, not a tab of its own (owner, 23 Oct).
+      : params.view === 'ledger' ? 'history'
       : 'now',
   );
+  const [historyMode, setHistoryMode] = useState<'day' | 'ledger'>(params.view === 'ledger' ? 'ledger' : 'day');
   // Delayed is a filter inside Now, not a tab of its own (owner, 23 Oct: "too many tabs").
   // Links that still ask for the delayed view open Now on it.
   const [nowFilter, setNowFilter] = useState<NowFilter>(params.view === 'delayed' ? 'delayed' : 'all');
@@ -196,7 +199,6 @@ export default function TripsScreen() {
     { id: 'now', label: 'Now', icon: Radio, badge: delayedTrips.length || undefined },
     { id: 'schedule', label: 'Schedule', icon: CalendarDays },
     { id: 'history', label: 'History', icon: History },
-    { id: 'ledger', label: 'Ledger', icon: BookOpen },
   ];
 
   const refreshControl = <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={Colors.primary} />;
@@ -292,8 +294,11 @@ export default function TripsScreen() {
               ItemSeparatorComponent={Gap}
               ListEmptyComponent={data.openLoading ? <Loading /> : <Empty icon={CircleCheckBig} title="Nothing on the road" text="Trips show here once they start. Upcoming trips are in Schedule." good />}
             />
-          ) : view === 'ledger' ? (
-            <TripLedger f={f} todayKey={todayKey} scope={scope?.filter} onOpen={open} />
+          ) : view === 'history' && historyMode === 'ledger' ? (
+            <View style={{ flex: 1 }}>
+              <HistoryMode value={historyMode} onChange={setHistoryMode} />
+              <TripLedger f={f} todayKey={todayKey} scope={scope?.filter} onOpen={open} />
+            </View>
           ) : view === 'schedule' ? (
             <FlatList
               data={dayTrips}
@@ -339,6 +344,7 @@ export default function TripsScreen() {
               ItemSeparatorComponent={Gap}
               ListHeaderComponent={(
                 <View style={{ gap: 12, marginBottom: 12 }}>
+                  <HistoryMode value={historyMode} onChange={setHistoryMode} inList />
                   <DateStrip days={historyDays} selected={historySelected} today={todayKey} counts={historyPerDay} onSelect={(k) => { tap(); setHistoryDay(k); }} f={f} />
                   <View style={s.dayHead}>
                     <Text style={s.dayTitle}>{dayLabel(historySelected, todayKey, f)}</Text>
@@ -447,6 +453,23 @@ function Empty({ icon: Icon, title, text, good, action }: {
           <Text style={s.emptyBtnText}>{action.label}</Text>
         </TouchableOpacity>
       ) : null}
+    </View>
+  );
+}
+
+/** History: by day (the date strip) or the ledger (every trip by number). */
+function HistoryMode({ value, onChange, inList }: { value: 'day' | 'ledger'; onChange: (v: 'day' | 'ledger') => void; inList?: boolean }) {
+  return (
+    <View style={[s.modeRow, !inList && { marginHorizontal: 16, marginTop: 12 }]}>
+      {(['day', 'ledger'] as const).map((m) => {
+        const on = m === value;
+        return (
+          <TouchableOpacity key={m} style={[s.modeBtn, on && s.modeOn]} onPress={() => { if (!on) tap(); onChange(m); }} accessibilityRole="tab" accessibilityState={{ selected: on }}>
+            {m === 'ledger' ? <BookOpen size={13} color={on ? INK : MUTED} strokeWidth={2.3} /> : <CalendarDays size={13} color={on ? INK : MUTED} strokeWidth={2.3} />}
+            <Text style={[s.modeText, on && { color: INK }]}>{m === 'day' ? 'By day' : 'Ledger'}</Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
@@ -567,6 +590,10 @@ const s = StyleSheet.create({
   badgeText: { color: Colors.white, fontSize: 11, fontWeight: '800' },
   list: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 120, flexGrow: 1 },
   resultsHead: { fontSize: 13, fontWeight: '700', color: MUTED, marginBottom: 10 },
+  modeRow: { flexDirection: 'row', alignSelf: 'flex-start', gap: 4, backgroundColor: '#ECEDF1', borderRadius: 10, padding: 3 },
+  modeBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, height: 30, paddingHorizontal: 12, borderRadius: 8 },
+  modeOn: { backgroundColor: Colors.white, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  modeText: { fontSize: 13, fontWeight: '700', color: MUTED },
   // Bleed to the screen edges so the chips scroll under the page padding.
   filterBleed: { marginHorizontal: -16, marginBottom: 12, flexGrow: 0 },
   filters: { gap: 6, paddingHorizontal: 16 },
