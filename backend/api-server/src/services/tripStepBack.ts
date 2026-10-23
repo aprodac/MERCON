@@ -227,6 +227,17 @@ const photosAfter = <P extends { createdAt: Date; ai_extracted_json: unknown }>(
     return !at || p.createdAt > at;
   });
 
+/**
+ * When the trip was last at step `index` or before: its own time, else the
+ * latest earlier step done. A step the driver skipped (customer-app trips skip
+ * most) has no time of its own, and "no time" would count every photo of the
+ * trip as taken after it.
+ */
+const sinceOf = (state: { done: boolean; at: Date | null }[], index: number): Date | null => {
+  for (let i = index; i >= 0; i--) if (state[i]?.done && state[i].at) return state[i].at;
+  return null;
+};
+
 /** The stop the driver redoes after going back to step `index` (-1 = not started → the pickup). */
 const redoStopOf = (steps: StepDef[], index: number) => (index >= 0 ? steps[index]?.photoStop : steps[0]?.photoStop) ?? null;
 
@@ -238,7 +249,7 @@ export async function getTripProgressSteps(tripId: string): Promise<TripProgress
   state.forEach((s, i) => { if (s.done) current = i; });
   const photos = await tripPhotos(prisma, tripId);
   const photos_after: Record<number, number> = {};
-  for (let i = -1; i < current; i++) photos_after[i] = photosAfter(photos, i >= 0 ? state[i].at : null, redoStopOf(steps, i)?.stopId ?? null).length;
+  for (let i = -1; i < current; i++) photos_after[i] = photosAfter(photos, sinceOf(state, i), redoStopOf(steps, i)?.stopId ?? null).length;
   const blocked = blockedReason(trip, current);
   return {
     steps: steps.map((st, i) => ({ index: i, key: st.key, label: st.label, next: st.next, done: state[i].done, at: state[i].at?.toISOString() ?? null })),
@@ -329,7 +340,7 @@ export async function stepBackTrip(tripId: string, toIndex: number, photoChoice:
     // 4. Photos taken during the undone steps.
     const stepAt = new Date().toISOString();
     const redo = redoStopOf(steps, toIndex);
-    const photos = photosAfter(await tripPhotos(tx, tripId), target ? state[toIndex].at : null, redo?.stopId ?? null);
+    const photos = photosAfter(await tripPhotos(tx, tripId), sinceOf(state, toIndex), redo?.stopId ?? null);
     let movedTo: string | null = null;
     const moved: StepBackUndo['moved'] = [];
     if (photos.length && photoChoice === 'move' && redo) {

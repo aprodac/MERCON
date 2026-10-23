@@ -175,7 +175,7 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
                 style={{ flex: 1 }}
               />
             </View>
-            <View style={styles.row}>{transitTile}</View>
+            <View style={[styles.row, styles.rowGap]}>{transitTile}</View>
             <ErrorText>{err('pickup') || err('dropoff')}</ErrorText>
             <Text style={styles.hint}>
               {form.dutyMinutes && !form.dropoffTouched ? `Drop-off set ${form.dutyMinutes / 60} hours after pickup. ` : ''}
@@ -222,7 +222,7 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
               <ValueTile caption="Date" value={slot.dropoffTime ? fmtDay(slot.dropoffDate || slot.date) : ''} placeholder="—" onPress={() => setPicker('dropoff')} error={Boolean(err('dropoff'))} style={{ flex: 1 }} />
               <ValueTile caption="Time" value={slot.dropoffTime} placeholder="--:--" onPress={() => setPicker('dropoff')} error={Boolean(err('dropoff'))} style={{ width: 104 }} />
             </View>
-            <View style={styles.row}>{transitTile}</View>
+            <View style={[styles.row, styles.rowGap]}>{transitTile}</View>
             <ErrorText>{err('dropoff')}</ErrorText>
             {!pickupSet ? (
               <Text style={styles.hint}>Set the pickup first — the drop-off is then suggested from the {form.dutyMinutes ? 'duty length' : 'drive time'}.</Text>
@@ -402,6 +402,8 @@ function MonthlyDays({ form, error }: { form: CreateTripForm; error?: string }) 
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 8 },
+  // Transit time sits under the time tiles, spaced like the way back's (TestFlight 20 Oct: "UI alignment").
+  rowGap: { marginTop: 8 },
   quickRow: { flexDirection: 'row', gap: 6, marginTop: 10 },
   quick: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.full, backgroundColor: Colors.gray100 },
   quickOn: { backgroundColor: Colors.primaryLight },

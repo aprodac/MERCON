@@ -136,6 +136,8 @@ export interface FleetCategoryUtilization {
   inUse: number;
   idle: number;
   maintenance: number;
+  /** Trucks that ran at least one trip in the selected period (on a trip now when the period's trips are unknown). */
+  activeInPeriod: number;
   /** Share of this category's trucks that ran at least one trip in the selected period, 0-1. */
   utilization: number;
 }
@@ -147,8 +149,14 @@ export interface FleetUtilization {
     inUse: number;
     idle: number;
     maintenance: number;
+    activeInPeriod: number;
+    /** On a trip right now, 0-1. */
     overallUtilization: number;
+    /** Ran a trip in the period, 0-1. */
+    periodUtilization: number;
   };
+  /** False when the period's trip counts couldn't be read (Reports module off) — utilization is "on a trip now". */
+  fromTrips: boolean;
 }
 
 /** Mirrors the backend's `DocType` enum (schema.prisma). */
