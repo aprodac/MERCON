@@ -1,6 +1,6 @@
 /**
  * Operator Home ("today at a glance"), under the MERCON top bar:
- *   greeting        today's date over "Good afternoon, <name>"
+ *   greeting        "Good afternoon, <name>" with today's date at the end of the line
  *   EmergencyStrip  only while a driver emergency is open
  *   TodayCard       ring of done / on the road / to start, and what needs
  *                   you as tiles by kind, most important first
@@ -69,9 +69,10 @@ export default function DashboardHomeScreen() {
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 120, gap: 24 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor="#FA634E" />}
       >
-        <View style={{ gap: 2, paddingHorizontal: 2 }}>
+        {/* The date sits at the end of the greeting's line instead of a row of its own (owner, 23 Oct). */}
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, paddingHorizontal: 2 }}>
+          <Text style={{ flex: 1, fontSize: 24, fontWeight: '700', color: '#3E3C3D', letterSpacing: -0.4 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} accessibilityRole="header">{hello}</Text>
           <Text style={{ fontSize: 13, fontWeight: '500', color: '#6B6B76' }}>{dateLabel(inbox.tz, now)}</Text>
-          <Text style={{ fontSize: 24, fontWeight: '700', color: '#3E3C3D', letterSpacing: -0.4 }} accessibilityRole="header">{hello}</Text>
         </View>
 
         <EmergencyStrip
