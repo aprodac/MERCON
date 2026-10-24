@@ -8,7 +8,7 @@ import {
 import { exportTrips } from '../controllers/tripExportController';
 import { getTripTrackingLink, getTripTrackingLinks, trackingLinkBody, trackingLinksBody } from '../controllers/trackingController';
 import { idParam, logEntryToStopBody } from '../schemas';
-import { logEntryToStop } from '../controllers/tripLogController';
+import { deleteTripPhoto, logEntryToStop } from '../controllers/tripLogController';
 import { getTripDriverTrail } from '../controllers/driverPhoneController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles, requireModuleEnabled } from '../middlewares/rbac';
@@ -55,6 +55,8 @@ router.post('/:id/step-back/undo', validate({ params: idParam }), undoStepBackHa
 router.post('/:id/step-forward', validate({ params: idParam }), stepForward);
 // Trip log (customer-app trips): make a driver's log entry a stop, or add it to one.
 router.post('/:id/log/:entry/stop', validate({ body: logEntryToStopBody }), logEntryToStop);
+// A driver's photo / screenshot sent by mistake → Recently deleted.
+router.delete('/:id/photos/:docId', deleteTripPhoto);
 router.patch('/:id/financials', updateTripFinancials);
 router.post('/:id/charge-review', validate({ body: reviewTripChargesBody }), reviewTripCharges);
 

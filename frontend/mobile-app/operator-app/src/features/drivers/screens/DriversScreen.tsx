@@ -7,10 +7,10 @@
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { FlatList, Linking, RefreshControl, View } from 'react-native';
+import { FlatList, Linking, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Users } from 'lucide-react-native';
+import { Users, X } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 
 import { ListSearch, listPage } from '@/components/ListSearch';
@@ -26,7 +26,7 @@ import {
 import { useDriverFilters, useDriverSearch, useDrivers } from '../hooks';
 import type { DriverListItem } from '../types';
 import { fleetPhoneKey, fleetPhoneStatus } from '../phone/driverPhone';
-import { PhoneSummary } from '../phone/PhoneSummary';
+import { PHONE_GROUP_LABEL, PhoneSummary, phoneGroupOf, type PhoneGroup } from '../phone/PhoneSummary';
 
 export default function DriversScreen() {
   const router = useRouter();
@@ -34,6 +34,8 @@ export default function DriversScreen() {
 
   const { query, debouncedQuery, setQuery } = useDriverSearch();
   const { status, setStatus } = useDriverFilters();
+  // A tapped number on the phone summary ("Not installed") lists just those drivers.
+  const [phoneGroup, setPhoneGroup] = useState<PhoneGroup | null>(null);
 
   // Reset to page 1 whenever search query or status filter changes
   useEffect(() => {
@@ -52,13 +54,17 @@ export default function DriversScreen() {
     isFetching,
     hasNextPage,
     hasPrevPage,
-  } = useDrivers({ search: debouncedQuery, status, sort: 'name', page, all: false });
-
-  const isFiltered = Boolean(debouncedQuery || status);
+  } = useDrivers({ search: debouncedQuery, status, sort: 'name', page, all: phoneGroup != null });
 
   // Every driver's phone (the driver app): ready / check / not ready, refreshed every minute.
   const phones = useQuery({ queryKey: fleetPhoneKey, queryFn: fleetPhoneStatus, refetchInterval: 60_000, staleTime: 30_000 });
   const phoneOf = useMemo(() => new Map((phones.data ?? []).map((p) => [p.driverId, p])), [phones.data]);
+  // The phone group is a filter over every driver (loaded in one go), not one page.
+  const listed = useMemo(
+    () => (phoneGroup ? drivers.filter((d) => { const p = phoneOf.get(d.id); return p ? phoneGroupOf(p) === phoneGroup : false; }) : drivers),
+    [drivers, phoneGroup, phoneOf],
+  );
+  const isFiltered = Boolean(debouncedQuery || status || phoneGroup);
 
   const openDriver = (driver: DriverListItem) => {
     router.push({ pathname: '/driver-details', params: { id: driver.id } });
@@ -72,7 +78,7 @@ export default function DriversScreen() {
         <ErrorState message={error} onRetry={() => refresh()} className="flex-1" />
       ) : (
         <FlatList
-          data={drivers}
+          data={listed}
           keyExtractor={(item) => item.id}
           contentContainerStyle={listPage.list}
           keyboardShouldPersistTaps="handled"
@@ -87,7 +93,18 @@ export default function DriversScreen() {
                 placeholder="Search name or phone"
                 loading={isFetching && !isRefreshing}
               />
-              {!loading ? <PhoneSummary shown={total} filtered={isFiltered} rows={phones.data} /> : null}
+              {!loading ? <PhoneSummary shown={phoneGroup ? listed.length : total} filtered={isFiltered} rows={phones.data} group={phoneGroup} onGroup={setPhoneGroup} /> : null}
+              {phoneGroup ? (
+                <TouchableOpacity
+                  onPress={() => setPhoneGroup(null)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: '#3E3C3D' }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Show all drivers"
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>{PHONE_GROUP_LABEL[phoneGroup]} · {listed.length}</Text>
+                  <X size={13} color="#FFFFFF" />
+                </TouchableOpacity>
+              ) : null}
             </View>
           }
           renderItem={({ item }) => (
@@ -122,7 +139,7 @@ export default function DriversScreen() {
               />
             )
           }
-          ListFooterComponent={(
+          ListFooterComponent={phoneGroup ? null : (
             <DriverPagination
               currentCount={drivers.length}
               totalCount={total}

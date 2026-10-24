@@ -1,3 +1,14 @@
+FROM YOUR FEEDBACK (24 Oct, build 134)
+1. New trip > Way back: tick "Same as leg 1" — the transit time back is the same as leg 1.
+2. Driver page > Trips: shows every trip, not only 5.
+3. Choosing a driver: "done on this lane" counts delivered trips only — booked ones are not counted.
+4. Schedule: if a day's trip was already run the day before, the day says so (green line, tap to open).
+5. Drivers: tap "Not installed" (or Ready / Check / Not ready) to see only those drivers. Tap again or the chip to see all.
+6. History > Ledger: newest trip on top; "Latest first / Oldest first".
+7. Now: a trip that is starting late no longer says "Leg 1 going".
+8. Tap a driver photo or screenshot > Delete > confirm. It goes to Recently deleted.
+9. Driver's log: "Edit time" beside the screenshots — set the arrived time, then make the stop.
+
 FIX: TRIPS NOT HIDDEN
 1. A trip in Emergency now shows in Now / Schedule lists instead of disappearing.
 

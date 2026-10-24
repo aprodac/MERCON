@@ -1,7 +1,7 @@
 /** Step 2 — when: one trip's pickup and drop-off, or a monthly contract's days. */
 import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { ArrowUpRight, CalendarDays, ChevronLeft, ChevronRight, Clock, Flag, RotateCcw } from 'lucide-react-native';
+import { ArrowUpRight, CalendarDays, Check, ChevronLeft, ChevronRight, Clock, Flag, RotateCcw } from 'lucide-react-native';
 import { Colors, Spacing, Radius } from '@mercon/mobile-shared/theme/tokens';
 import { addDaysToDateStr, dropoffDayOffset, returnLegDayOffsets } from '@mercon/shared-types';
 import type { CreateTripForm } from '../useCreateTrip';
@@ -68,18 +68,30 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
   // The way back's own transit time (TestFlight 20 Oct: "the way back can't take a transit time"):
   // return loading + length → arrival home.
   const returnTransitMin = returnLoad && returnHome && returnLoadAt != null ? (afterPickup(returnHome) ?? 0) - returnLoadAt : null;
-  const setReturnTransit = (min: number) => {
-    if (!returnLoad) return;
-    const { time, days } = later(returnLoad.time, min);
+  const setReturnTransit = (min: number, load: WhenValue | null = returnLoad) => {
+    if (!load) return;
+    const { time, days } = later(load.time, min);
     form.setReturnDropoff(form.isMonthly
-      ? { returnDropoffTime: time, returnDropoffDay: (returnLoad.day ?? 0) + days }
-      : { returnDropoffDate: addDaysToDateStr(returnLoad.date, days), returnDropoffTime: time });
+      ? { returnDropoffTime: time, returnDropoffDay: (load.day ?? 0) + days }
+      : { returnDropoffDate: addDaysToDateStr(load.date, days), returnDropoffTime: time });
+  };
+  // TestFlight 24 Oct: "option where we can tick and same TT comes back way" — the way back
+  // takes leg 1's transit time, and keeps it when the return loading or leg 1's transit changes.
+  const [sameBack, setSameBack] = useState(false);
+  const outTransit = transitMin != null && transitMin > 0 ? transitMin : null;
+  const sameBackOn = sameBack && outTransit != null;
+  const toggleSameBack = () => {
+    tap();
+    const on = !sameBack;
+    setSameBack(on);
+    if (on && outTransit != null) setReturnTransit(outTransit);
   };
   const setTransit = (min: number) => {
     const { time, days } = transitAt(min);
     form.setDropoff(form.isMonthly
       ? { dropoffTime: time, dropoffDay: round ? days : undefined }
       : { dropoffDate: addDaysToDateStr(slot.date || form.today, days), dropoffTime: time });
+    if (sameBackOn) setReturnTransit(min);
   };
   const transitTile = (
     <ValueTile
@@ -126,9 +138,22 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
           caption="Transit time back"
           value={returnTransitMin != null && returnTransitMin > 0 ? transitText(returnTransitMin) : ''}
           placeholder={returnLoad ? 'Choose' : 'Set return loading first'}
-          onPress={() => returnLoad && setTransitOpen('back')}
+          onPress={() => {
+            if (!returnLoad) return;
+            setSameBack(false);
+            setTransitOpen('back');
+          }}
           style={{ marginTop: 8 }}
         />
+        {outTransit != null ? (
+          <TouchableOpacity style={styles.sameRow} onPress={toggleSameBack} activeOpacity={0.7} hitSlop={6}>
+            <View style={[styles.box, sameBackOn && styles.boxOn]}>{sameBackOn ? <Check size={13} color={Colors.white} strokeWidth={3} /> : null}</View>
+            <Text style={styles.sameText}>
+              Same as leg 1 · {transitText(outTransit)}
+              {sameBackOn && !returnLoad ? ' — set the return loading' : ''}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
         <ErrorText>{err('returnPickup') || err('returnDropoff')}</ErrorText>
         {runMinutes && runMinutes > 0 ? (
           <Text style={[styles.hint, runMinutes >= 1440 && form.isMonthly && { color: Colors.danger, fontWeight: '600' }]}>
@@ -293,6 +318,7 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
             tz={form.tz}
             onDone={(v) => {
               form.setReturnPickup(form.isMonthly ? { returnPickupTime: v.time, returnPickupDay: v.day ?? 0 } : { returnPickupDate: v.date, returnPickupTime: v.time });
+              if (sameBackOn && outTransit != null) setReturnTransit(outTransit, { date: v.date, time: v.time, day: v.day ?? 0 });
               setPicker(null);
             }}
             onClose={() => setPicker(null)}
@@ -308,6 +334,7 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
             today={form.today}
             tz={form.tz}
             onDone={(v) => {
+              setSameBack(false);
               form.setReturnDropoff(form.isMonthly ? { returnDropoffTime: v.time, returnDropoffDay: v.day ?? 0 } : { returnDropoffDate: v.date, returnDropoffTime: v.time });
               setPicker(null);
             }}
@@ -413,6 +440,10 @@ const styles = StyleSheet.create({
   legLine: { fontSize: 13, fontWeight: '600', color: Colors.gray700, marginBottom: 8 },
   wayBackFoot: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
   clear: { fontSize: 12, fontWeight: '700', color: Colors.danger },
+  sameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },
+  box: { width: 20, height: 20, borderRadius: 6, borderWidth: 1.5, borderColor: Colors.gray300, alignItems: 'center', justifyContent: 'center' },
+  boxOn: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  sameText: { fontSize: 13, fontWeight: '600', color: Colors.gray700, flex: 1 },
   monthHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 6 },
   monthNav: { width: 32, height: 32, borderRadius: 16, backgroundColor: Colors.gray100, alignItems: 'center', justifyContent: 'center' },
   monthTitle: { fontSize: 14, fontWeight: '700', color: Colors.charcoal },

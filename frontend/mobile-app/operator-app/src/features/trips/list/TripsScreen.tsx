@@ -160,6 +160,11 @@ export default function TripsScreen() {
   }, [perDay, todayKey]);
   const dayTrips = useMemo(() => tripsOn(toRun, f, tripDayIso, selectedDay, false), [toRun, f, selectedDay]);
   const selectedCount = perDay.get(selectedDay);
+  // Trips planned for the chosen day that the driver already started on an earlier day.
+  const ranEarly = useMemo(
+    () => data.windowStarted.filter((t) => t.actual_start && t.planned_start && f.dayKey(t.planned_start) === selectedDay && f.dayKey(t.actual_start) < selectedDay),
+    [data.windowStarted, f, selectedDay],
+  );
 
   // ── History: the same strip, by the day each trip finished ─────────────────
   const historyPerDay = useMemo(() => countByDay(data.history, f, historyDayIso, now), [data.history, f, now]);
@@ -325,6 +330,16 @@ export default function TripsScreen() {
                       {selectedCount?.attention ? <Text style={{ color: '#B42318' }}> · {selectedCount.attention} need attention</Text> : null}
                     </Text>
                   </View>
+                  {ranEarly.map((t) => (
+                    <TouchableOpacity key={t.id} style={s.earlyRow} onPress={() => { tap(); open(t); }} activeOpacity={0.7} accessibilityRole="button">
+                      <CircleCheckBig size={16} color="#146C3C" />
+                      <Text style={s.earlyText} numberOfLines={2}>
+                        <Text style={{ fontWeight: '800' }}>{t.ref_id ?? 'Trip'}</Text>
+                        {` · ${driverNameOf(t) ?? 'driver'} · planned this day, started ${dayLabel(f.dayKey(t.actual_start as string), todayKey, f).replace(/^(Yesterday|Today)$/, (w) => w.toLowerCase())} ${f.time(t.actual_start as string)}`}
+                        {phaseOf(t.status) === 'done' ? ' · delivered' : ' · on the road'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
               )}
               ListEmptyComponent={data.windowLoading ? <Loading /> : data.error ? <ErrorState message="Couldn't load trips." onRetry={refresh} /> : (
@@ -611,6 +626,8 @@ const s = StyleSheet.create({
   todayLink: { fontSize: 13, fontWeight: '700', color: '#C4432F' },
   dayMonth: { fontSize: 9, lineHeight: 11, fontWeight: '800', letterSpacing: 0.4, color: '#C4432F', textTransform: 'uppercase' },
   dayTitle: { fontSize: 18, fontWeight: '800', color: INK },
+  earlyRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F2FBF5', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
+  earlyText: { flex: 1, fontSize: 13, color: '#146C3C' },
   // Wraps rather than cutting off "· 2 need attention" on narrow phones.
   deletedRow: { backgroundColor: Colors.white, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, gap: 2 },
   deletedRef: { fontSize: 15, fontWeight: '800', color: INK },

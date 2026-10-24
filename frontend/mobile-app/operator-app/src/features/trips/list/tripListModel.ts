@@ -90,7 +90,9 @@ export function routeOf(t: OperatorTrip): TripRoute {
     to: placeName(out[out.length - 1]),
     via: Math.max(0, out.length - 2) + Math.max(0, ret.length - 2),
     back: ret.length ? placeName(ret[ret.length - 1]) : placeName(out[0]),
-    leg: liveLegOf(legs, t.status),
+    // A trip the driver never started isn't on a leg yet (TestFlight 24 Oct: "starting late
+    // should show as delayed / to start, not on the road" — its card said "Leg 1 going").
+    leg: isLateToStart(t) ? null : liveLegOf(legs, t.status),
   };
 }
 
