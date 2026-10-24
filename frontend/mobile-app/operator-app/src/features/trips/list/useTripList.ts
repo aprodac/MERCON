@@ -77,6 +77,15 @@ export function useTripList(view: View, search: string, now: number, scope?: Rec
     refetchInterval: view === 'schedule' ? 60_000 : false,
   });
 
+  // Planned in the window but already started or done — a trip run a day early drops off its
+  // planned day, so Schedule says so there (TestFlight 24 Oct: "scheduled for 5–6 days, showed
+  // tomorrow and the day after but not today" — today's trip had been run the day before).
+  const started = useQuery({
+    queryKey: ['trips', 'window-started', todayKey, scopeKey ?? 'all'],
+    queryFn: () => fetchTrips({ status: 'Loading,InTransit,Delayed,Completed,Invoiced', start_date: windowStart.toISOString(), end_date: new Date(windowEnd.getTime() - 1).toISOString(), per_page: 1000, ...filter }),
+    enabled: view === 'schedule',
+  });
+
   const historyStart = useMemo(() => {
     const [y, m, d] = todayKey.split('-').map(Number);
     return f.startOfDay(new Date(Date.UTC(y, m - 1, d - HISTORY_DAYS)).toISOString().slice(0, 10));
@@ -118,6 +127,7 @@ export function useTripList(view: View, search: string, now: number, scope?: Rec
     openLoading: openQ.isLoading,
     window: schedule.data?.trips ?? [],
     windowLoading: schedule.isLoading,
+    windowStarted: started.data?.trips ?? [],
     history: history.data ?? [],
     historyLoading: history.isLoading,
     deleted: deleted.data ?? [],
@@ -129,6 +139,7 @@ export function useTripList(view: View, search: string, now: number, scope?: Rec
       await Promise.all([
         view === 'now' || view === 'delayed' || view === 'schedule' ? openQ.refetch() : null,
         view === 'schedule' ? schedule.refetch() : null,
+        view === 'schedule' ? started.refetch() : null,
         view === 'history' ? history.refetch() : null,
         term.length >= 2 ? found.refetch() : null,
       ]);

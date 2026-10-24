@@ -5,7 +5,7 @@
 import React, { useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Modal, FlatList, Linking, useWindowDimensions, StatusBar } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CheckCheck, Clock3, Crosshair, ExternalLink, Info, MessageCircle, Play, Route, X } from 'lucide-react-native';
+import { CheckCheck, Clock3, Crosshair, ExternalLink, Info, MessageCircle, Play, Route, Trash2, X } from 'lucide-react-native';
 import { GoogleMapsGeotagPreview } from '@mercon/mobile-shared/components/GoogleMapsGeotagPreview';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
@@ -28,6 +28,8 @@ export interface ViewerItem {
   pinAction?: { label: string; onPress: () => void } | null;
   /** "Edit Najran's time": opens Check times on this photo's stop (TestFlight: edit a POD's time from the photo). */
   timeAction?: { label: string; onPress: () => void } | null;
+  /** Remove a photo the driver sent by mistake (the caller asks "are you sure?" first). */
+  deleteAction?: { onPress: () => void } | null;
 }
 
 interface Props {
@@ -128,7 +130,7 @@ export function MediaViewer({ items, startIndex, title, context, onClose, onSend
           />
         ) : null}
 
-        {current?.info || current?.pinAction || current?.timeAction ? (
+        {current?.info || current?.pinAction || current?.timeAction || current?.deleteAction ? (
           <View style={s.facts}>
             {current.info ? (
               <View style={s.factRow}>
@@ -137,7 +139,7 @@ export function MediaViewer({ items, startIndex, title, context, onClose, onSend
               </View>
             ) : null}
             {/* Side by side, not stacked: the photo stays the biggest thing on screen. */}
-            {current.timeAction || current.pinAction ? (
+            {current.timeAction || current.pinAction || current.deleteAction ? (
               <View style={s.factBtns}>
                 {current.timeAction ? (
                   <TouchableOpacity style={[s.pinBtn, s.timeBtn]} activeOpacity={0.85} onPress={current.timeAction.onPress} accessibilityRole="button">
@@ -149,6 +151,12 @@ export function MediaViewer({ items, startIndex, title, context, onClose, onSend
                   <TouchableOpacity style={s.pinBtn} activeOpacity={0.85} onPress={current.pinAction.onPress} accessibilityRole="button">
                     <Crosshair size={15} color="#1E3A8A" />
                     <Text style={s.pinBtnText} numberOfLines={2}>{current.pinAction.label}</Text>
+                  </TouchableOpacity>
+                ) : null}
+                {current.deleteAction ? (
+                  <TouchableOpacity style={s.delBtn} activeOpacity={0.85} onPress={current.deleteAction.onPress} accessibilityRole="button" accessibilityLabel="Delete this photo">
+                    <Trash2 size={15} color="#B42318" />
+                    <Text style={[s.pinBtnText, { color: '#B42318' }]} numberOfLines={1}>Delete</Text>
                   </TouchableOpacity>
                 ) : null}
               </View>
@@ -197,6 +205,8 @@ const s = StyleSheet.create({
   factText: { flex: 1, color: '#E4E4E9', fontSize: 13 },
   factBtns: { flexDirection: 'row', gap: 8 },
   pinBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 44, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: '#DBEAFE' },
+  // Narrow, beside the wider actions: deleting is the rare one.
+  delBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 44, paddingHorizontal: 14, borderRadius: 12, backgroundColor: '#FEE4E2' },
   pinBtnText: { flexShrink: 1, color: '#1E3A8A', fontSize: 13, fontWeight: '800', textAlign: 'center' },
   timeBtn: { backgroundColor: '#FFEDD5' },
   root: { flex: 1, backgroundColor: '#3E3C3D' },

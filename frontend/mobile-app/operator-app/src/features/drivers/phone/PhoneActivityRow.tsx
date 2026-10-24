@@ -30,7 +30,7 @@ export function PhoneActivityRow({
   const os = device?.os_name ? [device.os_name, device.os_version].filter(Boolean).join(' ') : null;
   const version = device?.app_version
     ? [`App ${device.app_version}${device.build_number ? ` (${device.build_number})` : ''}`, os].filter(Boolean).join(' · ')
-    : data ? (data.devices.length ? 'App version not reported yet' : 'App never installed') : null;
+    : data ? (data.devices.length ? 'App version not reported yet' : 'App not installed') : null;
   // …and whether an update is still to install (TestFlight 22 Oct).
   const update = appUpdateState(device?.app_version, data);
   const updateText = update === 'required' ? `Update required (min ${data!.minVersion})`

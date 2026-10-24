@@ -1282,6 +1282,11 @@ export const operatorService = {
     return data.data;
   },
 
+  /** A driver's photo / screenshot sent by mistake → Recently deleted (restorable). */
+  async deleteTripPhoto(tripId: string, docId: string): Promise<void> {
+    await api.delete(`/trips/${tripId}/photos/${docId}`);
+  },
+
   /** Mark the next step done — or every step up to `toIndex`. */
   async stepForwardTrip(id: string, toIndex?: number): Promise<{ to: { index: number; label: string; next: string } }> {
     const { data } = await api.post(`/trips/${id}/step-forward`, toIndex === undefined ? {} : { to_index: toIndex });

@@ -6,14 +6,15 @@
  */
 import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView, TextInput, Alert } from 'react-native';
-import { ChevronDown, ChevronUp, CircleCheck, MapPin, Plus, ListPlus, Sparkles } from 'lucide-react-native';
-import { tripLogEntries, suggestForEntry, type TripLogEntry, type TripLogSuggestion } from '@mercon/shared-types';
+import { ChevronDown, ChevronUp, CircleCheck, Clock3, MapPin, Plus, ListPlus, Sparkles } from 'lucide-react-native';
+import { isoToWall, tripLogEntries, suggestForEntry, type TripLogEntry, type TripLogSuggestion } from '@mercon/shared-types';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import { operatorService, type OperatorTripDetail, type OperatorTripDocument } from '../../../../lib/operator';
 import { sortedStops, stopName } from '../tripDetailsModel';
 import { Card, INK, MUTED, SectionHead, tap } from './parts';
+import { TimeWheel } from './TimeWheel';
 
 export type LogEntry = TripLogEntry<OperatorTripDocument>;
 
@@ -134,14 +135,21 @@ export function DriverLog({ trip, f, onOpen, onPick, onDone }: {
               );
             })() : null}
             {/* Screenshots only while the send waits for a stop — once on one, they show under that stop. */}
+            {/* "Edit time" beside the screenshots (TestFlight 24 Oct): opens the stop sheet with the time to set. */}
             {stopIdx >= 0 ? null : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingTop: 8 }}>
-              {e.docs.map((d, k) => (
-                <TouchableOpacity key={d.id} onPress={() => { tap(); onOpen(e, k); }} activeOpacity={0.85}>
-                  <Image source={{ uri: resolveMediaUrl(d.file_url) ?? undefined }} style={s.thumb} />
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            <View style={s.thumbRow}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ gap: 6 }}>
+                {e.docs.map((d, k) => (
+                  <TouchableOpacity key={d.id} onPress={() => { tap(); onOpen(e, k); }} activeOpacity={0.85}>
+                    <Image source={{ uri: resolveMediaUrl(d.file_url) ?? undefined }} style={s.thumb} />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <TouchableOpacity style={[s.btn, s.timeBtn]} onPress={() => { tap(); onPick(e); }} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={`Edit the time of send ${i + 1}`}>
+                <Clock3 size={14} color="#7C2D12" />
+                <Text style={[s.btnText, { color: '#7C2D12' }]}>Edit time</Text>
+              </TouchableOpacity>
+            </View>
             )}
           </View>
         );
@@ -151,10 +159,11 @@ export function DriverLog({ trip, f, onOpen, onPick, onDone }: {
 }
 
 /** Make a log entry a new stop (name, loading / offloading), or add it to a stop the trip has. */
-export function LogStopSheet({ trip, entry, f, onClose, onDone }: {
+export function LogStopSheet({ trip, entry, f, tz, onClose, onDone }: {
   trip: OperatorTripDetail;
   entry: LogEntry | null;
   f: { smart: (iso?: string | null) => string };
+  tz: string;
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -162,17 +171,31 @@ export function LogStopSheet({ trip, entry, f, onClose, onDone }: {
   const [name, setName] = useState('');
   const [type, setType] = useState<'Pickup' | 'Dropoff'>('Dropoff');
   const [saving, setSaving] = useState(false);
+  // The arrival time this send stands for: the send's time unless the office sets another.
+  const [arrive, setArrive] = useState<string | null>(null);
+  const [editingTime, setEditingTime] = useState(false);
   const [shownFor, setShownFor] = useState<LogEntry | null>(null);
   if (entry !== shownFor) {
     setShownFor(entry);
+    setArrive(null);
+    setEditingTime(false);
     if (entry) { setName(entry.place ?? ''); setType('Dropoff'); }
   }
+  const arrivedAt = arrive ?? entry?.at ?? null;
+  /** Same day as the send, another clock time (the wheel only turns the clock). */
+  const withClock = (clock: string) => {
+    if (!entry) return;
+    const was = isoToWall(entry.at, tz).clock;
+    const secs = (c: string) => { const [h = 0, m = 0, sec = 0] = c.split(':').map((x) => Number(x) || 0); return h * 3600 + m * 60 + sec; };
+    setArrive(new Date(new Date(entry.at).getTime() + (secs(clock) - secs(was)) * 1000).toISOString());
+  };
 
   const save = async (body: { action: 'new'; name: string; stop_type: 'Pickup' | 'Dropoff' } | { action: 'attach'; stop_id: string }) => {
     if (!entry) return;
     setSaving(true);
     try {
-      await operatorService.logEntryToStop(trip.id, entry.id, body);
+      // Only a time the office set is sent: it is then saved as the stop's arrival.
+      await operatorService.logEntryToStop(trip.id, entry.id, arrive ? { ...body, arrive_at: arrive } : body);
       onDone();
       onClose();
     } catch (e) {
@@ -185,7 +208,25 @@ export function LogStopSheet({ trip, entry, f, onClose, onDone }: {
   return (
     <AppModal visible={!!entry} onClose={onClose} type="bottom-sheet" title={entry ? `Send of ${f.smart(entry.at)}` : ''} maxHeight="90%">
       <ScrollView keyboardShouldPersistTaps="handled">
-        <Text style={s.cap}>New stop</Text>
+        <Text style={s.cap}>Arrived</Text>
+        <TouchableOpacity style={s.timeRow} onPress={() => setEditingTime((v) => !v)} activeOpacity={0.8} accessibilityRole="button">
+          <Clock3 size={16} color={INK} />
+          <Text style={s.timeValue}>{arrivedAt ? f.smart(arrivedAt) : '—'}</Text>
+          {arrive ? <Text style={s.timeNote}>set by you</Text> : <Text style={s.timeNote}>when it was sent</Text>}
+          <View style={{ flex: 1 }} />
+          <Text style={s.add}>{editingTime ? 'Done' : 'Edit time'}</Text>
+        </TouchableOpacity>
+        {editingTime && entry ? (
+          <View style={{ marginBottom: 6 }}>
+            <TimeWheel value={isoToWall(arrivedAt ?? entry.at, tz).clock} onChange={withClock} />
+            {arrive ? (
+              <TouchableOpacity onPress={() => setArrive(null)} hitSlop={8} style={{ alignSelf: 'center', marginTop: 6 }}>
+                <Text style={[s.add, { color: MUTED }]}>Use the send time</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
+        <Text style={[s.cap, { marginTop: 14 }]}>New stop</Text>
         <TextInput value={name} onChangeText={setName} placeholder="Place name, e.g. Taif" style={s.input} placeholderTextColor="#A1A1AA" />
         <View style={s.seg}>
           {([['Pickup', 'Loading'], ['Dropoff', 'Offloading']] as const).map(([v, label]) => (
@@ -200,7 +241,7 @@ export function LogStopSheet({ trip, entry, f, onClose, onDone }: {
           onPress={() => save({ action: 'new', name: name.trim(), stop_type: type })}
         >
           <ListPlus size={16} color="#fff" />
-          <Text style={[s.btnText, { color: '#fff' }]}>Make it a stop (arrived {f.smart(entry?.at)})</Text>
+          <Text style={[s.btnText, { color: '#fff' }]}>Make it a stop (arrived {f.smart(arrivedAt)})</Text>
         </TouchableOpacity>
 
         <Text style={[s.cap, { marginTop: 18 }]}>Or add to a stop on the trip</Text>
@@ -233,6 +274,11 @@ const s = StyleSheet.create({
   num: { color: '#C4432F', fontWeight: '800' },
   placeRow: { flexDirection: 'row', alignItems: 'center', gap: 3, flexShrink: 1 },
   place: { fontSize: 12.5, color: MUTED, fontWeight: '600' },
+  thumbRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 8 },
+  timeBtn: { backgroundColor: '#FFEDD5', borderColor: '#FED7AA' },
+  timeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#E4E4E7', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 11, marginBottom: 8 },
+  timeValue: { fontSize: 15, fontWeight: '800', color: INK },
+  timeNote: { fontSize: 12, color: MUTED },
   thumb: { width: 48, height: 72, borderRadius: 8, backgroundColor: '#F1F3F7', borderWidth: StyleSheet.hairlineWidth, borderColor: '#E4E4E7' },
   onStop: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#ECFDF3', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, maxWidth: '55%' },
   onStopText: { fontSize: 12.5, fontWeight: '700', color: '#15803D' },
