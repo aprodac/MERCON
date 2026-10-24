@@ -45,7 +45,7 @@ export interface DriverFacts {
   /** Finished (delivered) trips in the lookback window on this lane / for this customer. */
   laneTrips: number;
   customerTrips: number;
-  /** Trips on this lane that are booked but not run yet — shown, never scored. */
+  /** Trips on this lane that are booked but not run yet — neither shown nor scored. */
   laneTripsBooked?: number;
   /** Trips this week, and the fleet average for comparison. */
   tripsThisWeek: number;
@@ -174,12 +174,11 @@ export function rankDrivers(
       reasons.push({ text: 'No truck', tone: 'neutral' });
     }
 
-    const booked = d.laneTripsBooked ?? 0;
+    // Only delivered trips count as done on the lane; scheduled ones are not experience
+    // (TestFlight 24 Oct: "don't count the scheduled trip as this driver has done this route").
     if (d.laneTrips > 0) {
       score += Math.round(w.lane * Math.min(1, d.laneTrips / rules.laneTripsForFull));
-      reasons.push({ text: `${d.laneTrips}× done on this lane${booked ? ` · ${booked} booked` : ''}`, tone: 'good' });
-    } else if (booked > 0) {
-      reasons.push({ text: `${booked} booked on this lane`, tone: 'neutral' });
+      reasons.push({ text: `${d.laneTrips}× done on this lane`, tone: 'good' });
     }
 
     const endsHere =

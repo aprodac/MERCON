@@ -29,7 +29,6 @@ import { useDriverPayouts } from '../hooks/useDriverPayouts';
 import { driverDisplayInitials, driverDisplayName, formatDate, formatDaysLeft } from '../services/driverDetailsService';
 import type { DriverDocumentStatus, DriverStatus } from '../types';
 
-const RECENT_TRIPS = 5;
 
 type Tab = 'overview' | 'pay' | 'documents' | 'trips';
 
@@ -60,10 +59,9 @@ export default function DriverDetailsScreen() {
   const pay = useDriverPayouts(id, trips);
   const { callDriver, canContact } = useDriverActions(id, driver?.phone ?? null);
 
+  // Every trip of the driver, latest first (TestFlight 24 Oct: "Show all trips" — it stopped at 5).
   const recent = useMemo(
-    () => [...trips]
-      .sort((a, b) => new Date(b.planned_start ?? b.createdAt).getTime() - new Date(a.planned_start ?? a.createdAt).getTime())
-      .slice(0, RECENT_TRIPS),
+    () => [...trips].sort((a, b) => new Date(b.planned_start ?? b.createdAt).getTime() - new Date(a.planned_start ?? a.createdAt).getTime()),
     [trips],
   );
 

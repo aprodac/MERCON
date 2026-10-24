@@ -335,6 +335,24 @@ export default function TripDetailsScreen() {
   const openPin = (st: Stop, preselect: string | null = null) =>
     setPinTarget({ stop: st, label: stopName(st, stops.indexOf(st)), photoPins: photoPinsForStop(updates, st.id), preselect });
 
+  // TestFlight 24 Oct: a photo the driver sent by mistake (a trial) can be deleted — after asking.
+  const deletePhoto = (docId: string) => {
+    Alert.alert('Delete this photo?', 'It is taken off the trip and goes to Recently deleted, where it can be restored. Stop times already saved stay as they are.', [
+      { text: 'Keep', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive', onPress: async () => {
+          try {
+            await operatorService.deleteTripPhoto(trip!.id, docId);
+            setViewer(null);
+            reload();
+          } catch (e) {
+            Alert.alert('Could not delete', getApiErrorMessage(e));
+          }
+        },
+      },
+    ]);
+  };
+
   const openPhotos = (u: DriverUpdate, index: number) => {
     const st = stops.find((x) => x.id === u.stop?.id);
     const name = st ? stopName(st, stops.indexOf(st)) : null;
@@ -362,6 +380,7 @@ export default function TripDetailsScreen() {
           label: `Edit ${name}'s time`,
           onPress: () => { setViewer(null); setTimeout(() => { setTimesStop(st.id); setCheckingTimes(true); }, 300); },
         } : null,
+        deleteAction: { onPress: () => deletePhoto(m.id) },
         pinAction: canPin ? {
           label: needsPin(st!) ? `Use as ${name}'s pin` : `Move ${name}'s pin here`,
           onPress: () => { setViewer(null); setTimeout(() => openPin(st!, m.id), 300); },
@@ -508,7 +527,10 @@ export default function TripDetailsScreen() {
               onOpen={(e, index) => setViewer({
                 title: `Driver's log · ${f.smart(e.at)}`,
                 index,
-                items: e.docs.map((d) => ({ id: d.id, url: d.file_url, kind: 'photo' as const, caption: [f.smart(e.at), e.place ? `near ${e.place}` : null].filter(Boolean).join(' · ') })),
+                items: e.docs.map((d) => ({
+                  id: d.id, url: d.file_url, kind: 'photo' as const, caption: [f.smart(e.at), e.place ? `near ${e.place}` : null].filter(Boolean).join(' · '),
+                  deleteAction: { onPress: () => deletePhoto(d.id) },
+                })),
               })}
               onPick={setLogEntry}
               onDone={reload}
@@ -607,7 +629,7 @@ export default function TripDetailsScreen() {
         onSend={viewer?.update ? () => { const u = viewer.update!; setViewer(null); setTimeout(() => setShare({ type: 'update', update: u }), 250); } : undefined}
       />
       <PinSheet target={pinTarget} tripId={trip.id} timeOf={f.time} onClose={() => setPinTarget(null)} onSaved={reload} />
-      <LogStopSheet trip={trip} entry={logEntry} f={f} onClose={() => setLogEntry(null)} onDone={reload} />
+      <LogStopSheet trip={trip} entry={logEntry} f={f} tz={tz} onClose={() => setLogEntry(null)} onDone={reload} />
       <TripTimesSheet visible={checkingTimes} trip={trip} tz={tz} stopId={timesStop} onClose={() => setCheckingTimes(false)} onDone={reload} />
       <MoreSheet
         visible={sheet === 'more'}
