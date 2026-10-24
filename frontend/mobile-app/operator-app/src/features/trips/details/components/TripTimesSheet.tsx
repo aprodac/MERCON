@@ -41,10 +41,20 @@ const FIELD_LABEL: Record<Field, string> = { arrival: 'Arrived', departure: 'Lef
 
 export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: Props) {
   const stops = useMemo(() => sortedStops(trip), [trip]);
+  // In the order the driver sent them, first one first (TestFlight 23 Oct: "the 4th one is actually the first").
   const allShots = useMemo(
-    () => (trip.documents ?? []).filter(isAppScreenshot).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
+    () => (trip.documents ?? []).filter(isAppScreenshot).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)),
     [trip.documents],
   );
+  /** Each screenshot's place in the order sent, across the whole trip — the same number when one stop's are shown alone. */
+  const sentNo = useMemo(() => new Map(allShots.map((d, i) => [d.id, i + 1])), [allShots]);
+  const sentAt = (iso: string) => {
+    try {
+      return new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
+    } catch {
+      return '';
+    }
+  };
   const pending = allShots.filter(pendingTimeCheck).length;
   const shotsOf = (id: string) => allShots.filter((d) => d.ai_extracted_json?.stop_id === id);
   /** Editing one stop shows only its screenshots; "See all" shows every one. */
@@ -197,9 +207,12 @@ export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: P
                 renderItem={({ item, index }) => (
                   <TouchableOpacity style={{ width: shotW }} activeOpacity={0.9} onPress={() => setTall((t) => !t)}>
                     {/* Which picture this is (TestFlight: "show its serial number, 1st picture, 2nd picture"). */}
-                    {shots.length > 1 ? (
-                      <View style={s.shotNo} pointerEvents="none"><Text style={s.shotNoText}>{index + 1} / {shots.length}</Text></View>
-                    ) : null}
+                    {/* Its number in the order sent and when (owner, 23 Oct): "#2 · sent 09:48 · 4 in all". */}
+                    <View style={s.shotNo} pointerEvents="none">
+                      <Text style={s.shotNoText}>
+                        #{sentNo.get(item.id) ?? index + 1}{sentAt(item.createdAt) ? ` · sent ${sentAt(item.createdAt)}` : ''}{allShots.length > 1 ? ` · ${allShots.length} in all` : ''}
+                      </Text>
+                    </View>
                     {/* Pinch to zoom at either size, also while a time is being edited (TestFlight: "not able to zoom"). */}
                     <ZoomableImage uri={resolveMediaUrl(item.file_url)} style={[s.shot, tall && (active === null ? s.shotTall : s.shotTallEditing)]} />
                   </TouchableOpacity>

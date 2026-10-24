@@ -15,26 +15,27 @@
  */
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, TextInput, SectionList, FlatList, RefreshControl, ActivityIndicator, Linking,
+  View, Text, TouchableOpacity, StyleSheet, TextInput, SectionList, FlatList, RefreshControl, ActivityIndicator, Linking, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  Building2, CalendarDays, CircleCheckBig, History, AlertTriangle, MessageCircle, Phone, Plus, Radio, Search, Send, Trash2, Truck, UserRound, X, ArrowUpRight, type LucideIcon,
+  BookOpen, Building2, CalendarDays, CircleCheckBig, History, MessageCircle, Phone, Plus, Radio, Search, Send, Trash2, Truck, UserRound, X, ArrowUpRight, type LucideIcon,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
+import { ErrorState } from '@mercon/mobile-shared/ui';
 import type { OperatorTrip } from '../../../lib/operator';
 import { TripCard } from './TripCard';
-import { TruckDayView } from './TruckDayView';
 import { AppTopBar } from '@/components/AppTopBar';
-import { Chips } from '@/features/notifications/components/parts';
+import { FilterChips } from '@/components/FilterChips';
+import { TripLedger } from './TripLedger';
 import { useNow, useTripList, HISTORY_DAYS, SCHEDULE_AFTER, type View as ListView } from './useTripList';
 import { askDeleteTrip, canDeleteTrip } from '../edit/movePlan';
 import {
-  clashesOf, dayLabel, isLateToStart, dayRange, daysBetween, driverNameOf, driverPhoneOf, finishedDayIso, needsAttention, phaseOf, tripDayIso, type TimeFmt,
+  clashesOf, dayLabel, isLateToStart, dayRange, daysBetween, driverNameOf, driverPhoneOf, historyDayIso, needsAttention, phaseOf, tripDayIso, type TimeFmt,
 } from './tripListModel';
 
 const INK = '#3E3C3D';
@@ -57,9 +58,15 @@ export default function TripsScreen() {
   );
   const [view, setView] = useState<ListView>(
     params.vehicleId || params.customerId ? 'history'
-      : params.view === 'delayed' || params.view === 'schedule' || params.view === 'history' ? params.view
+      : params.view === 'schedule' || params.view === 'history' ? params.view
+      // The ledger is History's second view, not a tab of its own (owner, 23 Oct).
+      : params.view === 'ledger' ? 'history'
       : 'now',
   );
+  const [historyMode, setHistoryMode] = useState<'day' | 'ledger'>(params.view === 'ledger' ? 'ledger' : 'day');
+  // Delayed is a filter inside Now, not a tab of its own (owner, 23 Oct: "too many tabs").
+  // Links that still ask for the delayed view open Now on it.
+  const [nowFilter, setNowFilter] = useState<NowFilter>(params.view === 'delayed' ? 'delayed' : 'all');
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -67,7 +74,6 @@ export default function TripsScreen() {
   const [historyDay, setHistoryDay] = useState<string | null>(null);
   const [historyFilter, setHistoryFilter] = useState<'all' | 'done' | 'cancelled' | 'deleted'>('all');
   // Schedule as a list of cards, or one row per truck across the day.
-  const [byTruck, setByTruck] = useState(false);
   const [actionsFor, setActionsFor] = useState<OperatorTrip | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -127,12 +133,21 @@ export default function TripsScreen() {
     [data.open],
   );
 
-  // The sections are the grouping — no filter chips on top of them.
-  const nowSections = useMemo(() => [
-    { key: 'lateStart', title: 'Not started — past start time', tone: '#B54708', data: board.lateStart },
-    { key: 'attention', title: 'Needs attention', tone: '#D92D20', data: board.attention },
-    { key: 'road', title: 'On the road', tone: '#2F5FD0', data: board.road },
-  ].filter((sct) => sct.data.length > 0), [board]);
+  // All: the board's sections. A chip narrows Now to one group — Delayed
+  // (every delayed / emergency trip, started or not) or one of the sections.
+  const nowGroups = useMemo(() => [
+    { key: 'delayed' as const, label: 'Delayed', title: 'Delayed · longest first', tone: '#D92D20', data: delayedTrips },
+    { key: 'lateStart' as const, label: 'Not started', title: 'Not started — past start time', tone: '#B54708', data: board.lateStart },
+    { key: 'attention' as const, label: 'Needs attention', title: 'Needs attention', tone: '#D92D20', data: board.attention },
+    { key: 'road' as const, label: 'On the road', title: 'On the road', tone: '#2F5FD0', data: board.road },
+  ], [board, delayedTrips]);
+  const nowTotal = board.lateStart.length + board.attention.length + board.road.length;
+  const activeFilter = nowFilter !== 'all' && nowGroups.find((g) => g.key === nowFilter)?.data.length ? nowFilter : 'all';
+  const nowSections = useMemo(
+    () => (activeFilter === 'all' ? nowGroups.filter((g) => g.key !== 'delayed') : nowGroups.filter((g) => g.key === activeFilter))
+      .filter((g) => g.data.length > 0),
+    [nowGroups, activeFilter],
+  );
 
   // ── Schedule: open trips only — counts per day and the chosen day's trips ─
   // Only trips still to start: once a trip is on the road it's in Now (TestFlight: "Schedule shows on the road").
@@ -147,7 +162,7 @@ export default function TripsScreen() {
   const selectedCount = perDay.get(selectedDay);
 
   // ── History: the same strip, by the day each trip finished ─────────────────
-  const historyPerDay = useMemo(() => countByDay(data.history, f, finishedDayIso, now), [data.history, f, now]);
+  const historyPerDay = useMemo(() => countByDay(data.history, f, historyDayIso, now), [data.history, f, now]);
   const historyLatest = useMemo(() => [...historyPerDay.keys()].sort().reverse(), [historyPerDay]);
   // Opens on the latest day anything finished (today, if something did).
   const historyDefault = historyLatest.find((k) => k <= todayKey) ?? todayKey;
@@ -156,7 +171,7 @@ export default function TripsScreen() {
     const last = historyLatest[0] && historyLatest[0] > todayKey ? historyLatest[0] : todayKey;
     return dayRange(todayKey, HISTORY_DAYS, daysBetween(todayKey, last));
   }, [historyLatest, todayKey]);
-  const historyAll = useMemo(() => tripsOn(data.history, f, finishedDayIso, historySelected, true), [data.history, f, historySelected]);
+  const historyAll = useMemo(() => tripsOn(data.history, f, historyDayIso, historySelected, true), [data.history, f, historySelected]);
   // Filter (TestFlight: "add filter, deleted and completed"): delivered / cancelled / deleted that day.
   const deletedOnDay = useMemo(
     () => data.deleted.filter((d) => f.dayKey(d.deletedAt) === historySelected).sort((a, b) => b.deletedAt.localeCompare(a.deletedAt)),
@@ -182,8 +197,7 @@ export default function TripsScreen() {
   );
 
   const views: { id: ListView; label: string; icon: LucideIcon; badge?: number }[] = [
-    { id: 'now', label: 'Now', icon: Radio },
-    { id: 'delayed', label: 'Delayed', icon: AlertTriangle, badge: delayedTrips.length || undefined },
+    { id: 'now', label: 'Now', icon: Radio, badge: delayedTrips.length || undefined },
     { id: 'schedule', label: 'Schedule', icon: CalendarDays },
     { id: 'history', label: 'History', icon: History },
   ];
@@ -261,47 +275,43 @@ export default function TripsScreen() {
             })}
           </View>
 
-          {view === 'delayed' ? (
-            <FlatList
-              data={delayedTrips}
-              keyExtractor={(t) => t.id}
-              contentContainerStyle={s.list}
-              refreshControl={refreshControl}
-              renderItem={({ item }) => renderCard(item, true)}
-              ItemSeparatorComponent={Gap}
-              ListHeaderComponent={delayedTrips.length ? <Text style={s.resultsHead}>{delayedTrips.length} delayed · longest first</Text> : null}
-              ListEmptyComponent={data.openLoading ? <Loading /> : <Empty icon={CircleCheckBig} title="Nothing delayed" text="Every open trip is on schedule." good />}
-            />
-          ) : view === 'now' ? (
+          {view === 'now' ? (
             <SectionList
               sections={nowSections}
               keyExtractor={(t) => t.id}
               contentContainerStyle={s.list}
               refreshControl={refreshControl}
               stickySectionHeadersEnabled={false}
+              ListHeaderComponent={nowTotal > 0 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterBleed} contentContainerStyle={s.filters}>
+                  <FilterChip label="All" count={nowTotal} on={activeFilter === 'all'} onPress={() => setNowFilter('all')} />
+                  {nowGroups.filter((g) => g.data.length > 0).map((g) => (
+                    <FilterChip key={g.key} label={g.label} count={g.data.length} tone={g.tone} on={activeFilter === g.key} onPress={() => setNowFilter(g.key)} />
+                  ))}
+                </ScrollView>
+              ) : null}
               renderSectionHeader={({ section }) => <SectionHead title={section.title} count={section.data.length} tone={(section as any).tone} />}
               renderItem={({ item }) => renderCard(item, true)}
               ItemSeparatorComponent={Gap}
-              ListEmptyComponent={data.openLoading ? <Loading /> : <Empty icon={CircleCheckBig} title="Nothing on the road" text="Trips show here once they start. Upcoming trips are in Schedule." good />}
+              // A failed load says so — it used to read "Nothing on the road" while trips were out.
+              ListEmptyComponent={data.openLoading ? <Loading /> : data.error ? <ErrorState message="Couldn't load trips." onRetry={refresh} /> : <Empty icon={CircleCheckBig} title="Nothing on the road" text="Trips show here once they start. Upcoming trips are in Schedule." good />}
             />
+          ) : view === 'history' && historyMode === 'ledger' ? (
+            <View style={{ flex: 1 }}>
+              <HistoryMode value={historyMode} onChange={setHistoryMode} />
+              <TripLedger f={f} todayKey={todayKey} scope={scope?.filter} onOpen={open} />
+            </View>
           ) : view === 'schedule' ? (
             <FlatList
-              data={byTruck ? [] : dayTrips}
+              data={dayTrips}
               keyExtractor={(t) => t.id}
               contentContainerStyle={s.list}
               refreshControl={refreshControl}
               renderItem={({ item }) => renderCard(item)}
               ItemSeparatorComponent={Gap}
               ListHeaderComponent={(
-                <View style={{ gap: 10, marginBottom: 4 }}>
+                <View style={{ gap: 12, marginBottom: 12 }}>
                   <DateStrip days={days} selected={selectedDay} today={todayKey} counts={perDay} onSelect={(k) => { tap(); setDay(k); }} f={f} />
-                  <View style={s.modeRow}>
-                    {([['List', false], ['By truck', true]] as const).map(([label, on]) => (
-                      <TouchableOpacity key={label} style={[s.modeBtn, byTruck === on && s.modeBtnOn]} onPress={() => { tap(); setByTruck(on); }} accessibilityRole="tab" accessibilityState={{ selected: byTruck === on }}>
-                        <Text style={[s.modeText, byTruck === on && s.modeTextOn]}>{label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
                   <View style={s.dayHead}>
                     <Text style={s.dayTitle}>{dayLabel(selectedDay, todayKey, f)}</Text>
                     {selectedDay !== todayKey ? (
@@ -317,9 +327,7 @@ export default function TripsScreen() {
                   </View>
                 </View>
               )}
-              ListEmptyComponent={data.windowLoading ? <Loading /> : byTruck ? (
-                <TruckDayView trips={data.window} dayKey={selectedDay} f={f} clashes={clashes} onOpen={(t) => open(t)} />
-              ) : (
+              ListEmptyComponent={data.windowLoading ? <Loading /> : data.error ? <ErrorState message="Couldn't load trips." onRetry={refresh} /> : (
                 <Empty
                   icon={CalendarDays}
                   title="No trips to run this day"
@@ -337,7 +345,8 @@ export default function TripsScreen() {
               renderItem={({ item }) => renderCard(item)}
               ItemSeparatorComponent={Gap}
               ListHeaderComponent={(
-                <View style={{ gap: 10, marginBottom: 4 }}>
+                <View style={{ gap: 12, marginBottom: 12 }}>
+                  <HistoryMode value={historyMode} onChange={setHistoryMode} inList />
                   <DateStrip days={historyDays} selected={historySelected} today={todayKey} counts={historyPerDay} onSelect={(k) => { tap(); setHistoryDay(k); }} f={f} />
                   <View style={s.dayHead}>
                     <Text style={s.dayTitle}>{dayLabel(historySelected, todayKey, f)}</Text>
@@ -352,14 +361,15 @@ export default function TripsScreen() {
                       {historyCount?.cancelled ? <Text> · {historyCount.cancelled} cancelled</Text> : null}
                     </Text>
                   </View>
-                  <Chips
+                  <FilterChips
                     value={historyFilter}
-                    onChange={setHistoryFilter}
-                    options={[
-                      { value: 'all', label: 'All', count: historyAll.length },
-                      { value: 'done', label: 'Delivered', count: historyCount?.done ?? 0 },
-                      { value: 'cancelled', label: 'Cancelled', count: historyCount?.cancelled ?? 0 },
-                      { value: 'deleted', label: 'Deleted', count: deletedOnDay.length },
+                    onChange={(v) => setHistoryFilter(v)}
+                    // Counts only when there is something, so all four fit on a phone.
+                    items={[
+                      { key: 'all', label: 'All', count: historyAll.length || undefined },
+                      { key: 'done', label: 'Delivered', count: historyCount?.done || undefined },
+                      { key: 'cancelled', label: 'Cancelled', count: historyCount?.cancelled || undefined },
+                      { key: 'deleted', label: 'Deleted', count: deletedOnDay.length || undefined },
                     ]}
                   />
                   {historyFilter === 'deleted' ? deletedOnDay.map((d) => (
@@ -376,7 +386,7 @@ export default function TripsScreen() {
                 <Empty
                   icon={History}
                   title="Nothing finished this day"
-                  text="Delivered trips show on the day they ended, cancelled ones on their planned day. Trips still to run are in Schedule."
+                  text="Finished trips show on the day they started, cancelled ones on their planned day. Trips still to run are in Schedule."
                   action={{ label: 'Open Schedule', icon: CalendarDays, onPress: () => { tap(); setView('schedule'); } }}
                 />
               )}
@@ -446,6 +456,35 @@ function Empty({ icon: Icon, title, text, good, action }: {
         </TouchableOpacity>
       ) : null}
     </View>
+  );
+}
+
+/** History: by day (the date strip) or the ledger (every trip by number). */
+function HistoryMode({ value, onChange, inList }: { value: 'day' | 'ledger'; onChange: (v: 'day' | 'ledger') => void; inList?: boolean }) {
+  return (
+    <View style={[s.modeRow, !inList && { marginHorizontal: 16, marginTop: 12 }]}>
+      {(['day', 'ledger'] as const).map((m) => {
+        const on = m === value;
+        return (
+          <TouchableOpacity key={m} style={[s.modeBtn, on && s.modeOn]} onPress={() => { if (!on) tap(); onChange(m); }} accessibilityRole="tab" accessibilityState={{ selected: on }}>
+            {m === 'ledger' ? <BookOpen size={13} color={on ? INK : MUTED} strokeWidth={2.3} /> : <CalendarDays size={13} color={on ? INK : MUTED} strokeWidth={2.3} />}
+            <Text style={[s.modeText, on && { color: INK }]}>{m === 'day' ? 'By day' : 'Ledger'}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+type NowFilter = 'all' | 'delayed' | 'lateStart' | 'attention' | 'road';
+
+function FilterChip({ label, count, tone, on, onPress }: { label: string; count: number; tone?: string; on: boolean; onPress: () => void }) {
+  return (
+    <TouchableOpacity style={[s.fChip, on && s.fChipOn]} onPress={() => { if (!on) tap(); onPress(); }} activeOpacity={0.75} accessibilityRole="button" accessibilityState={{ selected: on }}>
+      {tone && !on ? <View style={[s.sectionDot, { backgroundColor: tone }]} /> : null}
+      <Text style={[s.fChipText, on && { color: Colors.white }]}>{label}</Text>
+      <Text style={[s.fChipCount, { color: on ? Colors.white : tone ?? MUTED }]}>{count}</Text>
+    </TouchableOpacity>
   );
 }
 
@@ -541,27 +580,34 @@ const s = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10, gap: 12 },
   h1: { fontSize: 24, fontWeight: '700', color: INK, letterSpacing: -0.4 },
   h1sub: { fontSize: 13, fontWeight: '600', color: MUTED, marginTop: 1 },
-  searchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, height: 46, borderRadius: 14, backgroundColor: Colors.white, paddingHorizontal: 13, borderWidth: 1, borderColor: '#EEF0F4' },
+  searchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, height: 44, borderRadius: 14, backgroundColor: Colors.white, paddingHorizontal: 13, borderWidth: 1, borderColor: '#E9EAEE' },
   searchInput: { flex: 1, fontSize: 15, color: INK, paddingVertical: 0 },
-  segment: { flexDirection: 'row', gap: 4, marginHorizontal: 16, marginTop: 12, backgroundColor: '#E4E7EE', borderRadius: 13, padding: 3 },
-  segItem: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, height: 38, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 4 },
-  segOn: { backgroundColor: Colors.white, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
-  segText: { fontSize: 13, fontWeight: '700', color: '#4A4A55' },
+  // One tab bar, same gutter as the search bar; the content below starts 12 under it.
+  segment: { flexDirection: 'row', gap: 2, marginHorizontal: 16, marginTop: 10, backgroundColor: '#E6E8ED', borderRadius: 12, padding: 3 },
+  segItem: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, height: 36, borderRadius: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: 2 },
+  segOn: { backgroundColor: Colors.white, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
+  segText: { fontSize: 13, fontWeight: '600', color: '#6E6E80' },
   segTextOn: { color: INK, fontWeight: '800' },
-  badge: { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#D92D20', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  badge: { minWidth: 17, height: 17, borderRadius: 9, backgroundColor: '#D92D20', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   badgeText: { color: Colors.white, fontSize: 11, fontWeight: '800' },
-  list: { padding: 16, paddingBottom: 120, flexGrow: 1 },
+  list: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 120, flexGrow: 1 },
   resultsHead: { fontSize: 13, fontWeight: '700', color: MUTED, marginBottom: 10 },
-  sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 12, paddingBottom: 8 },
+  modeRow: { flexDirection: 'row', alignSelf: 'flex-start', gap: 4, backgroundColor: '#ECEDF1', borderRadius: 10, padding: 3 },
+  modeBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, height: 30, paddingHorizontal: 12, borderRadius: 8 },
+  modeOn: { backgroundColor: Colors.white, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  modeText: { fontSize: 13, fontWeight: '700', color: MUTED },
+  // Bleed to the screen edges so the chips scroll under the page padding.
+  filterBleed: { marginHorizontal: -16, marginBottom: 12, flexGrow: 0 },
+  filters: { gap: 6, paddingHorizontal: 16 },
+  fChip: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 34, paddingHorizontal: 12, borderRadius: 17, backgroundColor: Colors.white, borderWidth: 1, borderColor: '#E9EAEE' },
+  fChipOn: { backgroundColor: INK, borderColor: INK },
+  fChipText: { fontSize: 13, fontWeight: '600', color: '#3F3F46' },
+  fChipCount: { fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 4, paddingBottom: 10 },
   sectionDot: { width: 6, height: 6, borderRadius: 3 },
-  sectionTitle: { fontSize: 13, fontWeight: '600', color: '#3F3F46' },
+  sectionTitle: { fontSize: 13, fontWeight: '700', color: '#3F3F46' },
   sectionCount: { fontSize: 13, fontWeight: '500', color: '#A1A1AA' },
-  modeRow: { flexDirection: 'row', alignSelf: 'flex-start', backgroundColor: '#EDEDF0', borderRadius: 10, padding: 3, gap: 3 },
-  modeBtn: { paddingHorizontal: 14, height: 30, borderRadius: 8, justifyContent: 'center' },
-  modeBtnOn: { backgroundColor: Colors.white },
-  modeText: { fontSize: 13, fontWeight: '600', color: MUTED },
-  modeTextOn: { color: INK },
-  dayHead: { flexDirection: 'row', alignItems: 'baseline', gap: 10, marginTop: 4 },
+  dayHead: { flexDirection: 'row', alignItems: 'baseline', gap: 10, marginTop: 2 },
   todayLink: { fontSize: 13, fontWeight: '700', color: '#C4432F' },
   dayMonth: { fontSize: 9, lineHeight: 11, fontWeight: '800', letterSpacing: 0.4, color: '#C4432F', textTransform: 'uppercase' },
   dayTitle: { fontSize: 18, fontWeight: '800', color: INK },
@@ -578,7 +624,7 @@ const s = StyleSheet.create({
   dayDots: { flexDirection: 'row', alignItems: 'center', gap: 3, height: 14 },
   dayDot: { width: 6, height: 6, borderRadius: 3 },
   dayCountSmall: { fontSize: 11, fontWeight: '800', color: MUTED },
-  empty: { alignItems: 'center', gap: 6, backgroundColor: Colors.white, borderRadius: 18, padding: 24, marginTop: 8 },
+  empty: { alignItems: 'center', gap: 6, backgroundColor: Colors.white, borderRadius: 18, padding: 24 },
   emptyIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#F4F5F8', alignItems: 'center', justifyContent: 'center' },
   emptyTitle: { fontSize: 16, fontWeight: '800', color: INK },
   emptyText: { fontSize: 13, color: MUTED, textAlign: 'center' },

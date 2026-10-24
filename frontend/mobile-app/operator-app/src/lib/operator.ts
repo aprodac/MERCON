@@ -34,6 +34,8 @@ export interface OperatorTrip {
   planned_end?: string | null;
   actual_start?: string | null;
   actual_end?: string | null;
+  /** What the customer pays for the trip (SAR). */
+  billing_amount?: number | string | null;
   createdAt?: string;
   updatedAt?: string;
   is_third_party?: boolean;
@@ -272,6 +274,10 @@ export interface TripStepBackEntry {
   from: string | null;
   to: string | null;
   photos: { choice: 'move' | 'remove' | 'keep'; count: number; moved_to: string | null; removed_at?: string | null; restorable?: number } | null;
+  /** Put back with "Undo" since. */
+  undone?: boolean;
+  /** The latest take-back, still in place: it can be undone. */
+  can_undo?: boolean;
 }
 
 export type ShareRecipient = 'customer_contact' | 'customer_group' | 'internal' | 'other';
@@ -290,7 +296,8 @@ export interface DriverUpdate {
   } | null;
   vehicle_plate: string | null;
   driver: { name: string; phone: string | null } | null;
-  stop: { id: string; name: string; type: string; sequence: number } | null;
+  /** `leg`: 1 going / 2 returning on a round trip, null one-way (absent from servers before 23 Oct). */
+  stop: { id: string; name: string; type: string; sequence: number; leg?: 1 | 2 | null } | null;
   /** Trip log send (customer-app trip): where the phone was — no stop yet. */
   place?: string | null;
   stage: LiveMediaStage;
@@ -1268,7 +1275,8 @@ export const operatorService = {
   async logEntryToStop(
     tripId: string,
     entry: string,
-    body: { action: 'new'; name: string; stop_type: 'Pickup' | 'Dropoff' } | { action: 'attach'; stop_id: string },
+    body: ({ action: 'new'; name: string; stop_type: 'Pickup' | 'Dropoff' } | { action: 'attach'; stop_id: string })
+      & { arrive_at?: string; depart_at?: string; needs_check?: boolean },
   ): Promise<{ stop_id: string }> {
     const { data } = await api.post(`/trips/${tripId}/log/${encodeURIComponent(entry)}/stop`, body);
     return data.data;
@@ -1277,6 +1285,12 @@ export const operatorService = {
   /** Mark the next step done — or every step up to `toIndex`. */
   async stepForwardTrip(id: string, toIndex?: number): Promise<{ to: { index: number; label: string; next: string } }> {
     const { data } = await api.post(`/trips/${id}/step-forward`, toIndex === undefined ? {} : { to_index: toIndex });
+    return data.data;
+  },
+
+  /** Undo the trip's latest take-back: stop times, status and photos go back to how they were. */
+  async undoStepBack(id: string): Promise<{ to: { index: number; label: string } }> {
+    const { data } = await api.post(`/trips/${id}/step-back/undo`, {});
     return data.data;
   },
 
@@ -1595,7 +1609,13 @@ export const operatorService = {
   },
 
   /** Attaches a photo, video or file to the trip as a Document (POST /documents, as the web's upload). */
-  async uploadTripDocument(tripId: string, file: { uri: string; name?: string; mimeType?: string | null }, docType: TripDocKind): Promise<OperatorTripDocument> {
+  async uploadTripDocument(
+    tripId: string,
+    file: { uri: string; name?: string; mimeType?: string | null },
+    docType: TripDocKind,
+    /** Put it under a stop, tagged like the driver app's photos (the server checks the stop is on the trip). */
+    at?: { stopId: string; operation: 'pickup' | 'delivery' | 'intermediate' | 'return_loading' },
+  ): Promise<OperatorTripDocument> {
     const name = file.name || file.uri.split('/').pop() || 'upload.jpg';
     const ext = (/\.(\w+)$/.exec(name)?.[1] || 'jpg').toLowerCase();
     const type = file.mimeType
@@ -1605,6 +1625,10 @@ export const operatorService = {
     form.append('entity_type', 'Trip');
     form.append('entity_id', tripId);
     form.append('doc_type', docType);
+    if (at) {
+      form.append('stop_id', at.stopId);
+      form.append('operation', at.operation);
+    }
     const { data } = await api.post('/documents', form, { headers: { 'Content-Type': 'multipart/form-data' } });
     return data.data as OperatorTripDocument;
   },

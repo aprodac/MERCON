@@ -152,6 +152,36 @@ export function flagsOf(t: OperatorTrip, now = Date.now()): Flag[] {
 }
 
 /** The reason the driver gave for the delay, in words ("Traffic Jam"). */
+/** "45 min", "3 h", "3 h 20 min", "1 d 4 h". */
+export function lateFor(min: number): string {
+  const m = Math.max(0, Math.round(min));
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  if (h >= 24) return `${Math.floor(h / 24)} d ${h % 24} h`;
+  return m % 60 >= 5 ? `${h} h ${m % 60} min` : `${h} h`;
+}
+
+/**
+ * How late a delayed trip is and where, for its card (owner, 23 Oct: "Late
+ * arriving" said neither): "3 h late · due 05:11 at Jeddah", "Not started ·
+ * 17 h past start". Null when it isn't behind its plan.
+ */
+export function lateLineOf(t: OperatorTrip, now: number, time: (iso: string) => string): string | null {
+  if (phaseOf(t.status) !== 'delayed') return null;
+  if (isDelayedNotStarted(t)) {
+    const start = t.planned_start ? Date.parse(t.planned_start) : NaN;
+    return Number.isFinite(start) && start < now ? `Not started · ${lateFor((now - start) / 60000)} past start` : 'Not started';
+  }
+  const next = stopsOf(t).find((x) => !x.actual_arrival);
+  const due = next?.planned_arrival ? Date.parse(next.planned_arrival) : NaN;
+  if (next && Number.isFinite(due) && due < now) {
+    const at = placeName(next);
+    return `${lateFor((now - due) / 60000)} late · due ${time(next.planned_arrival!)}${at !== '—' ? ` at ${at}` : ''}`;
+  }
+  const end = t.planned_end ? Date.parse(t.planned_end) : NaN;
+  return Number.isFinite(end) && end < now ? `${lateFor((now - end) / 60000)} past planned end` : null;
+}
+
 export function delayReasonOf(t: OperatorTrip): string | null {
   const reason = stopsOf(t).find((s) => s.delay_reason)?.delay_reason;
   return reason ? String(reason).replace(/([a-z])([A-Z])/g, '$1 $2') : null;
@@ -194,8 +224,12 @@ export function makeTime(tz: string) {
 export type TimeFmt = ReturnType<typeof makeTime>;
 
 export const tripDayIso = (t: OperatorTrip) => t.planned_start || t.createdAt || null;
-/** History is about when a trip finished: delivered time, else the planned day (cancelled trips). */
-export const finishedDayIso = (t: OperatorTrip) => t.actual_end || tripDayIso(t);
+/**
+ * History files a trip under the day it started — a trip out on 19 Oct and
+ * delivered on the 20th is one of the 19th's trips (TestFlight 21 Oct). The
+ * planned day when it never started (cancelled trips).
+ */
+export const historyDayIso = (t: OperatorTrip) => t.actual_start || tripDayIso(t);
 
 /** "Today", "Tomorrow", "Yesterday" or "Fri 26 Sep". */
 export function dayLabel(key: string, todayKey: string, f: TimeFmt): string {

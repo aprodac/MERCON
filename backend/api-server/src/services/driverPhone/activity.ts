@@ -15,6 +15,7 @@ export type DriverActivityType =
   | 'CameOnline'
   | 'PermissionChanged'
   | 'TripStatusChanged'
+  | 'StopArrived'
   | 'PhotoUploaded'
   | 'Emergency'
   | 'Acknowledged';

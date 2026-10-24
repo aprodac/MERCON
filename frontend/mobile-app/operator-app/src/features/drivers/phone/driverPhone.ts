@@ -99,12 +99,32 @@ export interface FleetPhoneRow {
   lastSeenAt: string | null;
   platform: string | null;
   app_version: string | null;
+  /** No phone has ever registered: the driver never installed / logged in to the app. */
+  never_installed?: boolean;
+  /** An app update is waiting (behind the newest version drivers run, or below the minimum). */
+  needs_update?: boolean;
+  latest_version?: string | null;
 }
 export async function fleetPhoneStatus(): Promise<FleetPhoneRow[]> {
   const { data } = await api.get('/drivers/phone-status');
   return (data.data ?? []) as FleetPhoneRow[];
 }
 export const fleetPhoneKey = ['drivers', 'phone-status'] as const;
+
+/** `a` is an older app version than `b` ("1.2.1" < "1.2.10"). */
+export const isOlderVersion = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true }) < 0;
+
+/**
+ * Is the driver's app up to date? `required` below the minimum version,
+ * `waiting` behind the newest version drivers run, `latest` otherwise; null
+ * when the phone hasn't said which version it runs.
+ */
+export function appUpdateState(version: string | null | undefined, p: Pick<DriverPhone, 'minVersion' | 'latestVersion'> | null | undefined): 'required' | 'waiting' | 'latest' | null {
+  if (!version || !p) return null;
+  if (p.minVersion && isOlderVersion(version, p.minVersion)) return 'required';
+  if (p.latestVersion && isOlderVersion(version, p.latestVersion)) return 'waiting';
+  return 'latest';
+}
 
 export const driverPhoneKey = (driverId: string) => ['drivers', 'phone', driverId] as const;
 export const tripTrailKey = (tripId: string) => ['trips', 'driver-trail', tripId] as const;

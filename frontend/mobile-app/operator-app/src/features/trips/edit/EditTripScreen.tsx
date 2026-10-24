@@ -26,6 +26,7 @@ import {
 import { Field, FormHeader, SaveBar, Section, formStyles } from '@/features/users/components/FormKit';
 import { PickerSheet, ValueTile, fmtDay, niceName, tap } from '../create/components/ui';
 import { WhenSheet, type WhenValue } from '../create/components/WhenSheet';
+import { TransitSheet, transitText } from '../create/components/TransitSheet';
 import { deltaText, moveTrips, tripsMadeWith } from './movePlan';
 import { ExtraStopSheet, type ExtraStopSheetValue } from './ExtraStopSheet';
 import { MovePlanSheet } from './MovePlanSheet';
@@ -106,15 +107,6 @@ export default function EditTripScreen() {
 const isoMs = (w: WhenValue, tz: string) => (w.date && w.time ? Date.parse(zonedWallTimeToUtcIso(w.date, w.time, tz)) : null);
 const shiftIso = (iso: string | null, deltaMs: number) => (iso && deltaMs ? new Date(Date.parse(iso) + deltaMs).toISOString() : iso);
 
-/** "8 h 30 m" for a transit time in minutes. */
-const transitText = (min: number) => {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return h && m ? `${h} h ${m} m` : h ? `${h} h` : `${m} m`;
-};
-/** Transit times offered: every 30 minutes up to two days. */
-const TRANSIT_CHOICES = Array.from({ length: 96 }, (_, i) => (i + 1) * 30);
-
 function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; onDone: () => void }) {
   const queryClient = useQueryClient();
   const status = trip.status as string;
@@ -122,6 +114,9 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
   const routeOpen = isTripRouteEditable(trip as never);
   // A running trip still takes stops the driver has not reached yet; finished trips take none.
   const stopsOpen = stopsEditMode(status) !== 'locked';
+  // The planned times stay open on a running trip too (TestFlight 23 Oct: a Saturday trip the
+  // driver started on Friday couldn't be moved to Friday). The driver's real times aren't touched.
+  const timesOpen = routeOpen || stopsOpen;
   const monthly = isMonthly(trip);
   const hasCoDriver = Number(trip.co_driver_payout) > 0;
   // Same locks as the web: the customer's price until the truck is on the road, the payout until it is invoiced.
@@ -208,7 +203,7 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
   const routeChanged = stops.length !== initialStops.length || stops.some((st, i) => st.changed || st.timeSet || st.key !== initialStops[i]?.key);
   const billingChanged = billingOpen && billing !== initialBilling;
   const payoutChanged = payoutOpen && payout !== initialPayout;
-  const routeSave = routeOpen ? scheduleChanged || routeChanged : stopsOpen && routeChanged;
+  const routeSave = routeOpen ? scheduleChanged || routeChanged : stopsOpen && (scheduleChanged || routeChanged);
   const dirty = routeSave || billingChanged || payoutChanged;
 
   const clear = (k: keyof Errors) => errors[k] && setErrors((prev) => ({ ...prev, [k]: undefined }));
@@ -241,7 +236,7 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
     const e: Errors = {};
     if (routeSave) {
       if (stops.some((st) => !st.name.trim())) e.route = 'Choose a place for every stop';
-      if (routeOpen && start.date && start.time && end.date && end.time) {
+      if (timesOpen && start.date && start.time && end.date && end.time) {
         const a = zonedWallTimeToUtcIso(start.date, start.time, tz);
         const b = zonedWallTimeToUtcIso(end.date, end.time, tz);
         if (new Date(b).getTime() <= new Date(a).getTime()) e.schedule = 'Delivery must be after pickup';
@@ -269,9 +264,9 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
     let routeSaved = false;
     try {
       if (routeSave) {
-        // A running trip keeps its times; only its stops change.
-        const startIso = routeOpen && start.date && start.time ? zonedWallTimeToUtcIso(start.date, start.time, tz) : undefined;
-        const endIso = routeOpen && end.date && end.time ? zonedWallTimeToUtcIso(end.date, end.time, tz) : undefined;
+        // Planned times only; on a running trip the stops the driver reached keep their real times.
+        const startIso = timesOpen && scheduleChanged && start.date && start.time ? zonedWallTimeToUtcIso(start.date, start.time, tz) : undefined;
+        const endIso = timesOpen && scheduleChanged && end.date && end.time ? zonedWallTimeToUtcIso(end.date, end.time, tz) : undefined;
         // Stops in between keep their place in the plan: the way out moves with the pickup, the way back with the delivery.
         const startDelta = startIso && trip.planned_start ? Date.parse(startIso) - Date.parse(trip.planned_start) : 0;
         const endDelta = endIso && trip.planned_end ? Date.parse(endIso) - Date.parse(trip.planned_end) : startDelta;
@@ -287,7 +282,7 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
             lat: st.lat,
             lng: st.lng,
             // First and last follow the trip's times; a middle stop moves with its leg's end of the trip.
-            planned_arrival: !routeOpen ? st.planned_arrival : i === 0 ? startIso ?? st.planned_arrival : i === stops.length - 1 ? endIso ?? st.planned_arrival : st.timeSet ? st.planned_arrival : shiftIso(st.planned_arrival, st.leg_index > 0 ? endDelta : startDelta),
+            planned_arrival: !timesOpen ? st.planned_arrival : i === 0 ? startIso ?? st.planned_arrival : i === stops.length - 1 ? endIso ?? st.planned_arrival : st.timeSet ? st.planned_arrival : shiftIso(st.planned_arrival, st.leg_index > 0 ? endDelta : startDelta),
           })),
         };
         // A month plan / bulk booking: offer to move the trips made with this one by the same amount.
@@ -359,7 +354,7 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
 
   const picked = stopPicker ? stops.find((st) => st.key === stopPicker) : undefined;
   const lockedNote = stopsOpen
-    ? `This trip is ${statusWord(status)}. Its times and the stops the driver has reached are locked — you can add or remove stops not reached yet.`
+    ? `This trip is ${statusWord(status)}. You can still change its planned pickup, delivery and transit time, and add or remove stops not reached yet; the stops the driver has reached keep their real times.`
     : `This trip is ${statusWord(status)}, so its times and places can no longer be changed.`;
 
   return (
@@ -371,27 +366,27 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
         <Section title="Schedule" Icon={CalendarClock}>
           <View style={{ gap: 8 }}>
             <ValueTile
-              style={!routeOpen && s.off}
+              style={!timesOpen && s.off}
               caption="Pickup"
               value={whenText(start)}
               placeholder="Not set"
               error={!!errors.schedule}
-              onPress={() => routeOpen && setWhen('start')}
+              onPress={() => timesOpen && setWhen('start')}
             />
             <ValueTile
-              style={!routeOpen && s.off}
+              style={!timesOpen && s.off}
               caption="Delivery"
               value={whenText(end)}
               placeholder="Not set"
               error={!!errors.schedule}
-              onPress={() => routeOpen && setWhen('end')}
+              onPress={() => timesOpen && setWhen('end')}
             />
             <ValueTile
-              style={(!routeOpen || startMs == null) && s.off}
+              style={(!timesOpen || startMs == null) && s.off}
               caption="Transit time"
               value={transitMin != null ? transitText(transitMin) : undefined}
               placeholder={startMs == null ? 'Set the pickup first' : 'Not set'}
-              onPress={() => routeOpen && startMs != null && setTransitPicker(true)}
+              onPress={() => timesOpen && startMs != null && setTransitPicker(true)}
             />
           </View>
           {errors.schedule ? <Text style={s.error}>{errors.schedule}</Text> : null}
@@ -553,23 +548,19 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
         onDone={(v) => { setEnd(v); setEndTouched(true); clear('schedule'); setWhen(null); }}
         onClose={() => setWhen(null)}
       />
-      <PickerSheet
+      <TransitSheet
         visible={transitPicker}
-        title="Transit time"
-        options={TRANSIT_CHOICES.map((m) => ({
-          value: String(m),
-          label: transitText(m),
-          sub: startMs != null ? `Delivery ${whenText(wallOf(new Date(startMs + m * 60000).toISOString(), tz))}` : undefined,
-        }))}
-        value={transitMin != null ? String(Math.round(transitMin / 30) * 30) : null}
-        onSelect={(value) => {
-          if (startMs == null) return;
-          setEnd(wallOf(new Date(startMs + Number(value) * 60000).toISOString(), tz));
-          setEndTouched(true);
-          clear('schedule');
+        value={transitMin}
+        arrivalText={(m) => (startMs != null ? `Delivery ${whenText(wallOf(new Date(startMs + m * 60000).toISOString(), tz))}` : '')}
+        onDone={(m) => {
+          if (startMs != null) {
+            setEnd(wallOf(new Date(startMs + m * 60000).toISOString(), tz));
+            setEndTouched(true);
+            clear('schedule');
+          }
+          setTransitPicker(false);
         }}
         onClose={() => setTransitPicker(false)}
-        searchPlaceholder="Hours, e.g. 8"
       />
       <PickerSheet
         visible={!!stopPicker}

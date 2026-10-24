@@ -31,6 +31,7 @@ import { DriversTab } from '../components/DriversTab';
 import { MediaViewer } from '../../trips/details/components/MediaViewer';
 import { ago, sendStatus, updateTitle } from '../../trips/details/tripDetailsModel';
 import { niceName } from '../../trips/create/components/ui';
+import { photoSetWhere } from '../../dashboard/actions/actionModel';
 import { needsSending, operatorService, type DriverUpdate } from '../../../lib/operator';
 import { BG, INK, LINE, MUTED, tap } from '../components/parts';
 
@@ -61,7 +62,7 @@ export default function NotificationsScreen() {
   const viewed = viewing ? inbox.updates.find((u) => u.trip.id === viewing.update.trip.id && u.key === viewing.update.key) ?? viewing.update : null;
   const viewerItems = useMemo(() => viewed ? viewed.items.map((m) => ({
     id: m.id, url: m.url, kind: m.kind, sent: viewed.sent_ids.includes(m.id),
-    caption: [viewed.stop?.name ? niceName(viewed.stop.name) : null, ago(m.captured_at)].filter(Boolean).join(' · '),
+    caption: [photoSetWhere(viewed, niceName), ago(m.captured_at)].filter(Boolean).join(' · '),
   })) : null, [viewed]);
   const leaveViewer = (go: () => void) => { setViewing(null); setTimeout(go, 250); };
 

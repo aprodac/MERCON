@@ -3,6 +3,8 @@ import { getCurrentTrip, getTripHistory, getScheduledTrips, updateTripStatus, up
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles } from '../middlewares/rbac';
 import { upload } from '../middlewares/upload';
+import { driverPlaceLogEntry } from '../controllers/mobileTripLogPlaceController';
+import { driverArriveAtStop } from '../controllers/mobileTripArriveController';
 import { acknowledgeTrip, getPendingAcknowledgements, touchDriverDevice } from '../controllers/mobilePhoneController';
 
 const router = Router();
@@ -25,6 +27,10 @@ router.post('/:id/location', recordDriverLocation);
 router.post('/:id/acknowledge', acknowledgeTrip);
 // Customer-app trips run as a trip log: start, then screenshots only (POST /:id/photo with operation=log).
 router.post('/:id/log/start', startTripLog);
+// "Arrived" at a stop, before its screenshot.
+router.post('/:id/log/arrive', driverArriveAtStop);
 router.delete('/:id/log/:entry', undoTripLogEntry);
+// Which stop a send was made at — a planned one, or one the office didn't set.
+router.post('/:id/log/:entry/stop', driverPlaceLogEntry);
 
 export default router;

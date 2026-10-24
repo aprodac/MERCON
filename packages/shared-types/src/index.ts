@@ -1281,3 +1281,4 @@ export * from './statusMessage';
 export * from './fleetRules';
 export * from './driverNotificationText';
 export * from './tripLog';
+export * from './tripLogRead';

@@ -5,6 +5,7 @@
  *              around today, for the date strip; finished ones live in History
  *   history  — trips finished in the last HISTORY_DAYS days, for History's
  *              date strip: delivered by when they ended, cancelled by plan day
+ *   ledger   — every trip by number (TripLedger fetches its own month / all time)
  *   search   — the server's word search across all trips
  */
 import { useEffect, useMemo, useState } from 'react';
@@ -13,13 +14,14 @@ import { api } from '@mercon/mobile-shared/lib/api';
 import { operatorService, type OperatorTrip } from '../../../lib/operator';
 import { makeTime } from './tripListModel';
 
-export type View = 'now' | 'delayed' | 'schedule' | 'history';
+export type View = 'now' | 'delayed' | 'schedule' | 'history' | 'ledger';
 
 // Two weeks back, and two months ahead — month plans are booked well into next month.
 export const SCHEDULE_BEFORE = 14;
 export const SCHEDULE_AFTER = 62;
 // How far back History's date strip goes; older trips are found with search.
 export const HISTORY_DAYS = 60;
+// TripStatus values only — an unknown one ("Emergency") made the server refuse the whole list.
 const OPEN_STATUSES = 'Draft,Scheduled,Loading,InTransit,Delayed';
 
 /** A deleted trip as the Recycle Bin lists it. */

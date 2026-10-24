@@ -13,12 +13,13 @@ import { publicBaseUrl } from './operatorInboxController';
 import { getDrivingRoute, RoutingUnavailableError } from '../services/routing/routeProvider';
 import { compressUploadedImage } from '../services/imageCompressor';
 import { queueVideoCompression } from '../services/media/videoCompressor';
+import { queueTripLogRead } from '../services/tripLogRead';
 import { calculateBackendTripFinancials } from '../utils/tripFinancials';
 import { splitDelayReason } from '../utils/delayReason';
 import { isUuid } from '../utils/uuid';
 import { deliveryPunctuality, historyFinishedAt } from '../services/driverPerformance';
 import { TRIP_LOG_OPERATION, TRIP_LOG_STATE, TRIP_LOG_UNDO_MINUTES, canUndoTripLogEntry, tripLogEntries, usesTripLog } from '@mercon/shared-types';
-import { DAY_QUEUE_STATUSES, deploymentTimezone, findTripAhead, orderDriverQueue, tripAheadIn } from '../services/sameDayTrips';
+import { DAY_QUEUE_STATUSES, deploymentTimezone, findTripAhead, findTripOnTheRoad, orderDriverQueue, tripAheadIn, tripLogFinishProblem, tripWaitingError } from '../services/sameDayTrips';
 
 /**
  * Everything the driver's app needs about a trip, in one shape.
@@ -32,7 +33,7 @@ import { DAY_QUEUE_STATUSES, deploymentTimezone, findTripAhead, orderDriverQueue
  * ("Jeddah"), while location_name/location_address/lat/lng are the exact yard
  * inside it that the driver actually drives to.
  */
-const tripInclude = {
+export const tripInclude = {
   customer: true,
   // Explicit select, never `vehicle: true`: Vehicle.image_url can hold a
   // base64 data-URL photo (2.5 MB on dev), and it was sent with every trip —
@@ -92,7 +93,7 @@ const formatMobileTrip = (trip: any) => {
   };
 };
 
-const attachTripDocuments = async (trip: any) => {
+export const attachTripDocuments = async (trip: any) => {
   if (!trip) return trip;
   let docs: any[] = [];
   try {
@@ -300,7 +301,7 @@ export const getMobileTripDetails = async (req: Request, res: Response) => {
 export const updateTripStatus = async (req: Request, res: Response) => {
   const driverId = (req as any).user?.driver_id;
   const id = req.params.id as string;
-  const { status, driver_workflow_state, reason, completed_stop_id } = req.body;
+  const { status, driver_workflow_state, reason, completed_stop_id, trip_id: claimedTripId } = req.body;
 
   if (!driverId) return res.status(403).json({ success: false, error: { message: 'Driver not authenticated' } });
   
@@ -336,6 +337,17 @@ export const updateTripStatus = async (req: Request, res: Response) => {
           success: false,
           error: { code: 'TRIP_WAITING', message: `Finish ${ahead.ref_id ?? 'your earlier trip today'} first — this trip starts after it.` },
         });
+      }
+      const onRoad = await findTripOnTheRoad(trip.id, driverId);
+      if (onRoad) return res.status(409).json({ success: false, error: tripWaitingError(onRoad) });
+    }
+
+    // Finish on a trip-log trip must be for the trip the driver is on.
+    if (status === TripStatus.Completed && usesTripLog(trip) && trip.status !== TripStatus.Completed) {
+      const problem = tripLogFinishProblem(trip, claimedTripId);
+      if (problem) {
+        logger.warn({ driverId, tripId: id, claimedTripId, problem }, 'trip-log Finish refused');
+        return res.status(409).json({ success: false, error: { code: 'WRONG_TRIP', message: 'This is not the trip you are on. Open the trip from Home and finish it there.' } });
       }
     }
 
@@ -566,6 +578,8 @@ export const uploadTripPhoto = async (req: Request, res: Response) => {
 
     // Phone videos are 20–60 MB; shrink them in the background (keeps the original on failure).
     if (isVideo) queueVideoCompression(document.id, req.file.path);
+    // Customer-app trip log: read the stop and times off the screenshot in the background.
+    if (logEntry && !isVideo) queueTripLogRead(document.id);
 
     void recordDriverActivity(driverId, 'PhotoUploaded', {
       tripId: id,
@@ -813,6 +827,8 @@ export const startTripLog = async (req: Request, res: Response) => {
         error: { code: 'TRIP_WAITING', message: `Finish ${ahead.ref_id ?? 'your earlier trip today'} first — this trip starts after it.` },
       });
     }
+    const onRoad = await findTripOnTheRoad(id, driverId);
+    if (onRoad) return res.status(409).json({ success: false, error: tripWaitingError(onRoad) });
 
     const updated = await prisma.$transaction(async (tx) => {
       await markOnTrip(tx, trip);

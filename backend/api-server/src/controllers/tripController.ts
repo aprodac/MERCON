@@ -241,6 +241,13 @@ const CONFLICT_TEXT: Record<string, string> = {
 };
 const conflictError = (code: string) => ({ success: false, error: { code, message: CONFLICT_TEXT[code] ?? code } });
 
+
+const TRIP_STATUSES = new Set<string>(Object.values(TripStatus));
+/** The valid TripStatus values in a ?status= filter ("A,B" or repeated); unknown ones are ignored. */
+function tripStatusesOf(raw: unknown): TripStatus[] {
+  const parts = (Array.isArray(raw) ? raw : [raw]).flatMap((v) => String(v ?? '').split(','));
+  return parts.map((v) => v.trim()).filter((v): v is TripStatus => TRIP_STATUSES.has(v));
+}
 export const getTrips = async (req: Request, res: Response) => {
   try {
     const { status, driver_id, vehicle_id, customer_id, rate_card_id, search, date_filter, start_date, end_date, page = '1', per_page = '20' } = req.query;
@@ -252,13 +259,10 @@ export const getTrips = async (req: Request, res: Response) => {
 
     const whereClause: Prisma.TripWhereInput = { deletedAt: null };
     if (status) {
-      if (typeof status === 'string' && status.includes(',')) {
-        whereClause.status = { in: status.split(',') as TripStatus[] };
-      } else if (Array.isArray(status)) {
-        whereClause.status = { in: status as TripStatus[] };
-      } else {
-        whereClause.status = status as TripStatus;
-      }
+      // Unknown statuses are dropped rather than failing the whole list: an
+      // app build asked for "Emergency" (not a TripStatus) and got no trips at all.
+      const wanted = tripStatusesOf(status);
+      whereClause.status = wanted.length === 1 ? wanted[0] : { in: wanted };
     }
     if (driver_id) whereClause.driverId = driver_id as string;
     if (vehicle_id) whereClause.vehicleId = vehicle_id as string;
@@ -518,13 +522,21 @@ async function tripStepBacks(tripId: string) {
       where: { entityType: 'Trip', entityId: tripId, action: 'TRIP_STEPPED_BACK' },
       orderBy: { createdAt: 'desc' },
       take: 20,
-      select: { createdAt: true, metadata: true, user: { select: { name: true, username: true } } },
+      select: { id: true, createdAt: true, metadata: true, user: { select: { name: true, username: true } } },
     });
-    return Promise.all(rows.map(async (r) => {
+    const undoneIds = new Set((await prisma.auditLog.findMany({
+      where: { entityType: 'Trip', entityId: tripId, action: 'TRIP_STEP_BACK_UNDONE' },
+      select: { metadata: true },
+    })).map((u) => String((u.metadata as any)?.step_back_id ?? '')));
+    return Promise.all(rows.map(async (r, i) => {
       const m = (r.metadata ?? {}) as any;
       const removedAt: string | null = m.photos?.removed_at ?? null;
+      const undone = undoneIds.has(r.id);
       return {
         at: r.createdAt.toISOString(),
+        undone,
+        // Only the latest, still in place, and recorded with what to put back (older ones weren't).
+        can_undo: i === 0 && !undone && !!m.undo,
         by: r.user?.name || r.user?.username || null,
         from: m.from?.label ?? null,
         to: m.to?.label ?? null,
@@ -2417,6 +2429,19 @@ export const updateTripStopsRoute = async (req: Request, res: Response) => {
         }).slice(frozenCount),
       });
 
+      // 2b. Stops the driver already reached keep their real arrival/departure,
+      // but their planned time follows the new plan: a Saturday trip the driver
+      // started on Friday can be re-planned to Friday (TestFlight 23 Oct).
+      for (let i = 0; i < frozenCount; i++) {
+        const raw = resolvedStops[i]?.planned_arrival;
+        const planned = i === 0 && parsedPlannedStart ? parsedPlannedStart
+          : i === resolvedStops.length - 1 && parsedPlannedEnd ? parsedPlannedEnd
+          : raw && !isNaN(Date.parse(raw)) ? new Date(raw) : null;
+        if (planned) {
+          await tx.tripStop.update({ where: { id: plan.frozenIds[i] }, data: { planned_arrival: planned } });
+        }
+      }
+
       // 3. Update trip planned times
       await tx.trip.update({
         where: { id: existingTrip.id },
@@ -3223,8 +3248,8 @@ export const getMonthlyTripBoard = async (req: Request, res: Response) => {
     if (driver_id && isUuid(driver_id)) whereClause.driverId = driver_id as string;
     if (vehicle_id && isUuid(vehicle_id)) whereClause.vehicleId = vehicle_id as string;
     if (typeof status === 'string' && status.trim()) {
-      const values = status.split(',').map((s) => s.trim()).filter(Boolean) as TripStatus[];
-      whereClause.status = values.length > 1 ? { in: values } : values[0];
+      const values = tripStatusesOf(status);
+      whereClause.status = values.length === 1 ? values[0] : { in: values };
     }
     // The tier/category a trip was booked under is copied onto the trip at
     // creation, but older trips predate those columns and only carry it on

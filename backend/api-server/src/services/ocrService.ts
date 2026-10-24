@@ -117,6 +117,37 @@ export function getLocalFilePathFromUrl(fileUrl: string): string | null {
   return null;
 }
 
+/** Tokens a Gemini call used — what a read costs. */
+export interface GeminiUsage { model: string; promptTokens: number; outputTokens: number }
+
+/** One generateContent call: the configured model first, then the fallbacks. Throws when every model fails. */
+export async function generateWithGemini(apiKey: string, requestPayload: unknown): Promise<{ text: string; usage: GeminiUsage }> {
+  const primaryModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  const fallbackModels = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+  const modelsToTry = Array.from(new Set([primaryModel, ...fallbackModels]));
+
+  let lastError: any = null;
+  for (const model of modelsToTry) {
+    try {
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const response = await axios.post(apiUrl, requestPayload, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 60000,
+      });
+
+      const text = response?.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) {
+        const u = response.data.usageMetadata ?? {};
+        return { text, usage: { model, promptTokens: Number(u.promptTokenCount) || 0, outputTokens: (Number(u.candidatesTokenCount) || 0) + (Number(u.thoughtsTokenCount) || 0) } };
+      }
+    } catch (err: any) {
+      lastError = err;
+      console.warn(`[OCR] Gemini model '${model}' failed: ${err?.response?.data?.error?.message || err?.message}. Trying fallback model...`);
+    }
+  }
+  throw new Error(`All AI Vision model endpoints failed. Last error: ${lastError?.response?.data?.error?.message || lastError?.message || 'Empty response'}`);
+}
+
 /**
  * Analyze document image / PDF file using Gemini Vision API
  */
@@ -207,35 +238,8 @@ Respond ONLY with valid JSON inside a json code block.
       ],
     };
 
-    const primaryModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-    const fallbackModels = ['gemini-2.0-flash', 'gemini-1.5-flash'];
-    const modelsToTry = Array.from(new Set([primaryModel, ...fallbackModels]));
+    const { text: responseText } = await generateWithGemini(apiKey, requestPayload);
 
-    let responseText: string | null = null;
-    let lastError: any = null;
-
-    for (const model of modelsToTry) {
-      try {
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        const response = await axios.post(apiUrl, requestPayload, {
-          headers: { 'Content-Type': 'application/json' },
-          timeout: 60000,
-        });
-
-        if (response?.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-          responseText = response.data.candidates[0].content.parts[0].text;
-          break;
-        }
-      } catch (err: any) {
-        lastError = err;
-        console.warn(`[OCR] Gemini model '${model}' failed: ${err?.response?.data?.error?.message || err?.message}. Trying fallback model...`);
-      }
-    }
-
-    if (!responseText) {
-      throw new Error(`All AI Vision model endpoints failed. Last error: ${lastError?.response?.data?.error?.message || lastError?.message || 'Empty response'}`);
-    }
-    
     // Parse JSON block from response text
     let jsonString = responseText;
     const jsonMatch = responseText.match(/```json\s*([\s\S]*?)\s*```/);

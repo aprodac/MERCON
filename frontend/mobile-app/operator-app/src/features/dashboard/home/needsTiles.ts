@@ -1,11 +1,12 @@
 /**
  * Home's "things need you" tiles: one per kind of action item, most important
  * first, so the first three always show what matters right now. Pure.
- * Photos to send and overdue invoices stay on Notifications → To do only.
+ * Overdue invoices stay on Notifications → To do only. Photos to send show
+ * here since Home's "From drivers" strip was removed (owner, 23 Oct).
  */
 import { KIND_RANK, URGENCY_RANK, type ActionItem, type ActionKind, type Urgency } from '../actions/actionModel';
 
-const HIDDEN: ActionKind[] = ['photos', 'overdue-invoice'];
+const HIDDEN: ActionKind[] = ['overdue-invoice'];
 
 export const TILE_LABEL: Record<ActionKind, string> = {
   emergency: 'Emergency',

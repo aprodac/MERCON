@@ -1,13 +1,17 @@
 /**
  * Operator Home ("today at a glance"), under the MERCON top bar:
- *   greeting        today's date over "Good afternoon, <name>"
+ *   greeting        "Good afternoon, <name>" with today's date at the end of the line
  *   EmergencyStrip  only while a driver emergency is open
  *   TodayCard       ring of done / on the road / to start, and what needs
  *                   you as tiles by kind, most important first
- *   LiveNow         fleet map + the trips on the road, late ones first
- *   FreeTrucks      trucks that can take a job now, by class; Book opens
- *                   Create trip with the truck chosen
- *   FromDrivers     photo sets drivers sent that the customer hasn't had yet
+ *   LiveTrips       a card per trip on the road (its own map, status,
+ *                   route, next stop, driver), late ones first
+ *   FleetMapCard    one slim row (trucks on the map · on the road); opens the Fleet map
+ *   FleetUtilisation folded to one line by default; opens to the share of
+ *                   trucks that ran a trip today / week / month, the fleet
+ *                   right now (on trip · free · maintenance), by body type
+ * Photo sets drivers sent that the customer hasn't had yet are "Photos to
+ * send" in TodayCard (the "From drivers" strip was removed, owner 23 Oct).
  * Everything to act on in full lives on Notifications → To do.
  * Composes hooks + components only — no direct API calls here.
  *
@@ -16,7 +20,8 @@
  * operator screen shares one persistent nav instead of remounting it.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { RefreshControl, ScrollView, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { Toast } from '@mercon/mobile-shared/components/Toast';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -30,12 +35,29 @@ import { useActionInbox } from '../actions/useActionInbox';
 import { useActionIntent } from '../actions/useActionIntent';
 import { EmergencyStrip } from '../home/EmergencyStrip';
 import { TodayCard } from '../home/TodayCard';
-import { LiveNow } from '../home/LiveNow';
-import { FreeTrucks } from '../home/FreeTrucks';
-import { useTruckDetails } from '../hooks/useTruckDetails';
-import { FromDrivers } from '../home/FromDrivers';
+import { LiveTrips } from '../home/LiveTrips';
+import { FleetMapCard } from '../home/FleetMapCard';
+import { FleetUtilisation } from '../home/FleetUtilisation';
 import { dateLabel, greeting, toStartToday } from '../home/today';
 import { needTiles } from '../home/needsTiles';
+
+/** A soft brand-coral wash behind the greeting and the top card, fading into the page (owner, 23 Oct: "some life lacking"). */
+function WarmBackdrop() {
+  return (
+    <View style={styles.backdrop} pointerEvents="none">
+      <Svg width="100%" height="100%">
+        <Defs>
+          <LinearGradient id="homeWarm" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#FFD9CC" stopOpacity="0.9" />
+            <Stop offset="0.55" stopColor="#FFEDE6" stopOpacity="0.6" />
+            <Stop offset="1" stopColor="#F6F6F7" stopOpacity="0" />
+          </LinearGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#homeWarm)" />
+      </Svg>
+    </View>
+  );
+}
 
 export default function DashboardHomeScreen() {
   const router = useRouter();
@@ -49,7 +71,6 @@ export default function DashboardHomeScreen() {
 
   const inbox = useActionInbox();
   const { data: me } = useCurrentUser();
-  const truckDetails = useTruckDetails();
   const { onIntent, openTrip, toast, setToast } = useActionIntent();
 
   const emergencies = useMemo(() => inbox.items.filter((i) => i.kind === 'emergency'), [inbox.items]);
@@ -63,14 +84,16 @@ export default function DashboardHomeScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F6F6F7' }} edges={['top']}>
+      <WarmBackdrop />
       <AppTopBar urgent={inbox.counts.now} actions={[{ icon: Search, label: 'Search trips', onPress: () => router.push('/trips') }]} />
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 120, gap: 24 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor="#FA634E" />}
       >
-        <View style={{ gap: 2, paddingHorizontal: 2 }}>
+        {/* The date sits at the end of the greeting's line instead of a row of its own (owner, 23 Oct). */}
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, paddingHorizontal: 2 }}>
+          <Text style={{ flex: 1, fontSize: 24, fontWeight: '700', color: '#3E3C3D', letterSpacing: -0.4 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} accessibilityRole="header">{hello}</Text>
           <Text style={{ fontSize: 13, fontWeight: '500', color: '#6B6B76' }}>{dateLabel(inbox.tz, now)}</Text>
-          <Text style={{ fontSize: 24, fontWeight: '700', color: '#3E3C3D', letterSpacing: -0.4 }} accessibilityRole="header">{hello}</Text>
         </View>
 
         <EmergencyStrip
@@ -94,27 +117,19 @@ export default function DashboardHomeScreen() {
 
         {inbox.liveError ? <ErrorState message="Couldn't load live trips." onRetry={inbox.retry} /> : null}
 
-        <LiveNow
+        <LiveTrips
           units={inbox.units}
           tz={inbox.tz}
           now={now}
-          onOpenMap={() => router.push('/fleet-map')}
           onOpenTrip={(id) => openTrip(id)}
+          onTrack={(trip) => router.push({ pathname: '/fleet-map', params: { trip } })}
           onAll={() => trips('now')}
         />
 
-        <FreeTrucks
-          units={inbox.units}
-          details={truckDetails.data ?? []}
-          expiries={inbox.expiries}
-          tz={inbox.tz}
-          now={now}
-          onOpenTruck={(id) => router.push({ pathname: '/vehicle-details', params: { id } })}
-          onBook={(vehicleId) => router.push({ pathname: '/create-trip', params: { vehicleId } })}
-          onAll={() => router.push('/vehicles')}
-        />
+        <FleetMapCard units={inbox.units} onOpenMap={() => router.push('/fleet-map')} />
 
-        <FromDrivers updates={inbox.updates} now={now} onSend={(u) => openTrip(u.trip.id, { share: 'update', update: u.key })} />
+        <FleetUtilisation onAll={() => router.push('/vehicles')} />
+
       </ScrollView>
       {/* Finished trips waiting for an answer on extra charges */}
       <ChargeAssistant userName={me?.name || me?.username || undefined} />
@@ -122,3 +137,8 @@ export default function DashboardHomeScreen() {
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  // Behind the top bar and the top of the page, edge to edge; the page scrolls over it.
+  backdrop: { position: 'absolute', top: 0, left: 0, right: 0, height: 420 },
+});

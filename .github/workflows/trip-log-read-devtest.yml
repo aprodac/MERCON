@@ -1,0 +1,91 @@
+name: Trip-log screenshot read — dev test
+
+# Runs backend/api-server/src/scripts/tripLogReadDevTest.ts inside the running
+# dev API container (the one with the Gemini key). Dev database only: the script
+# refuses to run unless the database is mercon_dev_db. It leaves a TEST trip on
+# dev; `--cleanup` (workflow_dispatch input) soft-deletes the TEST records.
+
+on:
+  push:
+    branches: [ "dev" ]
+    paths:
+      - "backend/api-server/src/scripts/tripLogReadDevTest.ts"
+      - "backend/api-server/test-fixtures/trip-log-read/**"
+      - ".github/workflows/trip-log-read-devtest.yml"
+  workflow_dispatch:
+    inputs:
+      cleanup:
+        description: "Soft-delete the TEST records instead of running the test"
+        type: boolean
+        default: false
+      fill:
+        description: "No Gemini: store the reads from claude-read.json, leave the suggestions unconfirmed"
+        type: boolean
+        default: false
+
+# Same group as the dev deploy: the test waits for the deploy that built the script.
+concurrency:
+  group: ci-cd-dev
+  cancel-in-progress: false
+
+jobs:
+  devtest:
+    name: Read trip-log screenshots on dev
+    runs-on: [dev]
+    timeout-minutes: 30
+    env:
+      # `compose exec` only needs the file to parse; none of these reach the container.
+      CLIENT_NAME: dev
+      POSTGRES_USER: unused
+      POSTGRES_PASSWORD: unused
+      JWT_SECRET: unused
+      SEED_ADMIN_PASSWORD: unused
+    steps:
+      - name: Checkout Code (native git)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0=safe.directory
+          export GIT_CONFIG_VALUE_0="$GITHUB_WORKSPACE"
+          REPO_URL="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          if [ -d .git ]; then
+            git remote set-url origin "$REPO_URL"
+            git sparse-checkout disable 2>/dev/null || git config core.sparseCheckout false
+            git fetch --force --prune origin "$GITHUB_SHA" || git fetch --force --prune origin dev
+            git checkout --force "$GITHUB_SHA" || git checkout --force origin/dev
+            git clean -fdx
+          else
+            git init -q
+            git remote add origin "$REPO_URL"
+            git fetch --depth 1 origin "$GITHUB_SHA" || git fetch --depth 1 origin dev
+            git checkout --force FETCH_HEAD
+          fi
+
+      - name: Wait for the dev API to have the built script
+        run: |
+          for i in $(seq 1 60); do
+            if docker compose -p mercon-dev exec -T mercon-api test -f dist/scripts/tripLogReadDevTest.js; then
+              echo "script present"; exit 0
+            fi
+            echo "not in the running image yet ($i/60); waiting for the dev deploy…"
+            sleep 20
+          done
+          echo "::error::dist/scripts/tripLogReadDevTest.js never appeared in mercon-dev-api" >&2
+          exit 1
+
+      - name: Copy fixtures into the container
+        run: |
+          set -euo pipefail
+          CID=$(docker compose -p mercon-dev ps -q mercon-api)
+          docker compose -p mercon-dev exec -T mercon-api mkdir -p /tmp/trip-log-read-fixtures
+          docker cp backend/api-server/test-fixtures/trip-log-read/. "$CID:/tmp/trip-log-read-fixtures/"
+
+      - name: Run the test
+        run: |
+          set -o pipefail
+          ARGS=""
+          if [ "${{ inputs.cleanup }}" = "true" ]; then ARGS="--cleanup"; fi
+          if [ "${{ inputs.fill }}" = "true" ]; then ARGS="--fill-from /tmp/trip-log-read-fixtures/claude-read.json --no-confirm"; fi
+          docker compose -p mercon-dev exec -T -e FIXTURES_DIR=/tmp/trip-log-read-fixtures mercon-api node dist/scripts/tripLogReadDevTest.js $ARGS 2>&1 | tee devtest.log

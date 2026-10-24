@@ -246,10 +246,10 @@ const HomeScreen = () => {
   }
 
   const getWorkflowStateInfo = (t: MobileTrip): WorkflowStateInfo => {
-    // Customer-app trips with stops not known up front: Start, then one Trip log screen.
+    // Customer-app trips: Start, then the stop-by-stop screen (one screenshot per stop).
     if (usesTripLog(t)) {
       if (t.driver_workflow_state === TRIP_LOG_STATE) {
-        return { badgeLabel: 'Trip log', btnLabel: 'Send screenshots', urLabel: 'اسکرین شاٹس بھیجیں', onPress: () => router.push('/trip/external-app') };
+        return { badgeLabel: 'On the road', btnLabel: 'Next stop', urLabel: 'اگلا اسٹاپ', onPress: () => router.push({ pathname: '/trip/external-app', params: { tripId: t.id } } as any) };
       }
       return {
         badgeLabel: 'Assigned',
@@ -259,7 +259,7 @@ const HomeScreen = () => {
           setAdvancing(true);
           try {
             setTrip(await tripService.startTripLog(t.id));
-            router.push('/trip/external-app');
+            router.push({ pathname: '/trip/external-app', params: { tripId: t.id } } as any);
           } catch (err) {
             showToast(getApiErrorMessage(err), 'error');
           } finally {
@@ -567,7 +567,7 @@ const HomeScreen = () => {
                   <View style={styles.inProgressBadge}>
                     <View style={styles.coralDot} />
                     <Text style={styles.inProgressText} numberOfLines={1} ellipsizeMode="tail">
-                      {getLocalizedStatus(displayTrip.driver_workflow_state || displayTrip.status, language)}
+                      {getLocalizedStatus((displayTrip.driver_workflow_state !== TRIP_LOG_STATE && displayTrip.driver_workflow_state) || displayTrip.status, language)}
                     </Text>
                   </View>
                 </View>
@@ -591,7 +591,7 @@ const HomeScreen = () => {
 
                 const handleStopPress = (st: TimelineStop) => {
                   if (displayTrip.driver_workflow_state === TRIP_LOG_STATE) {
-                    router.push('/trip/external-app');
+                    router.push({ pathname: '/trip/external-app', params: { tripId: displayTrip.id } } as any);
                   } else if (st.isIntermediate) {
                     router.push({ pathname: '/trip/stop', params: { legIndex: String(st.legIndex ?? 0) } } as any);
                   } else {
@@ -599,16 +599,19 @@ const HomeScreen = () => {
                   }
                 };
 
-                // A trip log has no next stop: show what was sent, and open the log.
+                // Customer-app trip: the next stop without a screenshot yet, and how many are done.
                 if (displayTrip.driver_workflow_state === TRIP_LOG_STATE) {
                   const log = tripLogEntries(displayTrip.documents ?? []);
-                  const last = log[log.length - 1];
+                  const stops = [...(displayTrip.stops ?? [])].sort((a, b) => a.stop_sequence - b.stop_sequence);
+                  const isDone = (id: string, arrived?: string | null) => !!arrived || log.some((e) => e.stop_id === id);
+                  const lastDone = stops.reduce((n, st, i) => (isDone(st.id, st.actual_arrival) ? i : n), -1);
+                  const nextStop = stops[lastDone + 1];
                   return (
                     <View style={styles.routeContainer}>
-                      <TouchableOpacity style={styles.nextStopBox} activeOpacity={0.85} onPress={() => router.push('/trip/external-app')}>
+                      <TouchableOpacity style={styles.nextStopBox} activeOpacity={0.85} onPress={() => router.push({ pathname: '/trip/external-app', params: { tripId: displayTrip.id } } as any)}>
                         <View style={styles.nextStopHeader}>
-                          <Text style={styles.nextStopLabel}>{L('TRIP LOG', 'ٹرپ لاگ')}</Text>
-                          <Text style={styles.nextStopMeta}>{L(`${log.length} sent`, `${log.length} بھیجے گئے`)}</Text>
+                          <Text style={styles.nextStopLabel}>{L('NEXT STOP', 'اگلا اسٹاپ')}</Text>
+                          <Text style={styles.nextStopMeta}>{L(`${lastDone + 1} of ${stops.length} done`, `${stops.length} میں سے ${lastDone + 1} مکمل`)}</Text>
                         </View>
                         <View style={styles.nextStopRow}>
                           <View style={styles.nextStopIcon}>
@@ -616,9 +619,9 @@ const HomeScreen = () => {
                           </View>
                           <View style={styles.routeTextCol}>
                             <Text style={styles.nextStopType} numberOfLines={1}>
-                              {last ? L(`Last sent ${fmtTime(last.at)}`, `آخری بار ${fmtTime(last.at)}`) : L('Nothing sent yet', 'ابھی کچھ نہیں بھیجا گیا')}
+                              {nextStop ? L('Send one screenshot there', 'وہاں ایک اسکرین شاٹ بھیجیں') : L('All stops done — finish the trip', 'تمام اسٹاپس مکمل — ٹرپ ختم کریں')}
                             </Text>
-                            <Text style={styles.routePlaceName} numberOfLines={1}>{last?.place ?? plannedRouteText(displayTrip)}</Text>
+                            <Text style={styles.routePlaceName} numberOfLines={1}>{nextStop ? stopLabel(nextStop) ?? plannedRouteText(displayTrip) : plannedRouteText(displayTrip)}</Text>
                           </View>
                         </View>
                       </TouchableOpacity>

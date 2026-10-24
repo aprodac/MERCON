@@ -82,6 +82,7 @@ export interface TripStop {
   location_name: string | null;
   location_address: string | null;
   location?: { id: string; name: string; address: string | null } | null;
+  planned_arrival?: string | null;
   actual_arrival?: string | null;
   actual_departure?: string | null;
 }
@@ -433,6 +434,8 @@ export const tripService = {
     reason?: string,
     /** TripStop id of an intermediate stop the driver just finished — stamps its arrival/departure. */
     completedStopId?: string,
+    /** Trip-log trips: the trip the driver believes they are finishing — the server refuses a mismatch. */
+    claimedTripId?: string,
   ): Promise<MobileTrip> {
     if (driver_workflow_state) {
       if (driver_workflow_state === 'COMPLETED') {
@@ -442,7 +445,7 @@ export const tripService = {
       }
     }
     const { data } = await api.post(`/mobile/trips/${id}/status`, {
-      status, driver_workflow_state, reason, notes: reason, completed_stop_id: completedStopId,
+      status, driver_workflow_state, reason, notes: reason, completed_stop_id: completedStopId, trip_id: claimedTripId,
     });
     const trip = data.data as MobileTrip;
     if (driver_workflow_state && !trip.driver_workflow_state) {
@@ -467,6 +470,21 @@ export const tripService = {
   async startTripLog(id: string): Promise<MobileTrip> {
     const { data } = await api.post(`/mobile/trips/${id}/log/start`);
     await workflowStateStore.saveState(id, 'TRIP_LOG');
+    return data.data as MobileTrip;
+  },
+
+  /**
+   * Say where a trip log send was made: at one of the trip's stops, or at a
+   * stop the office didn't set (a new stop). Returns the trip as it is now.
+   */
+  async placeTripLogEntry(id: string, entry: string, at: { stop_id: string } | { new_stop: { name?: string; stop_type: 'Pickup' | 'Dropoff'; lat?: number; lng?: number } }): Promise<MobileTrip> {
+    const { data } = await api.post(`/mobile/trips/${id}/log/${encodeURIComponent(entry)}/stop`, at);
+    return data.data as MobileTrip;
+  },
+
+  /** "Arrived" at a stop of a trip-log trip: the server stamps the arrival once. Returns the trip as it is now. */
+  async arriveAtTripLogStop(id: string, stopId: string, gps?: { lat: number; lng: number }): Promise<MobileTrip> {
+    const { data } = await api.post(`/mobile/trips/${id}/log/arrive`, { stop_id: stopId, ...(gps ?? {}) });
     return data.data as MobileTrip;
   },
 

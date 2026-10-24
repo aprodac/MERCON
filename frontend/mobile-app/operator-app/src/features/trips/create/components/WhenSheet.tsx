@@ -15,13 +15,13 @@ const VISIBLE = 5; // odd, so one row sits in the middle
 const PAD = ((VISIBLE - 1) / 2) * ROW;
 const MINUTE_STEP = 5;
 
-interface WheelItem {
+export interface WheelItem {
   key: string;
   label: string;
 }
 
 /** One scrolling column that snaps to a row; the middle row is the value. */
-function Wheel({ items, index, onChange, flex = 1, align = 'center' }: { items: WheelItem[]; index: number; onChange: (i: number) => void; flex?: number; align?: 'center' | 'left' | 'right' }) {
+export function Wheel({ items, index, onChange, flex = 1, align = 'center' }: { items: WheelItem[]; index: number; onChange: (i: number) => void; flex?: number; align?: 'center' | 'left' | 'right' }) {
   const ref = useRef<ScrollView>(null);
   const [live, setLive] = useState(index);
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -334,3 +334,6 @@ const styles = StyleSheet.create({
   done: { flex: 2, paddingVertical: 14, borderRadius: 14, backgroundColor: Colors.primary, alignItems: 'center' },
   doneText: { fontSize: 15, fontWeight: '700', color: Colors.white },
 });
+
+/** For other wheel sheets (TransitSheet) so they look the same. */
+export { styles as wheelSheetStyles };

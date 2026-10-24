@@ -210,7 +210,7 @@ function blockedReason(trip: TripRow, current: number): string | null {
 async function tripPhotos(db: Prisma.TransactionClient | typeof prisma, tripId: string) {
   return db.document.findMany({
     where: { entity_type: 'Trip', entity_id: tripId, deletedAt: null, doc_type: { in: [DocType.POD, DocType.Waybill] } },
-    select: { id: true, createdAt: true, ai_extracted_json: true },
+    select: { id: true, createdAt: true, doc_type: true, ai_extracted_json: true },
   });
 }
 
@@ -227,6 +227,17 @@ const photosAfter = <P extends { createdAt: Date; ai_extracted_json: unknown }>(
     return !at || p.createdAt > at;
   });
 
+/**
+ * When the trip was last at step `index` or before: its own time, else the
+ * latest earlier step done. A step the driver skipped (customer-app trips skip
+ * most) has no time of its own, and "no time" would count every photo of the
+ * trip as taken after it.
+ */
+const sinceOf = (state: { done: boolean; at: Date | null }[], index: number): Date | null => {
+  for (let i = index; i >= 0; i--) if (state[i]?.done && state[i].at) return state[i].at;
+  return null;
+};
+
 /** The stop the driver redoes after going back to step `index` (-1 = not started → the pickup). */
 const redoStopOf = (steps: StepDef[], index: number) => (index >= 0 ? steps[index]?.photoStop : steps[0]?.photoStop) ?? null;
 
@@ -238,7 +249,7 @@ export async function getTripProgressSteps(tripId: string): Promise<TripProgress
   state.forEach((s, i) => { if (s.done) current = i; });
   const photos = await tripPhotos(prisma, tripId);
   const photos_after: Record<number, number> = {};
-  for (let i = -1; i < current; i++) photos_after[i] = photosAfter(photos, i >= 0 ? state[i].at : null, redoStopOf(steps, i)?.stopId ?? null).length;
+  for (let i = -1; i < current; i++) photos_after[i] = photosAfter(photos, sinceOf(state, i), redoStopOf(steps, i)?.stopId ?? null).length;
   const blocked = blockedReason(trip, current);
   return {
     steps: steps.map((st, i) => ({ index: i, key: st.key, label: st.label, next: st.next, done: state[i].done, at: state[i].at?.toISOString() ?? null })),
@@ -259,6 +270,17 @@ export interface StepBackResult {
   /** `removed_at`: the tag on removed photos — POST /trips/:id/step-back/restore-photos brings them back. */
   photos: { choice: PhotoChoice; count: number; moved_to: string | null; removed_at?: string | null };
   driver_id: string | null;
+  /** What the step-back changed, kept with its audit entry so "Undo" can put it back (undoStepBack). */
+  undo: StepBackUndo;
+}
+
+/** Everything a step-back changed, as it was before. */
+export interface StepBackUndo {
+  stops: { stopId: string; field: StopField; value: string }[];
+  trip: { status: TripStatus; driver_workflow_state: string | null; actual_start: string | null; actual_end: string | null; is_post_trip_settled: boolean };
+  /** Photos moved onto the redone step: their type and tags before the move. */
+  moved: { id: string; doc_type: DocType | null; ai_extracted_json: unknown }[];
+  removed_at: string | null;
 }
 
 /** Go back to step `toIndex` (-1 = before the driver started). */
@@ -276,10 +298,14 @@ export async function stepBackTrip(tripId: string, toIndex: number, photoChoice:
       throw new StepBackError(400, 'VALIDATION_ERROR', 'Pick a step before where the trip is now');
     }
 
-    // 1. Clear every stop time the undone steps stamped.
+    // 1. Clear every stop time the undone steps stamped (kept for "Undo").
     let cleared = 0;
+    const byId = new Map(trip.stops.map((s) => [s.id, s]));
+    const undoStops: StepBackUndo['stops'] = [];
     for (const st of steps.slice(toIndex + 1, current + 1)) {
       for (const m of st.marks) {
+        const was = byId.get(m.stopId)?.[m.field];
+        if (was) undoStops.push({ stopId: m.stopId, field: m.field, value: was.toISOString() });
         const r = await tx.tripStop.updateMany({ where: { id: m.stopId, tripId, [m.field]: { not: null } }, data: { [m.field]: null } });
         cleared += r.count;
       }
@@ -314,8 +340,9 @@ export async function stepBackTrip(tripId: string, toIndex: number, photoChoice:
     // 4. Photos taken during the undone steps.
     const stepAt = new Date().toISOString();
     const redo = redoStopOf(steps, toIndex);
-    const photos = photosAfter(await tripPhotos(tx, tripId), target ? state[toIndex].at : null, redo?.stopId ?? null);
+    const photos = photosAfter(await tripPhotos(tx, tripId), sinceOf(state, toIndex), redo?.stopId ?? null);
     let movedTo: string | null = null;
+    const moved: StepBackUndo['moved'] = [];
     if (photos.length && photoChoice === 'move' && redo) {
       const stop = trip.stops.find((s) => s.id === redo.stopId);
       movedTo = placeName(stop);
@@ -323,6 +350,7 @@ export async function stepBackTrip(tripId: string, toIndex: number, photoChoice:
       const operation = redo.role === 'delivery' ? 'delivery' : redo.role === 'stop' ? 'intermediate' : redo.leg === 1 ? 'return_loading' : 'pickup';
       for (const p of photos) {
         const meta = (p.ai_extracted_json ?? {}) as Record<string, unknown>;
+        moved.push({ id: p.id, doc_type: p.doc_type, ai_extracted_json: p.ai_extracted_json ?? null });
         await tx.document.update({
           where: { id: p.id },
           data: {
@@ -354,7 +382,81 @@ export async function stepBackTrip(tripId: string, toIndex: number, photoChoice:
       cleared,
       photos: { choice: photos.length ? photoChoice : 'keep', count: photos.length, moved_to: movedTo, removed_at: photos.length && photoChoice === 'remove' ? stepAt : null },
       driver_id: trip.driverId,
+      undo: {
+        stops: undoStops,
+        trip: {
+          status: trip.status,
+          driver_workflow_state: trip.driver_workflow_state,
+          actual_start: trip.actual_start?.toISOString() ?? null,
+          actual_end: trip.actual_end?.toISOString() ?? null,
+          is_post_trip_settled: trip.is_post_trip_settled,
+        },
+        moved,
+        removed_at: photos.length && photoChoice === 'remove' ? stepAt : null,
+      },
     };
+  });
+}
+
+/**
+ * Undo a step-back (TestFlight 21 Oct: "add undo option done by the operator"):
+ * the stop times it cleared, the trip's status and driver-app state, and the
+ * photos it moved or removed all go back to how they were. Only while the trip
+ * is still where the step-back left it — once the driver (or the office) has
+ * moved it on, the times would clash; Driver's steps handles that.
+ */
+export async function undoStepBack(tripId: string, undo: StepBackUndo, toIndex: number, userId: string | null): Promise<{ trip_id: string; to: { index: number; label: string }; driver_id: string | null }> {
+  return prisma.$transaction(async (tx) => {
+    const trip = await loadTrip(tx, tripId);
+    const steps = buildSteps(trip.stops);
+    let current = -1;
+    stepState(trip, steps).forEach((s, i) => { if (s.done) current = i; });
+    if (current !== toIndex) {
+      throw new StepBackError(409, 'TRIP_MOVED_ON', 'The trip has moved on since it was taken back — use Driver\'s steps instead.');
+    }
+
+    for (const st of undo.stops) {
+      await tx.tripStop.updateMany({ where: { id: st.stopId, tripId, [st.field]: null }, data: { [st.field]: new Date(st.value) } });
+    }
+    const t = undo.trip;
+    await tx.trip.update({
+      where: { id: tripId },
+      data: {
+        status: t.status,
+        driver_workflow_state: t.driver_workflow_state,
+        actual_start: t.actual_start ? new Date(t.actual_start) : null,
+        actual_end: t.actual_end ? new Date(t.actual_end) : null,
+        is_post_trip_settled: t.is_post_trip_settled,
+        updated_by: userId ?? undefined,
+      },
+    });
+    if (t.status === TripStatus.Completed || t.status === TripStatus.Scheduled) {
+      await releaseDriversIfFree(tx, [trip.driverId, trip.co_driver_id], [tripId]);
+      await releaseVehiclesIfFree(tx, [trip.vehicleId], [tripId]);
+    } else {
+      await markOnTrip(tx, trip);
+    }
+
+    for (const p of undo.moved) {
+      await tx.document.updateMany({
+        where: { id: p.id, entity_id: tripId },
+        data: { doc_type: p.doc_type ?? undefined, ai_extracted_json: (p.ai_extracted_json ?? undefined) as Prisma.InputJsonValue | undefined, updated_by: userId ?? undefined },
+      });
+    }
+    if (undo.removed_at) {
+      const gone = await tx.document.findMany({
+        where: { entity_type: 'Trip', entity_id: tripId, ai_extracted_json: { path: ['removed_by_step_back', 'at'], equals: undo.removed_at } },
+        select: { id: true, ai_extracted_json: true },
+      });
+      for (const d of gone) {
+        const { removed_by_step_back: _gone, ...meta } = (d.ai_extracted_json ?? {}) as Record<string, unknown>;
+        await tx.document.update({ where: { id: d.id }, data: { deletedAt: null, deleted_by: null, updated_by: userId ?? undefined, ai_extracted_json: meta as Prisma.InputJsonValue } });
+      }
+    }
+
+    let now = -1;
+    stepState(await loadTrip(tx, tripId), steps).forEach((s, i) => { if (s.done) now = i; });
+    return { trip_id: tripId, to: { index: now, label: now >= 0 ? steps[now].label : 'Not started' }, driver_id: trip.driverId };
   });
 }
 
