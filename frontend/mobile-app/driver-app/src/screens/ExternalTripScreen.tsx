@@ -35,9 +35,12 @@ type Target = { stop_id: string } | { new_stop: NewStop };
 interface StopRow {
   stop: TripStop;
   name: string;
-  /** "Loading" / "Drop-off", "· return" on a round trip's way back. */
+  /** "Load" / "Offload", "· return" on a round trip's way back. */
   kind: string;
+  /** Screenshot sent for this stop — the stop is ticked. */
   done: boolean;
+  /** "Arrived" tapped (or the office set it); from the server so it survives a restart. */
+  arrivedAt: string | null;
   doneAt: string | null;
   shots: Doc[];
   /** Added by the driver, not planned by the office. */
@@ -60,6 +63,7 @@ function useExternalTrip() {
   const [sending, setSending] = useState<string | null>(null);
   const [failed, setFailed] = useState<Failed | null>(null);
   const [finishing, setFinishing] = useState(false);
+  const [arriving, setArriving] = useState<string | null>(null);
 
   const entries = useMemo(() => tripLogEntries<Doc>(trip?.documents ?? []), [trip?.documents]);
   const rows = useMemo<StopRow[]>(() => {
@@ -71,8 +75,9 @@ function useExternalTrip() {
       return {
         stop: st,
         name: stopLabel(st) ?? t('label_stop', 'Stop'),
-        kind: `${drop ? t('ext_dropoff', 'Drop-off') : t('ext_loading', 'Loading')}${(st.leg_index ?? 0) === 1 ? ` · ${t('ext_return', 'return')}` : ''}`,
-        done: !!st.actual_arrival || mine.length > 0,
+        kind: `${drop ? t('ext_dropoff', 'Offload') : t('ext_loading', 'Load')}${(st.leg_index ?? 0) === 1 ? ` · ${t('ext_return', 'return')}` : ''}`,
+        done: mine.length > 0,
+        arrivedAt: st.actual_arrival ?? null,
         doneAt: st.actual_arrival ?? mine[0]?.at ?? null,
         shots,
         added: shots.some((d) => metaOf(d).added_by_driver === true),
@@ -137,6 +142,20 @@ function useExternalTrip() {
     await deliver({ photo: shot, target, entry: newEntryId(), uploaded: false }, label);
   };
 
+  /** "Arrived" at a stop: the server stamps the time once; the answer is the trip with it. */
+  const arrive = async (stopId: string) => {
+    if (!trip || arriving) return;
+    setArriving(stopId);
+    try {
+      const loc = await getDeviceLocationTag().catch(() => null);
+      setTrip(await tripService.arriveAtTripLogStop(trip.id, stopId, loc ? { lat: loc.latitude, lng: loc.longitude } : undefined));
+    } catch (e) {
+      showToast(getApiErrorMessage(e), 'error');
+    } finally {
+      setArriving(null);
+    }
+  };
+
   const place = async (entry: string, target: Target) => {
     if (!trip) return;
     try {
@@ -182,7 +201,7 @@ function useExternalTrip() {
     );
   };
 
-  return { trip, refetch, rows, next, loose, sending, failed, finishing, sendTo, deliver, place, finish };
+  return { trip, refetch, rows, next, loose, sending, arriving, failed, finishing, arrive, sendTo, deliver, place, finish };
 }
 
 type Model = ReturnType<typeof useExternalTrip>;
@@ -268,17 +287,35 @@ function NextStopView({ m, onAdd }: { m: Model; onAdd: () => void }) {
         <View style={s.nextCard}>
           <Text style={s.eyebrow}>{`${t('ext_stop', 'Stop')} ${m.next + 1} ${t('ext_of', 'of')} ${m.rows.length} · ${r.kind}`}</Text>
           <Text style={s.nextName} numberOfLines={2}>{r.name}</Text>
-          {r.stop.planned_arrival ? <Text style={s.nextWhen}>{`${t('ext_planned', 'Planned')} ${formatDayTime(r.stop.planned_arrival)}`}</Text> : null}
-          <TouchableOpacity style={s.dirBtn} onPress={() => openMaps(r.stop)} activeOpacity={0.8}>
-            <Navigation size={15} color={Colors.gray900} />
-            <Text style={s.dirText}>{t('ext_directions', 'Directions')}</Text>
+          <TouchableOpacity
+            style={[s.arriveBtn, r.arrivedAt && s.bigOff]}
+            activeOpacity={1}
+            disabled={!!r.arrivedAt || !!m.arriving}
+            onPress={() => void m.arrive(r.stop.id)}
+          >
+            {m.arriving === r.stop.id ? <ActivityIndicator color="#fff" /> : null}
+            <Text style={s.arriveText}>
+              {r.arrivedAt ? `✓ ${t('ext_arrived_time', 'Arrived')} ${formatTime(r.arrivedAt)}` : `📍 ${t('ext_arrived_at', 'Arrived at')} ${r.name}`}
+            </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.bigBtn} activeOpacity={0.85} disabled={!!m.sending} onPress={() => void m.sendTo({ stop_id: r.stop.id }, r.name)}>
+          <TouchableOpacity
+            style={[s.bigBtn, !r.arrivedAt && s.bigOff]}
+            activeOpacity={0.85}
+            disabled={!r.arrivedAt || !!m.sending}
+            onPress={() => void m.sendTo({ stop_id: r.stop.id }, r.name)}
+          >
             {m.sending ? <ActivityIndicator color="#fff" /> : <Camera size={22} color="#fff" strokeWidth={2.4} />}
             <Text style={s.bigText}>{m.sending ? t('tlog_sending', 'Sending…') : `${t('ext_send_at', 'Send screenshot at')} ${r.name}`}</Text>
           </TouchableOpacity>
-          <Text style={s.oneShot}>{t('ext_one_shot', 'One screenshot of the customer app is enough.')}</Text>
+          {!r.arrivedAt ? <Text style={s.oneShot}>{t('ext_tap_arrived_first', "Tap 'Arrived' first")}</Text> : null}
+          {r.arrivedAt ? <Text style={s.oneShot}>{t('ext_one_shot', 'One screenshot of the customer app is enough.')}</Text> : null}
         </View>
+      ) : null}
+      {r ? (
+        <TouchableOpacity style={s.dirLink} onPress={() => openMaps(r.stop)} activeOpacity={0.8}>
+          <Navigation size={14} color={Colors.gray500} />
+          <Text style={s.dirLinkText}>{t('ext_directions', 'Directions')}</Text>
+        </TouchableOpacity>
       ) : null}
       {m.rows.length === 0 ? (
         // No stops planned (the office didn't know them at booking): the driver adds each one.
@@ -397,7 +434,7 @@ function AddStopSheet({ visible, onClose, onAdd }: { visible: boolean; onClose: 
           />
           <Text style={s.label}>{t('ext_what', 'What happens here')}</Text>
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            {([['Pickup', t('ext_loading', 'Loading')], ['Dropoff', t('ext_dropoff', 'Drop-off')]] as const).map(([v, label]) => (
+            {([['Pickup', t('ext_loading', 'Load')], ['Dropoff', t('ext_dropoff', 'Offload')]] as const).map(([v, label]) => (
               <TouchableOpacity key={v} style={[s.seg, type === v && s.segOn]} onPress={() => setType(v)} activeOpacity={0.8}>
                 <Text style={[s.segText, type === v && { color: '#fff' }]}>{label}</Text>
               </TouchableOpacity>
@@ -444,8 +481,11 @@ const s = StyleSheet.create({
   eyebrow: { fontSize: 12, fontWeight: '800', letterSpacing: 0.5, color: Colors.gray500, textTransform: 'uppercase' },
   nextName: { fontSize: 28, fontWeight: '800', color: Colors.gray900 },
   nextWhen: { fontSize: 14, color: Colors.gray500, fontWeight: '600' },
-  dirBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: Colors.gray100, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, marginTop: 4 },
-  dirText: { fontSize: 13, fontWeight: '700', color: Colors.gray900 },
+  arriveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: '#16A34A', borderRadius: 18, paddingVertical: 18, paddingHorizontal: 12, marginTop: 10 },
+  arriveText: { color: '#fff', fontSize: 19, fontWeight: '800', flexShrink: 1, textAlign: 'center' },
+  bigOff: { backgroundColor: Colors.gray300 },
+  dirLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 4 },
+  dirLinkText: { fontSize: 13, fontWeight: '700', color: Colors.gray500 },
   bigBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: Colors.primary, borderRadius: 18, paddingVertical: 16, paddingHorizontal: 12, marginTop: 10 },
   bigText: { color: '#fff', fontSize: 17, fontWeight: '800', flexShrink: 1, textAlign: 'center' },
   oneShot: { fontSize: 12.5, color: Colors.gray500, textAlign: 'center', marginTop: 4 },

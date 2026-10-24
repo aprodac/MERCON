@@ -145,6 +145,19 @@ export const STAGE_TITLE: Record<string, string> = {
   other: 'Photos',
 };
 
+/**
+ * Where a photo set is from (TestFlight 23 Oct: "show which stop and which leg,
+ * also loading or offloading"): "Stop 2 · Najran · Leg 1 · Unloading". The
+ * loading word is left out when the set's own title already says it.
+ */
+export function photoSetWhere(u: { stage: string; stop?: { name: string; type: string; sequence: number; leg?: 1 | 2 | null } | null; place?: string | null }, niceName: (n?: string | null) => string): string | null {
+  const st = u.stop;
+  if (!st) return u.place ? `near ${u.place}` : null;
+  const work = /pick|load/i.test(st.type) ? 'Loading' : /drop|deliver|unload/i.test(st.type) ? 'Unloading' : null;
+  const titled = u.stage === 'loaded' || u.stage === 'delivered';
+  return [`Stop ${st.sequence}`, niceName(st.name) || null, st.leg ? `Leg ${st.leg}` : null, titled ? null : work].filter(Boolean).join(' · ');
+}
+
 export function buildActions(src: ActionSources): ActionItem[] {
   const now = src.now ?? Date.now();
   const out: ActionItem[] = [];

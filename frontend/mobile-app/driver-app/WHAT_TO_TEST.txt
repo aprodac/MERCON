@@ -1,3 +1,10 @@
+NEW: ARRIVED FIRST on customer-app trips (iMile, JD, Shipa)
+1. Open the trip: the next stop shows a big green "Arrived at <stop>" button. "Send screenshot" is grey and says "Tap 'Arrived' first".
+2. Tap Arrived: it becomes "Arrived 14:05" and Send screenshot turns active. Close and reopen the app: still "Arrived 14:05".
+3. Send the screenshot: the stop is ticked and the next stop shows with Arrived again.
+4. "Not at <stop>? Add a stop": add it, send the screenshot, the stop is ticked.
+5. Labels now say "Load" / "Offload" (and "· return" on the way back), in English and Urdu.
+
 FIX: FINISH / SCREENSHOTS ON THE WRONG TRIP
 1. Open a customer-app trip from Home: the trip screen is that trip, and "Finish trip" names it (TRP number, route, date).
 2. With one trip on the road, tap Start on a second trip: it says "Finish TRP-00xx first" (any day, not only the same day).

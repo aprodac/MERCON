@@ -199,8 +199,11 @@ export async function checkTripsForDelay(now: Date = new Date()): Promise<number
       const alreadyDelayed = trip.status === TripStatus.Delayed;
       // A Delayed trip is judged like the stage it is really at.
       const firstPickup = trip.stops.find((s) => s.stop_type === StopType.Pickup) || trip.stops[0];
+      // "Loading" after the first pickup was already left is a later loading (a round
+      // trip's way back): judged like a trip on the road, by its first stop not reached
+      // yet. Judged by the first pickup alone, TRP-0020 was never late (TestFlight 22 Oct).
       const stage: TripStatus = !alreadyDelayed
-        ? trip.status
+        ? (trip.status === TripStatus.Loading && firstPickup?.actual_departure ? TripStatus.InTransit : trip.status)
         : !firstPickup || firstPickup.actual_arrival === null
           ? TripStatus.Scheduled
           : firstPickup.actual_departure === null

@@ -53,7 +53,8 @@ export interface DriverUpdate {
   customer: InboxCustomer | null;
   vehicle_plate: string | null;
   driver: { name: string; phone: string | null } | null;
-  stop: { id: string; name: string; type: string; sequence: number } | null;
+  /** `leg`: 1 going / 2 returning on a round trip, null on a one-way trip. */
+  stop: { id: string; name: string; type: string; sequence: number; leg: 1 | 2 | null } | null;
   stage: LiveMediaStage;
   items: LiveMediaItem[];
   delay_note: string | null;
@@ -144,6 +145,8 @@ export function buildDriverUpdates(
     if (docs.length === 0) continue;
     const media = groupTripMedia(t.stops, docs);
     const stopById = new Map(t.stops.map((s) => [s.id, s]));
+    // Round trip: the photos say which leg they are from (TestFlight 23 Oct).
+    const roundTrip = t.stops.some((s) => (s.leg_index ?? 0) > 0);
     const customer: InboxCustomer | null = t.customer
       ? {
           name: t.customer.name,
@@ -187,7 +190,7 @@ export function buildDriverUpdates(
         out.push({
           ...base,
           key,
-          stop: s ? { id: s.id, name: stopName(s), type: s.stop_type, sequence: s.stop_sequence } : null,
+          stop: s ? { id: s.id, name: stopName(s), type: s.stop_type, sequence: s.stop_sequence, leg: roundTrip ? ((s.leg_index ?? 0) > 0 ? 2 : 1) : null } : null,
           stage,
           items,
           delay_note: stage === 'delay' ? b.delayNote : null,

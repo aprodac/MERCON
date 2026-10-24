@@ -14,7 +14,7 @@ import { Check, CheckCheck, ImageOff, MessageCircle, Play, TriangleAlert, Camera
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import { needsSending, type DriverUpdate, type LiveMediaItem } from '../../../lib/operator';
-import { STAGE_TITLE, durationText } from '../../dashboard/actions/actionModel';
+import { STAGE_TITLE, durationText, photoSetWhere } from '../../dashboard/actions/actionModel';
 import { niceName } from '../../trips/create/components/ui';
 import { EmptyState, SectionLabel, SkeletonCard, INK, LINE, MUTED, p, tap } from './parts';
 
@@ -123,7 +123,7 @@ function UpdateCard({ u, when, onSend, onView, onMarkRead }: {
   const shown = unsent.slice(0, THUMBS);
   const extra = unsent.length - shown.length;
   const title = STAGE_TITLE[u.stage] ?? 'Photos';
-  const where = u.stop?.name ? niceName(u.stop.name) : u.place ? `near ${u.place}` : null;
+  const where = photoSetWhere(u, niceName);
   const crew = [u.vehicle_plate, u.driver ? niceName(u.driver.name) : null].filter(Boolean).join(' · ');
   const to = u.customer?.group_name || niceName(u.customer?.name) || 'customer';
   const partSent = u.sent_ids.length > 0;
@@ -136,7 +136,8 @@ function UpdateCard({ u, when, onSend, onView, onMarkRead }: {
           {u.stage === 'delay' ? <TriangleAlert size={16} color="#D92D20" strokeWidth={2.3} /> : <Camera size={16} color={INK} strokeWidth={2.2} />}
         </View>
         <View style={{ flex: 1, gap: 1 }}>
-          <Text style={s.title} numberOfLines={1}>{title}{where ? ` · ${where}` : ''}</Text>
+          <Text style={s.title} numberOfLines={1}>{title}</Text>
+          {where ? <Text style={s.where} numberOfLines={1}>{where}</Text> : null}
           <Text style={s.meta} numberOfLines={1}>{[u.trip.ref_id, niceName(u.customer?.name)].filter(Boolean).join(' · ')}</Text>
           {u.trip.route ? <Text style={s.route} numberOfLines={1}>{u.trip.route}</Text> : null}
         </View>
@@ -204,6 +205,7 @@ const s = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   stage: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#F4F4F5', alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 15, fontWeight: '700', color: INK },
+  where: { fontSize: 12, fontWeight: '700', color: '#C4432F' },
   meta: { fontSize: 12, color: MUTED },
   route: { fontSize: 12, fontWeight: '600', color: INK },
   when: { fontSize: 12, color: MUTED, fontVariant: ['tabular-nums'] },
