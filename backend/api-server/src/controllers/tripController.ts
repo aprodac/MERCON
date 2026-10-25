@@ -2044,7 +2044,8 @@ export const confirmEvidenceTime = async (req: Request, res: Response) => {
  * Confirm a whole EXTERNAL_APP trip's stop times at once. The customer's app
  * shows every stop's arrive/departure time on one screen, so the operator
  * copies them all in one pass instead of one screenshot at a time. Saves the
- * times and marks every pending screenshot on the trip as checked.
+ * times and marks every pending screenshot on the trip as checked — except those
+ * on `keep_pending_stop_ids`, stops left out because their times still need fixing.
  *
  * Same post-completion rule as confirmEvidenceTime: no frozen-trip guard.
  */
@@ -2083,19 +2084,22 @@ export const confirmTripTimes = async (req: Request, res: Response) => {
       if (Object.keys(data).length) updates.push({ id: stop.id, data });
     }
 
+    // Stops the operator still has to fix were left out of the save: their screenshots stay to check.
+    const keepPending = new Set((req.body.keep_pending_stop_ids ?? []) as string[]);
     const verifiedBy = isUuid((req as any).user?.id) ? (req as any).user.id : null;
     const verified = await prisma.$transaction(async (tx) => {
       for (const u of updates) await tx.tripStop.update({ where: { id: u.id }, data: u.data });
-      return tx.document.updateMany({
-        where: {
-          entity_type: 'Trip',
-          entity_id: tripId,
-          deletedAt: null,
-          status: DocStatus.PendingReview,
-          ai_extracted_json: { path: ['source'], equals: 'external_app_screenshot' },
-        },
-        data: { status: DocStatus.Verified, verified_by: verifiedBy },
-      });
+      const where = {
+        entity_type: 'Trip',
+        entity_id: tripId,
+        deletedAt: null,
+        status: DocStatus.PendingReview,
+        ai_extracted_json: { path: ['source'], equals: 'external_app_screenshot' },
+      };
+      if (!keepPending.size) return tx.document.updateMany({ where, data: { status: DocStatus.Verified, verified_by: verifiedBy } });
+      const pending = await tx.document.findMany({ where, select: { id: true, ai_extracted_json: true } });
+      const ids = pending.filter((d) => !keepPending.has((d.ai_extracted_json as any)?.stop_id)).map((d) => d.id);
+      return tx.document.updateMany({ where: { id: { in: ids } }, data: { status: DocStatus.Verified, verified_by: verifiedBy } });
     });
 
     res.json({ success: true, data: { stops_updated: updates.length, screenshots_verified: verified.count } });

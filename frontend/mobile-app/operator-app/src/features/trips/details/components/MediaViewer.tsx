@@ -5,7 +5,7 @@
 import React, { useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Modal, FlatList, Linking, useWindowDimensions, StatusBar } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CheckCheck, Clock3, Crosshair, ExternalLink, Info, MessageCircle, Play, Route, Trash2, X } from 'lucide-react-native';
+import { ArrowRightLeft, CheckCheck, Clock3, Crosshair, ExternalLink, Info, MessageCircle, Play, Route, Trash2, X } from 'lucide-react-native';
 import { GoogleMapsGeotagPreview } from '@mercon/mobile-shared/components/GoogleMapsGeotagPreview';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
@@ -30,6 +30,8 @@ export interface ViewerItem {
   timeAction?: { label: string; onPress: () => void } | null;
   /** Remove a photo the driver sent by mistake (the caller asks "are you sure?" first). */
   deleteAction?: { onPress: () => void } | null;
+  /** Sent at the wrong stop: move it to another one. */
+  moveAction?: { onPress: () => void } | null;
 }
 
 interface Props {
@@ -130,7 +132,7 @@ export function MediaViewer({ items, startIndex, title, context, onClose, onSend
           />
         ) : null}
 
-        {current?.info || current?.pinAction || current?.timeAction || current?.deleteAction ? (
+        {current?.info || current?.pinAction || current?.timeAction || current?.deleteAction || current?.moveAction ? (
           <View style={s.facts}>
             {current.info ? (
               <View style={s.factRow}>
@@ -139,7 +141,7 @@ export function MediaViewer({ items, startIndex, title, context, onClose, onSend
               </View>
             ) : null}
             {/* Side by side, not stacked: the photo stays the biggest thing on screen. */}
-            {current.timeAction || current.pinAction || current.deleteAction ? (
+            {current.timeAction || current.pinAction || current.deleteAction || current.moveAction ? (
               <View style={s.factBtns}>
                 {current.timeAction ? (
                   <TouchableOpacity style={[s.pinBtn, s.timeBtn]} activeOpacity={0.85} onPress={current.timeAction.onPress} accessibilityRole="button">
@@ -151,6 +153,12 @@ export function MediaViewer({ items, startIndex, title, context, onClose, onSend
                   <TouchableOpacity style={s.pinBtn} activeOpacity={0.85} onPress={current.pinAction.onPress} accessibilityRole="button">
                     <Crosshair size={15} color="#1E3A8A" />
                     <Text style={s.pinBtnText} numberOfLines={2}>{current.pinAction.label}</Text>
+                  </TouchableOpacity>
+                ) : null}
+                {current.moveAction ? (
+                  <TouchableOpacity style={[s.delBtn, s.moveBtn]} activeOpacity={0.85} onPress={current.moveAction.onPress} accessibilityRole="button" accessibilityLabel="Move this photo to another stop">
+                    <ArrowRightLeft size={15} color="#1E3A8A" />
+                    <Text style={[s.pinBtnText, { color: '#1E3A8A' }]} numberOfLines={1}>Move</Text>
                   </TouchableOpacity>
                 ) : null}
                 {current.deleteAction ? (
@@ -207,6 +215,7 @@ const s = StyleSheet.create({
   pinBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 44, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: '#DBEAFE' },
   // Narrow, beside the wider actions: deleting is the rare one.
   delBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 44, paddingHorizontal: 14, borderRadius: 12, backgroundColor: '#FEE4E2' },
+  moveBtn: { backgroundColor: '#DBEAFE' },
   pinBtnText: { flexShrink: 1, color: '#1E3A8A', fontSize: 13, fontWeight: '800', textAlign: 'center' },
   timeBtn: { backgroundColor: '#FFEDD5' },
   root: { flex: 1, backgroundColor: '#3E3C3D' },
