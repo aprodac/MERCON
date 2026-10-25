@@ -1218,6 +1218,24 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     }
   }, [allIssues.length, buildRows]);
 
+  /** First past trip's planned start/end (for the warning), and whether its end is still ahead. */
+  const pastTripTimes = useMemo(() => {
+    if (pastTripCount === 0) return null;
+    try {
+      const now = Date.now();
+      const row = buildRows().find((r) => new Date(r.planned_start).getTime() < now);
+      if (!row) return null;
+      const fmt = (iso?: string | null) => {
+        if (!iso || isNaN(new Date(iso).getTime())) return null;
+        return new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
+      };
+      const endMs = row.planned_end ? new Date(row.planned_end).getTime() : NaN;
+      return { start: fmt(row.planned_start), end: fmt(row.planned_end), endInFuture: !isNaN(endMs) && endMs > now };
+    } catch {
+      return null;
+    }
+  }, [pastTripCount, buildRows, tz]);
+
   /**
    * The driver already has a trip on one of these days? Asked just before
    * creating, so the operator can stop or book anyway (the later trip then waits
@@ -1438,6 +1456,7 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     allIssues,
     stepIssues,
     pastTripCount,
+    pastTripTimes,
     submitting,
     checkSameDay,
     submit,

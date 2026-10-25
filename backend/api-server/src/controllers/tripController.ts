@@ -14,6 +14,7 @@ import { resolveVehicleLocation, resolveVehicleLocationsForTrips } from '../serv
 import { parseOptionalFloat, getValidUuid } from '../utils/uuid';
 import { buildSearchAnd } from '../utils/search';
 import { getCompanyLegalName } from './settingsController';
+import { completedOnCreateTimes, stampCompletedStops } from '../utils/completedOnCreate';
 import { computeTripChargesTotal, calculateBackendTripFinancials, resolveDriverPayout, resolveInitialTripStatus, splitCoDriverPayout } from '../utils/tripFinancials';
 import { resolveMonth, toDayKey } from '../utils/tripBoard';
 import { validateTripDrivers, TripDriverInput, validateTripSchedule, validateTripStops } from '../services/tripValidationService';
@@ -1016,6 +1017,7 @@ export const createTrip = async (req: Request, res: Response) => {
               planned_start: parsedPlannedStart,
               planned_end: parsedPlannedEnd,
               status: targetStatus,
+              ...(completedOnCreateTimes(targetStatus, parsedPlannedStart, parsedPlannedEnd) ?? {}),
               carrier_name: carrierName,
               ...(createdBy ? { created_by: createdBy } : {}),
               financials: {
@@ -1064,7 +1066,9 @@ export const createTrip = async (req: Request, res: Response) => {
               } : {}),
               ...(stopsToCreate.length > 0 ? {
                 stops: {
-                  create: stopsToCreate,
+                  create: completedOnCreateTimes(targetStatus, parsedPlannedStart, parsedPlannedEnd)
+                    ? stampCompletedStops(stopsToCreate, parsedPlannedStart!, parsedPlannedEnd)
+                    : stopsToCreate,
                 }
               } : {})
             } as any,
@@ -1341,6 +1345,11 @@ export const bulkImportTrips = async (req: Request, res: Response) => {
           rowCharges.push({ amount: Number(row.additional_charge), description: 'Additional Charge' });
         }
 
+        const completedTimes = completedOnCreateTimes(targetStatus, parsedPlannedStart, parsedPlannedEnd);
+        const tripStopsToWrite = completedTimes
+          ? stampCompletedStops(resolvedImportStops, completedTimes.actual_start, completedTimes.actual_end)
+          : resolvedImportStops;
+
         const rowAwb = (row as any).awb_number ? String((row as any).awb_number).trim() : '';
         const updateQuotationPayout = (row as any).update_quotation_driver_payout === true;
 
@@ -1403,6 +1412,7 @@ export const bulkImportTrips = async (req: Request, res: Response) => {
               planned_start: parsedPlannedStart,
               planned_end: parsedPlannedEnd,
               status: targetStatus,
+              ...(completedTimes ?? {}),
               financials: {
                 create: {
                   quotationId: appliedQuotation ? appliedQuotation.id : null,
@@ -1432,9 +1442,9 @@ export const bulkImportTrips = async (req: Request, res: Response) => {
                   })),
                 }
               } : {}),
-              ...(resolvedImportStops.length > 0 ? {
+              ...(tripStopsToWrite.length > 0 ? {
                 stops: {
-                  create: resolvedImportStops,
+                  create: tripStopsToWrite,
                 }
               } : {})
             } as any,
