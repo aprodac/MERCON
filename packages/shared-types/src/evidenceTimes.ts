@@ -72,6 +72,13 @@ export interface StopTimeRow {
    * stop's arrival (it's pulled back to the arrival instead).
    */
   leftFollowsArrival?: boolean;
+  /**
+   * The day (YYYY-MM-DD, in the deployment zone) the operator set for a typed
+   * time — taken as is instead of inferred (TestFlight 24 Oct: "a date column
+   * we can edit when there is any confusion").
+   */
+  arrivalDate?: string;
+  departureDate?: string;
 }
 
 export interface ResolvedTime {
@@ -96,10 +103,12 @@ const sameSecond = (a: string | null, b: string | null) =>
 /**
  * Turns what the operator typed into real instants, stop by stop in order.
  *
- * Only a clock is typed, so the date is inferred: the day that puts it closest
- * to the driver's tap for that same field (taps are minutes-to-hours off, never
- * half a day). With no tap, the first day at or after the previous stop's time —
- * a day earlier when that would be in the future or after a later stop's tap.
+ * Only a clock is typed, so the date is inferred (unless the operator set one):
+ * the day that puts it closest to the driver's tap for that same field, among
+ * the days at or after the previous stop's time and not after a later stop's
+ * tap. With no tap, the first day at or after the previous stop's time — a day
+ * earlier when that would be in the future or after a later stop's tap — but a
+ * time under 3 h before the previous one stays on its day and is flagged.
  * Then flags what can't be true: leaving before arriving, or arriving before
  * the stop before.
  */
@@ -112,7 +121,7 @@ export function resolveStopTimes(rows: StopTimeRow[], tz: string, fallbackIso: s
   const recordedFrom = (i: number) =>
     rows.slice(i + 1).flatMap((r) => [r.recordedArrival, r.recordedDeparture]).filter((x): x is string => !!x).map(Date.parse);
 
-  const resolve = (typed: string, recorded: string | null): ResolvedTime => {
+  const resolve = (typed: string, recorded: string | null, date?: string): ResolvedTime => {
     if (!typed.trim()) {
       return { iso: recorded, changed: false, dayOffset: 0, error: null };
     }
@@ -120,22 +129,41 @@ export function resolveStopTimes(rows: StopTimeRow[], tz: string, fallbackIso: s
     if (!clock) return { iso: recorded, changed: false, dayOffset: 0, error: 'Use hh:mm:ss' };
 
     let iso: string;
-    if (recorded) {
+    const limit = Math.min(nowMs, limitAfter);
+    if (date) {
+      // The operator said which day.
+      iso = zonedWallTimeToUtcIso(date, clock, tz);
+    } else if (recorded) {
       const anchor = Date.parse(recorded);
       const base = isoToWall(recorded, tz).date;
-      iso = [-1, 0, 1]
-        .map((d) => zonedWallTimeToUtcIso(shiftDate(base, d), clock, tz))
-        .reduce((best, c) => (Math.abs(Date.parse(c) - anchor) < Math.abs(Date.parse(best) - anchor) ? c : best));
+      const days = [-1, 0, 1].map((d) => zonedWallTimeToUtcIso(shiftDate(base, d), clock, tz));
+      // The day nearest the tap — among the days that keep the stops in order and
+      // before any later stop's tap. A driver who taps every stop late (TRP-0053:
+      // all at 10:56–11:01 the next morning) put "left 23:53" the night before
+      // "arrived 18:22" (TestFlight 24 Oct: "says left before arrived, but the
+      // times are right").
+      // A time just before the one before (under 3 h) stays put and is flagged, as below.
+      const nearest = (cs: string[]) => cs.reduce((best, c) => (Math.abs(Date.parse(c) - anchor) < Math.abs(Date.parse(best) - anchor) ? c : best));
+      const fits = (c: string) => (!prevIso || Date.parse(c) >= Date.parse(prevIso)) && Date.parse(c) <= limit;
+      const best = nearest(days);
+      const slip = !!prevIso && Date.parse(best) < Date.parse(prevIso) && Date.parse(prevIso) - Date.parse(best) <= 3 * 3_600_000;
+      const ok = days.filter(fits);
+      iso = fits(best) || slip || !ok.length ? best : nearest(ok);
     } else {
       const after = prevIso ?? fallbackIso;
       const base = isoToWall(after, tz).date;
       const sameDay = zonedWallTimeToUtcIso(base, clock, tz);
-      iso = Date.parse(sameDay) >= Date.parse(after) || !prevIso ? sameDay : zonedWallTimeToUtcIso(shiftDate(base, 1), clock, tz);
+      // A time a little before the one before it (under 3 h) is a slip, or the
+      // screenshot's own mix-up: it stays on that day, so the stop where it was
+      // typed shows the problem — not the next stop, a whole day later
+      // (TestFlight 24 Oct: "departed from Najran is earlier than arrived at Najran").
+      const slip = !!prevIso && Date.parse(sameDay) < Date.parse(prevIso) && Date.parse(prevIso) - Date.parse(sameDay) <= 3 * 3_600_000;
+      iso = Date.parse(sameDay) >= Date.parse(after) || !prevIso || slip ? sameDay : zonedWallTimeToUtcIso(shiftDate(base, 1), clock, tz);
+      if (slip) return { iso, changed: !sameSecond(iso, recorded), dayOffset: 0, error: null };
       // A screenshot time has already happened, and comes before any later
       // stop's tap: never after either. The trip's Start tap is often made
       // late, so its day put "21:05" (the night before) a day ahead and every
       // later stop with it (TRP-0049: "03:22 is before 03:11").
-      const limit = Math.min(nowMs, limitAfter);
       if (Date.parse(iso) > limit) {
         const dayBefore = zonedWallTimeToUtcIso(shiftDate(isoToWall(iso, tz).date, -1), clock, tz);
         if (!prevIso || Date.parse(dayBefore) >= Date.parse(prevIso)) iso = dayBefore;
@@ -146,7 +174,7 @@ export function resolveStopTimes(rows: StopTimeRow[], tz: string, fallbackIso: s
 
   const out: ResolvedStop[] = rows.map((r, i) => {
     limitAfter = Math.min(Infinity, ...recordedFrom(i));
-    const arrival = resolve(r.arrival, r.recordedArrival);
+    const arrival = resolve(r.arrival, r.recordedArrival, r.arrivalDate);
     if (arrival.iso) prevIso = arrival.iso;
     if (r.leftFollowsArrival) {
       const departure: ResolvedTime = arrival.changed
@@ -154,7 +182,7 @@ export function resolveStopTimes(rows: StopTimeRow[], tz: string, fallbackIso: s
         : { iso: r.recordedDeparture, changed: false, dayOffset: 0, error: null };
       return { stopId: r.stopId, arrival, departure };
     }
-    const departure = resolve(r.departure, r.recordedDeparture);
+    const departure = resolve(r.departure, r.recordedDeparture, r.departureDate);
     if (departure.iso) prevIso = departure.iso;
     return { stopId: r.stopId, arrival, departure };
   });
