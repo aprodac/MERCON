@@ -32,6 +32,9 @@ import {
 
 type DriverTarget = { kind: 'master' } | { kind: 'co' } | { kind: 'rotation'; index: number } | { kind: 'day'; date: string };
 
+/** "Tailgate" / "No tailgate" — blank when the server didn't send it (older API). */
+const tailgateOf = (v: OperatorVehicleOption) => (typeof v.has_tailgate === 'boolean' ? (v.has_tailgate ? 'Tailgate' : 'No tailgate') : null);
+const truckLine = (v: OperatorVehicleOption) => [v.plate_number, truckClassOfVehicle(v), tailgateOf(v)].filter(Boolean).join(' · ');
 const fullName = (d?: { first_name?: string; last_name?: string } | null) => (d ? niceName(`${d.first_name || ''} ${d.last_name || ''}`.trim()) : '');
 
 function Avatar({ d, size }: { d?: OperatorDriverOption | null; size: number }) {
@@ -71,7 +74,7 @@ export function StepAssign({ form, showErrors }: { form: CreateTripForm; showErr
         return {
           value: c.driver.id,
           label: fullName(c.driver) || 'Driver',
-          sub: truck ? `${truck.plate_number} · ${truckClassOfVehicle(truck)}` : 'No truck',
+          sub: truck ? truckLine(truck) : 'No truck',
           group: c.groupLabel,
           badge: { label: c.statusLabel, tone: c.statusLabel === 'Free' ? ('success' as const) : ('warning' as const) },
           chips: c.chips.slice(0, 4),
@@ -92,7 +95,7 @@ export function StepAssign({ form, showErrors }: { form: CreateTripForm; showErr
     }).map((t) => ({
       value: t.vehicle.id,
       label: t.vehicle.plate_number,
-      sub: [niceName(t.vehicle.asset_type), t.cls].filter(Boolean).join(' · '),
+      sub: [niceName(t.vehicle.asset_type), t.cls, tailgateOf(t.vehicle)].filter(Boolean).join(' · '),
       group: truckGroupLabel(t.group, form.vehicleType),
       disabled: t.blocked,
       chips: t.chips,
@@ -277,7 +280,7 @@ export function StepAssign({ form, showErrors }: { form: CreateTripForm; showErr
                         {c.rec?.score ? <Text style={styles.score}>{c.rec.score}</Text> : null}
                       </View>
                       <Text style={styles.driverSub} numberOfLines={1}>
-                        {truck ? `${truck.plate_number} · ${truckClassOfVehicle(truck)}` : 'No truck'}
+                        {truck ? truckLine(truck) : 'No truck'}
                       </Text>
                       <ChipRow chips={c.chips.slice(0, 3)} style={{ marginTop: 5 }} />
                     </View>
@@ -431,6 +434,7 @@ function AssignedBody({
           {truck ? truck.plate_number : 'No truck yet'}
         </Text>
         {truck ? <Chip label={truckClass || ''} tone={truckClass === tripClass ? 'neutral' : 'warning'} /> : null}
+        {truck && tailgateOf(truck) ? <Chip label={tailgateOf(truck)!} /> : null}
         <Text style={styles.link}>{truck ? 'Change' : 'Choose'}</Text>
       </TouchableOpacity>
       {truck && truckClass !== tripClass ? <Text style={styles.warnNote}>This trip is priced for {tripClass}.</Text> : null}
@@ -527,7 +531,7 @@ function RotationEditor({
                 <Text style={[styles.driverName, !d && { color: Colors.gray400, fontWeight: '400' }]} numberOfLines={1}>
                   {d ? fullName(d) : `Choose driver ${i + 1}`}
                 </Text>
-                {d ? <Text style={styles.driverSub}>{truck ? `${truck.plate_number} · ${truckClassOfVehicle(truck)}` : 'No truck'}</Text> : null}
+                {d ? <Text style={styles.driverSub}>{truck ? truckLine(truck) : 'No truck'}</Text> : null}
               </View>
             </TouchableOpacity>
             {form.rotationDrivers.length > 2 ? (
