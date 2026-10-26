@@ -43,12 +43,24 @@ ENV NODE_OPTIONS="--max-old-space-size=4096"
 
 RUN npm run build -w @mercon/web-dashboard
 
+# Linaul product website (website/, standalone Next.js static export), served
+# by this same nginx at /linaul/. Built in its own stage from its own lockfile;
+# Debian-based so Next's glibc SWC binary from the lockfile is the one used.
+FROM node:20-slim AS site
+WORKDIR /site
+COPY website/package.json website/package-lock.json ./
+RUN npm ci --no-audit --no-fund && npm cache clean --force
+COPY website ./
+ENV BASE_PATH=/linaul NEXT_TELEMETRY_DISABLED=1
+RUN npm run build
+
 # Production stage
 FROM nginx:alpine
 # Copy the custom nginx configuration
 COPY frontend/web-dashboard/nginx.conf /etc/nginx/conf.d/default.conf
 # Copy the built assets from the build stage
 COPY --from=build /app/frontend/web-dashboard/dist /usr/share/nginx/html
+COPY --from=site /site/out /usr/share/nginx/html/linaul
 # track.html: index.html plus the SSI include that nginx fills with a tracking
 # link's WhatsApp preview tags (see the /t/ and /c/ locations in nginx.conf).
 # Right after <meta charset> — the charset must stay first in <head>.

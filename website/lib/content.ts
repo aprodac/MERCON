@@ -23,6 +23,39 @@ export type Module = {
   soon?: boolean;
 };
 
+export type Screenshot = { src: string; alt: string; caption?: string };
+
+// Screenshots of the real product on fictional sample data, keyed by module.
+export const moduleShots: Record<string, Screenshot[]> = {
+  trips: [
+    { src: '/screens/web-trips.webp', alt: 'Trip ledger', caption: 'Trip ledger with today, in-transit and delayed counts' },
+    { src: '/screens/web-createtrip.webp', alt: 'Create trip', caption: 'Create trip: quotation, suggested drivers and live margin' },
+    { src: '/screens/web-tripdetail.webp', alt: 'Trip details', caption: 'Trip details with route, stops and billing' },
+    { src: '/screens/web-monthly.webp', alt: 'Monthly trips', caption: 'Monthly runs per customer and lane' },
+  ],
+  'live-map': [{ src: '/screens/web-livemap.webp', alt: 'Live map', caption: 'Live operations map' }],
+  quotations: [{ src: '/screens/web-quotations.webp', alt: 'Quotations', caption: 'Quotations per customer' }],
+  locations: [{ src: '/screens/web-locations.webp', alt: 'Locations', caption: 'Locations with exact pins' }],
+  vehicles: [
+    { src: '/screens/web-vehicles.webp', alt: 'Trucks', caption: 'Fleet list with status and capacity' },
+    { src: '/screens/web-vehicle.webp', alt: 'Truck details', caption: 'Truck details, trips and document validity' },
+  ],
+  drivers: [{ src: '/screens/web-drivers.webp', alt: 'Drivers', caption: 'Driver ledger with app readiness and licences' }],
+  maintenance: [{ src: '/screens/web-maintenance.webp', alt: 'Maintenance', caption: 'Trucks in the workshop and service costs' }],
+  documents: [{ src: '/screens/web-documents.webp', alt: 'Documents', caption: 'Expired, expiring and missing documents at a glance' }],
+  customers: [{ src: '/screens/web-customers.webp', alt: 'Customers', caption: 'Customer accounts with live trips' }],
+  tracking: [
+    { src: '/screens/web-ttrack.webp', alt: 'Customer trip tracking page', caption: 'What your customer sees: one trip' },
+    { src: '/screens/web-ctrack.webp', alt: 'Customer fleet tracking page', caption: 'A key account’s page for all their trips' },
+  ],
+  invoices: [{ src: '/screens/web-invoices.webp', alt: 'Invoices', caption: 'Invoices with balances and payment status' }],
+  expenses: [{ src: '/screens/web-expenses.webp', alt: 'Expenses', caption: 'Expenses by category' }],
+  statements: [{ src: '/screens/web-profit.webp', alt: 'Trip profitability', caption: 'Margin on every trip' }],
+  dashboard: [{ src: '/screens/web-dash.webp', alt: 'Dashboard', caption: 'Live map, alerts and the active fleet' }],
+  branding: [{ src: '/screens/web-branding.webp', alt: 'Branding settings', caption: 'Name, logo and colours' }],
+  governance: [{ src: '/screens/web-modules.webp', alt: 'Module settings', caption: 'Switch modules on, off or “coming soon”' }],
+};
+
 export type ModuleGroup = {
   id: string;
   title: string;
@@ -315,6 +348,8 @@ export type AppInfo = {
   audience: string;
   summary: string;
   features: string[];
+  browsers?: Screenshot[];
+  phones?: Screenshot[];
 };
 
 export const apps: AppInfo[] = [
@@ -330,6 +365,10 @@ export const apps: AppInfo[] = [
       'Finance, statements and VAT',
       'Reports, report builder and settings',
     ],
+    browsers: [
+      { src: '/screens/web-dash.webp', alt: 'Dashboard', caption: 'Dashboard' },
+      { src: '/screens/web-tripdetail.webp', alt: 'Trip details', caption: 'Trip details' },
+    ],
   },
   {
     id: 'operator',
@@ -343,6 +382,12 @@ export const apps: AppInfo[] = [
       'Quotations with rate finder and PDF',
       'Customers, vehicles, drivers, invoices and expenses',
       'Push alerts for delays and expiring documents',
+    ],
+    phones: [
+      { src: '/screens/op-trips.webp', alt: 'Operator app trips', caption: 'Trips now' },
+      { src: '/screens/op-drivers.webp', alt: 'Operator app drivers', caption: 'Driver phone readiness' },
+      { src: '/screens/op-quotations.webp', alt: 'Operator app quotations', caption: 'Quotations' },
+      { src: '/screens/op-invoices.webp', alt: 'Operator app invoices', caption: 'Invoices' },
     ],
   },
   {
@@ -358,6 +403,12 @@ export const apps: AppInfo[] = [
       'Emergency button, documents and assigned vehicle',
       'Charges, performance and notifications',
     ],
+    phones: [
+      { src: '/screens/driver-login.webp', alt: 'Driver sign in', caption: 'Phone + licence sign-in' },
+      { src: '/screens/driver-home.webp', alt: 'Driver home', caption: 'The trip in progress' },
+      { src: '/screens/driver-delivery.webp', alt: 'Delivery photos', caption: 'Proof of delivery photos' },
+      { src: '/screens/driver-charges.webp', alt: 'Driver charges', caption: 'What the driver has earned' },
+    ],
   },
   {
     id: 'tracking',
@@ -370,6 +421,10 @@ export const apps: AppInfo[] = [
       'Delivery photo gallery',
       'Multilingual tracking page',
       'Direct WhatsApp contact to your ops team',
+    ],
+    browsers: [
+      { src: '/screens/web-ttrack.webp', alt: 'Trip tracking page', caption: 'One trip, live' },
+      { src: '/screens/web-ctrack.webp', alt: 'Fleet tracking page', caption: 'All trips for one customer' },
     ],
   },
 ];

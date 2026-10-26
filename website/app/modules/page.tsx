@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Cta } from '@/components/Cta';
-import { moduleGroups } from '@/lib/content';
+import { Browser } from '@/components/Shots';
+import { moduleGroups, moduleShots } from '@/lib/content';
 
 export const metadata: Metadata = {
   title: 'Modules',
@@ -55,6 +56,13 @@ export default function ModulesPage() {
                       <li key={p}>{p}</li>
                     ))}
                   </ul>
+                  {moduleShots[m.key] && (
+                    <div className={`shots${moduleShots[m.key].length === 1 ? ' one' : ''}`}>
+                      {moduleShots[m.key].map((sh) => (
+                        <Browser key={sh.src} {...sh} />
+                      ))}
+                    </div>
+                  )}
                 </article>
               ))}
             </div>

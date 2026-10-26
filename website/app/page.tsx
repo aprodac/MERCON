@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Cta } from '@/components/Cta';
-import { DashboardMock, LedgerMock, PhonesMock } from '@/components/Mocks';
+import { Browser, Phone } from '@/components/Shots';
 import { apps, flow, moduleGroups, principles, site } from '@/lib/content';
 
 export default function HomePage() {
@@ -37,7 +37,7 @@ export default function HomePage() {
               </Link>
             </div>
           </div>
-          <DashboardMock />
+          <Browser className="hero-shot" src="/screens/web-livemap.webp" alt="Linaul live operations map" caption="Live operations: every running trip, its driver, speed and next stop" />
         </div>
       </section>
 
@@ -88,10 +88,28 @@ export default function HomePage() {
         </div>
       </section>
 
+
+      <section className="section">
+        <div className="wrap">
+          <div className="grid sh">
+            <span className="label">02 — Product</span>
+            <h2 className="h2">See it at work.</h2>
+            <p className="lead muted">Real screens from {site.name}, shown here with sample data.</p>
+          </div>
+          <div className="tour">
+            <Browser className="wide" src="/screens/web-createtrip.webp" alt="Create trip" caption="Create a trip: pick the quotation, get suggested drivers, see the margin before you dispatch" />
+            <Browser src="/screens/web-tripdetail.webp" alt="Trip details" caption="Every trip: route, stops, driver, truck and billing" />
+            <Browser src="/screens/web-dash.webp" alt="Dashboard" caption="The dashboard: live map, alerts and the active fleet" />
+            <Browser src="/screens/web-documents.webp" alt="Documents" caption="Licences, IQAMA, insurance — expiries caught early" />
+            <Browser src="/screens/web-monthly.webp" alt="Monthly trips" caption="Monthly runs per customer and lane" />
+          </div>
+        </div>
+      </section>
+
       <section className="section panel">
         <div className="wrap grid split">
           <div className="copy">
-            <span className="label">02 — In the cab</span>
+            <span className="label">03 — In the cab</span>
             <h2 className="h2">Drivers tap. Everyone else knows.</h2>
             <p className="lead muted">
               The driver app walks each stop in order — arrive, photo, depart. GPS confirms arrival automatically,
@@ -108,7 +126,10 @@ export default function HomePage() {
             </Link>
           </div>
           <div className="visual">
-            <PhonesMock />
+            <div className="phone-pair">
+              <Phone src="/screens/driver-home.webp" alt="Driver app home with the trip in progress" />
+              <Phone src="/screens/driver-delivery.webp" alt="Driver app delivery photos" />
+            </div>
           </div>
         </div>
       </section>
@@ -116,7 +137,7 @@ export default function HomePage() {
       <section className="section">
         <div className="wrap">
           <div className="grid sh">
-            <span className="label">03 — Modules</span>
+            <span className="label">04 — Modules</span>
             <h2 className="h2">Switch on what you need. Add the rest when you grow.</h2>
           </div>
           <div className="cells c3">
@@ -135,7 +156,7 @@ export default function HomePage() {
       <section className="section dark">
         <div className="wrap grid split">
           <div className="copy">
-            <span className="label">04 — Finance</span>
+            <span className="label">05 — Finance</span>
             <h2 className="h2">Know what every trip earned.</h2>
             <p className="lead muted">
               Double-entry accounting is built around the trip. Freight, extra charges, fuel, tolls and driver pay
@@ -149,7 +170,7 @@ export default function HomePage() {
             </ul>
           </div>
           <div className="visual">
-            <LedgerMock />
+            <Browser src="/screens/web-profit.webp" alt="Trip profitability report" caption="Trip profitability: revenue, cost and margin on every trip" />
           </div>
         </div>
       </section>
@@ -157,7 +178,7 @@ export default function HomePage() {
       <section className="section">
         <div className="wrap">
           <div className="grid sh">
-            <span className="label">05 — Surfaces</span>
+            <span className="label">06 — Surfaces</span>
             <h2 className="h2">One platform, four ways in.</h2>
           </div>
           <div className="cells">
@@ -175,7 +196,7 @@ export default function HomePage() {
       <section className="section panel">
         <div className="wrap">
           <div className="grid sh">
-            <span className="label">06 — Principles</span>
+            <span className="label">07 — Principles</span>
             <h2 className="h2">Made by people who run trucks.</h2>
             <p className="lead muted">
               {site.name} started as the in-house system of a working logistics company. Every screen was shaped by

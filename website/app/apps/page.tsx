@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { Cta } from '@/components/Cta';
-import { PhonesMock } from '@/components/Mocks';
+import { Browser, Phone, PhoneRow } from '@/components/Shots';
 import { apps } from '@/lib/content';
 
 export const metadata: Metadata = {
@@ -42,6 +42,18 @@ export default function AppsPage() {
                 <li key={f}>{f}</li>
               ))}
             </ul>
+            {a.browsers && (
+              <div className="shots browsers">
+                {a.browsers.map((sh) => (
+                  <Browser key={sh.src} {...sh} url={a.id === 'tracking' ? 'track.linaul.com' : undefined} />
+                ))}
+              </div>
+            )}
+            {a.phones && (
+              <div className="shots">
+                <PhoneRow shots={a.phones} />
+              </div>
+            )}
           </div>
         </section>
       ))}
@@ -52,14 +64,17 @@ export default function AppsPage() {
             <span className="label">Roles</span>
             <h2 className="h2">Three roles. No guesswork.</h2>
             <ul className="ticks">
-              <li><b>Admin</b>&nbsp;— everything, including users, branding and module settings</li>
-              <li><b>Operator</b>&nbsp;— runs trips, fleet, customers and billing</li>
-              <li><b>Driver</b>&nbsp;— the driver app only, with their own trips</li>
+              <li><span><b>Admin</b>&nbsp;— everything, including users, branding and module settings</span></li>
+              <li><span><b>Operator</b>&nbsp;— runs trips, fleet, customers and billing</span></li>
+              <li><span><b>Driver</b>&nbsp;— the driver app only, with their own trips</span></li>
             </ul>
             <p className="muted">Permissions are checked on the server for every request, not just hidden in the interface.</p>
           </div>
           <div className="visual">
-            <PhonesMock />
+            <div className="phone-pair">
+              <Phone src="/screens/driver-profile.webp" alt="Driver profile" caption="Driver" />
+              <Phone src="/screens/op-trips.webp" alt="Operator trips" caption="Operator" />
+            </div>
           </div>
         </div>
       </section>
