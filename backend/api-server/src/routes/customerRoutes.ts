@@ -5,6 +5,7 @@ import { authorizeRoles } from '../middlewares/rbac';
 import { validate } from '../middlewares/validate';
 import { storeInlineImages } from '../middlewares/inlineImages';
 import { createCustomerBody, updateCustomerBody, listQuery, idParam } from '../schemas';
+import { getTransitSummary, getTransitRoute, getSavedTransits, putPlannedTransit, getQuotationTransits, deletePlannedTransit, transitQuery, transitRouteQuery, transitPlannedBody, transitKeyQuery } from '../controllers/transitTimesController';
 import { getCustomerTrackingLink, getCustomerTrackingOpens, trackingLinkBody } from '../controllers/trackingController';
 
 const router = Router();
@@ -16,6 +17,12 @@ router.get('/', validate({ query: listQuery }), getCustomers);
 router.get('/summary', getCustomerSummary);
 router.post('/import', bulkImportCustomers);
 router.post('/', validate({ body: createCustomerBody }), storeInlineImages('logo_url'), createCustomer);
+router.get('/:id/transit-times', validate({ params: idParam, query: transitQuery }), getTransitSummary);
+router.get('/:id/transit-times/route', validate({ params: idParam, query: transitRouteQuery }), getTransitRoute);
+router.get('/:id/transit-times/saved', validate({ params: idParam }), getSavedTransits);
+router.put('/:id/transit-times/planned', validate({ params: idParam, body: transitPlannedBody }), putPlannedTransit);
+router.delete('/:id/transit-times/planned', validate({ params: idParam, query: transitKeyQuery }), deletePlannedTransit);
+router.get('/:id/transit-times/quotations', validate({ params: idParam }), getQuotationTransits);
 router.get('/:id/statement', validate({ params: idParam }), getCustomerStatement);
 router.get('/:id/tracking-opens', validate({ params: idParam }), getCustomerTrackingOpens);
 // The customer-wide tracking page link (all their trucks on the road); renew issues a new one.

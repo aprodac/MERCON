@@ -1,6 +1,7 @@
 /** Step 2 — when: one trip's pickup and drop-off, or a monthly contract's days. */
 import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useRouter } from 'expo-router';
 import { ArrowUpRight, CalendarDays, Check, ChevronLeft, ChevronRight, Clock, Flag, RotateCcw } from 'lucide-react-native';
 import { Colors, Spacing, Radius } from '@mercon/mobile-shared/theme/tokens';
 import { addDaysToDateStr, dropoffDayOffset, returnLegDayOffsets } from '@mercon/shared-types';
@@ -21,6 +22,7 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showErrors: boolean }) {
   const [picker, setPicker] = useState<PickerTarget>(null);
+  const router = useRouter();
   const { slot } = form;
   const issues = form.stepIssues(2);
   const err = (field: string) => (showErrors ? issues.find((i) => i.field === field || i.field === `${field}-${slot.id}`)?.message : undefined);
@@ -102,6 +104,18 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
       style={{ flex: 1 }}
     />
   );
+  // Planned vs real transit times of this customer; says so when this route is planned with a saved time.
+  const transitLink = form.customerId ? (
+    <TouchableOpacity
+      onPress={() => { tap(); router.push({ pathname: '/transit-times', params: { customerId: form.customerId, customerName: form.selectedCustomer?.name ?? '' } }); }}
+      accessibilityRole="link"
+      hitSlop={8}
+    >
+      <Text style={styles.transitLink}>
+        {form.savedOutbound != null ? `Planned with the saved ${transitText(form.savedOutbound)} for this route · ` : ''}See transit times
+      </Text>
+    </TouchableOpacity>
+  ) : null;
   const routeTiming = (
     <RouteTiming
       eta={form.eta}
@@ -201,6 +215,7 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
               />
             </View>
             <View style={[styles.row, styles.rowGap]}>{transitTile}</View>
+            {transitLink}
             <ErrorText>{err('pickup') || err('dropoff')}</ErrorText>
             <Text style={styles.hint}>
               {form.dutyMinutes && !form.dropoffTouched ? `Drop-off set ${form.dutyMinutes / 60} hours after pickup. ` : ''}
@@ -248,6 +263,7 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
               <ValueTile caption="Time" value={slot.dropoffTime} placeholder="--:--" onPress={() => setPicker('dropoff')} error={Boolean(err('dropoff'))} style={{ width: 104 }} />
             </View>
             <View style={[styles.row, styles.rowGap]}>{transitTile}</View>
+            {transitLink}
             <ErrorText>{err('dropoff')}</ErrorText>
             {!pickupSet ? (
               <Text style={styles.hint}>Set the pickup first — the drop-off is then suggested from the {form.dutyMinutes ? 'duty length' : 'drive time'}.</Text>
@@ -436,6 +452,7 @@ const styles = StyleSheet.create({
   quickOn: { backgroundColor: Colors.primaryLight },
   quickText: { fontSize: 12, fontWeight: '600', color: Colors.gray700 },
   quickTextOn: { color: Colors.primaryDark },
+  transitLink: { fontSize: 12, fontWeight: '700', color: '#2449A8', marginTop: 8 },
   hint: { fontSize: 12, color: Colors.gray500, marginTop: 8, lineHeight: 17 },
   legLine: { fontSize: 13, fontWeight: '600', color: Colors.gray700, marginBottom: 8 },
   wayBackFoot: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },

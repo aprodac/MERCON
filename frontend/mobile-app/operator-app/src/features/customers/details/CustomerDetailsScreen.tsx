@@ -11,7 +11,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { setStringAsync } from '../../../lib/clipboard';
 import {
-  ArrowLeft, ChevronRight, Copy, ExternalLink, MapPin, MessageCircle, Phone, ReceiptText, Share2, SquarePen, Tag, Users,
+  ArrowLeft, ChevronRight, Copy, ExternalLink, MapPin, MessageCircle, Phone, ReceiptText, Share2, SquarePen, Tag, Timer, Users,
 } from 'lucide-react-native';
 import { EmptyHint, PageTitle, SectionLabel, TabIcon, Tile } from '@/components/pageCues';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
@@ -406,6 +406,20 @@ export default function CustomerDetailsScreen() {
               >
                 <SquarePen size={16} color={INK} strokeWidth={2.2} />
               </TouchableOpacity>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.line, s.lineBorder]}
+              activeOpacity={0.6}
+              onPress={() => { tap(); router.push({ pathname: '/transit-times', params: { customerId: customer.id, customerName: name } }); }}
+              accessibilityRole="button"
+              accessibilityLabel="Transit times"
+            >
+              <Tile icon={Timer} />
+              <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+                <Text style={s.rowLabel}>Transit times</Text>
+                <Text style={s.rowTitle} numberOfLines={1}>Planned vs actual, per route</Text>
+              </View>
+              <ChevronRight size={18} color={MUTED} />
             </TouchableOpacity>
           </Card>
         </View>

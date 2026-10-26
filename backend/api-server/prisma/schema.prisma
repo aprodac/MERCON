@@ -218,6 +218,7 @@ model Customer {
 
   trips           Trip[]
   quotations      Quotation[]
+  routeTransits   CustomerRouteTransit[]
   surchargeRules  SurchargeRule[]
   reportTemplates ReportTemplate[]
   locations       Location[]
@@ -2623,4 +2624,29 @@ model PlaceName {
   key       String   @id
   name      String
   createdAt DateTime @default(now()) @db.Timestamptz
+}
+
+// The planned drive time of one leg of a customer's route for one truck class —
+// set from Transit times ("Use actual as the planned time"). Create trip plans
+// new trips with it instead of the live distance estimate; trips that already
+// exist keep their own planned times.
+model CustomerRouteTransit {
+  id              String   @id @default(uuid()) @db.Uuid
+  customerId      String   @db.Uuid
+  customer        Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  // Lower-cased, trimmed place names of the leg (see services/transitTimes routeKey).
+  origin_key      String
+  destination_key String
+  // 'out' for the way there, 'return' for the way back of a round trip.
+  leg             String   @default("out")
+  // One of TRUCK_CLASSES ("5 TON").
+  truck_class     String
+  planned_minutes Int
+  updated_by      String?  @db.Uuid
+  createdAt       DateTime @default(now()) @db.Timestamptz
+  updatedAt       DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  @@unique([customerId, origin_key, destination_key, leg, truck_class])
+  @@index([customerId])
+  @@map("customer_route_transits")
 }
