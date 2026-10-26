@@ -90,6 +90,7 @@ export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: P
     leftFollowsArrival: isDropoff(s),
     arrivalDate: typedDate[s.id]?.arrival,
     departureDate: typedDate[s.id]?.departure,
+    place: s.location?.id || s.location_name?.trim().toLowerCase() || null,
   }));
   const fallback = trip.actual_start || trip.planned_start || stops[0]?.planned_arrival || new Date().toISOString();
   const resolved = resolveStopTimes(rows, tz, fallback);
