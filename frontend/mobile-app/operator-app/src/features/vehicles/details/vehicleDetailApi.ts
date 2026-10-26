@@ -61,6 +61,7 @@ export interface VehicleDetail {
   trailer_type?: string | null;
   trailer_capacity_kg?: number | null;
   icces_device_id?: string | null;
+  has_tailgate?: boolean;
   isActive?: boolean;
   assignedDriver: { id: string; first_name: string; last_name: string; phone_primary: string | null } | null;
   trips: VehicleTrip[];

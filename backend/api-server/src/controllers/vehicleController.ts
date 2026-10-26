@@ -105,6 +105,7 @@ export const getVehicles = async (req: Request, res: Response) => {
             asset_type: true,
             status: true,
             capacity_kg: true,
+            has_tailgate: true,
             current_odometer: true,
             icces_device_id: true,
             createdAt: true,
