@@ -73,6 +73,9 @@ export default function HomePage() {
           <div className="grid sh">
             <span className="label">01 — Workflow</span>
             <h2 className="h2">From the first quote to the final invoice, without re-typing anything.</h2>
+            <Link className="btn btn-ghost sh-link" href="/workflow/">
+              Follow one trip, step by step <span className="arrow">→</span>
+            </Link>
           </div>
           <ol className="flow">
             {flow.map((s) => (

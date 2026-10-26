@@ -59,6 +59,16 @@ export default function OperatorAppPage() {
                 <Phone key={sh.src} {...sh} caption={t.steps ? `${String(k + 1).padStart(2, '0')}  ${sh.caption}` : sh.caption} />
               ))}
             </div>
+            {t.more && (
+              <>
+                <h3 className="h3 more-title">{t.more.title}</h3>
+                <div className="shots phone-row">
+                  {t.more.phones.map((sh) => (
+                    <Phone key={sh.src} {...sh} />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </section>
       ))}

@@ -309,3 +309,35 @@ a.cell:hover { background: var(--panel); }
 @media (min-width: 901px) { .tour-block .phone-row { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .nav a { white-space: nowrap; }
 @media (max-width: 420px) { .nav { gap: 12px; font-size: 12px; } .logo { font-size: 18px; } }
+
+/* ---------- Workflow page ---------- */
+
+.wf-index { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(7, 1fr); margin-top: 56px; border-top: 1px solid var(--rule); }
+.wf-index li { border-right: 1px solid var(--hair); }
+.wf-index li:last-child { border-right: 0; }
+.wf-index a { display: flex; flex-direction: column; gap: 16px; padding: 16px 12px 20px 0; }
+.wf-index li + li a { padding-left: 12px; }
+.wf-index a:hover .t { color: var(--accent); }
+.wf-index .n { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.wf-index .t { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+@media (max-width: 900px) {
+  .wf-index { grid-template-columns: repeat(2, 1fr); }
+  .wf-index li { border-right: 0; border-bottom: 1px solid var(--hair); }
+  .wf-index li + li a, .wf-index a { padding: 14px 0; }
+}
+
+.wf-n { font-size: clamp(56px, 7vw, 96px); font-weight: 700; letter-spacing: -0.05em; line-height: 0.9; color: var(--accent); }
+
+/* Phones take one column, browser frames three (--cols set per step). */
+.wf-shots { display: grid; grid-template-columns: repeat(var(--cols, 6), minmax(0, 1fr)); gap: 24px; align-items: start; }
+.wf-shots .wf-browser { grid-column: span 3; }
+@media (max-width: 900px) {
+  .wf-shots { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .wf-shots .wf-browser { grid-column: 1 / -1; }
+}
+
+.more-title { grid-column: 1 / -1; margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--hair); }
+.sh > .sh-link { grid-column: 4 / span 9; justify-self: start; margin-top: 8px; }
+@media (max-width: 900px) { .sh > .sh-link { grid-column: 1 / -1; } }
+/* Five links don't fit beside the logo on a phone; the logo already goes home. */
+@media (max-width: 480px) { .nav a[href$='/']:first-child { display: none; } }

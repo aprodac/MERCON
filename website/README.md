@@ -29,7 +29,7 @@ own domain later, build without `BASE_PATH` and serve `out/` from the root.
 driver app, taken from a local copy running on **fictional sample data** (made-up
 customers, drivers, plates and phone numbers) with the Linaul name and mark.
 No real customer or driver data is in them. Paths are listed in
-`moduleShots` / `apps` / `operatorTour` in `lib/content.ts`. Operator-app shots are
+`moduleShots` / `apps` / `operatorTour` / `workflow` in `lib/content.ts`. Operator-app shots are
 786×1704 (393×852 @2x) WebP.
 
 ## Where things live
@@ -40,6 +40,7 @@ No real customer or driver data is in them. Paths are listed in
 | `app/page.tsx` | Overview (home) |
 | `app/modules/page.tsx` | Full module catalogue |
 | `app/apps/page.tsx` | Web dashboard, operator app, driver app, customer tracking |
+| `app/workflow/page.tsx` | One trip from quote to invoice, 7 steps — copy in `workflow` |
 | `app/operator-app/page.tsx` | Operator app tour (create trip, live trip, fleet, pricing, people) — copy in `operatorTour` |
 | `components/Shots.tsx` | Browser and phone frames for the screenshots |
 | `lib/asset.ts` | Prefixes image paths with the base path |

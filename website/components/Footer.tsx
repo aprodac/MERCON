@@ -16,6 +16,7 @@ export function Footer() {
             <span className="label">Product</span>
             <Link href="/">Overview</Link>
             <Link href="/modules/">Modules</Link>
+            <Link href="/workflow/">Workflow</Link>
             <Link href="/operator-app/">Operator app</Link>
             <Link href="/apps/">Apps</Link>
           </div>

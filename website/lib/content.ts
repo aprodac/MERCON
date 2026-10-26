@@ -12,6 +12,7 @@ export const site = {
 export const nav = [
   { href: '/', label: 'Overview' },
   { href: '/modules/', label: 'Modules' },
+  { href: '/workflow/', label: 'Workflow' },
   { href: '/operator-app/', label: 'Operator app' },
   { href: '/apps/', label: 'Apps' },
 ];
@@ -462,6 +463,8 @@ export type Tour = {
   phones: Screenshot[];
   /** Number the phones as steps (01, 02 …) instead of plain captions. */
   steps?: boolean;
+  /** A second row of screens under its own heading. */
+  more?: { title: string; phones: Screenshot[] };
 };
 
 export const operatorTour: Tour[] = [
@@ -486,6 +489,15 @@ export const operatorTour: Tour[] = [
       { src: '/screens/op-create-who.webp', alt: 'Create trip step 3: suggested drivers', caption: 'Who — the best drivers for this trip' },
       { src: '/screens/op-create-review.webp', alt: 'Review trip before creating', caption: 'Review — schedule, driver and margin' },
     ],
+    more: {
+      title: 'More ways to build a trip',
+      phones: [
+        { src: '/screens/op-create-recent.webp', alt: 'Start from a recent trip', caption: 'Copy a trip made in the last day' },
+        { src: '/screens/op-create-multistop.webp', alt: 'Trip with an extra stop and a new price', caption: 'Extra stops, and a new price saved as a quotation' },
+        { src: '/screens/op-create-partner.webp', alt: 'Assign a 3PL partner', caption: 'Give the load to a 3PL partner, with their cost' },
+        { src: '/screens/op-create-done.webp', alt: 'Trip created', caption: 'Created — tell the customer who is coming' },
+      ],
+    },
   },
   {
     id: 'live',
@@ -562,6 +574,97 @@ export const operatorTour: Tour[] = [
       { src: '/screens/op-driver.webp', alt: 'Driver details', caption: 'A driver, right now' },
       { src: '/screens/op-vehicle.webp', alt: 'Truck details', caption: 'A truck and its location' },
       { src: '/screens/op-customer.webp', alt: 'Customer details', caption: 'A customer and their trips' },
+    ],
+  },
+];
+
+// The workflow page (/workflow/): one trip from quote to invoice, step by step.
+export type WorkflowShot = Screenshot & { kind: 'phone' | 'browser'; url?: string };
+export type WorkflowStep = { n: string; title: string; who: string; text: string; points: string[]; shots: WorkflowShot[] };
+
+export const workflow: WorkflowStep[] = [
+  {
+    n: '01',
+    title: 'Quote',
+    who: 'Operator · Web or phone',
+    text: 'Price the lane from the customer’s rates — or compare what every customer pays for it — and send a branded quotation.',
+    points: ['Rates per lane, truck size and trip type', 'Rate finder across every customer', 'Branded PDF, expiry alerts', 'Turn the quotation into a trip in one tap'],
+    shots: [
+      { kind: 'phone', src: '/screens/op-ratefinder.webp', alt: 'Rate finder', caption: 'One lane, every customer’s price' },
+      { kind: 'phone', src: '/screens/op-quotation.webp', alt: 'Quotation', caption: 'The quotation — Create trip' },
+      { kind: 'browser', src: '/screens/web-quotations.webp', alt: 'Quotations on the web dashboard', caption: 'Quotations per customer, on the web' },
+    ],
+  },
+  {
+    n: '02',
+    title: 'Create the trip',
+    who: 'Operator · Web or phone',
+    text: 'Customer, route and price come from the quotation. The drive time comes from the road network. The best drivers are suggested. You see the margin before you commit.',
+    points: ['Start from a recent trip or a saved route', 'Multi-stop and round trips', 'Drivers ranked by who is free and ending near the pickup', 'Own fleet or a 3PL partner', 'Review the whole trip and its margin'],
+    shots: [
+      { kind: 'phone', src: '/screens/op-create-job.webp', alt: 'Create trip: job', caption: 'Job — customer, price, route' },
+      { kind: 'phone', src: '/screens/op-create-when.webp', alt: 'Create trip: when', caption: 'When — pickup and drive time' },
+      { kind: 'phone', src: '/screens/op-create-who.webp', alt: 'Create trip: who', caption: 'Who — suggested drivers' },
+      { kind: 'phone', src: '/screens/op-create-review.webp', alt: 'Create trip: review', caption: 'Review — then create' },
+      { kind: 'browser', src: '/screens/web-createtrip.webp', alt: 'Create trip on the web dashboard', caption: 'The same flow on the web dashboard' },
+    ],
+  },
+  {
+    n: '03',
+    title: 'Dispatch',
+    who: 'Operator → Driver',
+    text: 'The driver is notified on their phone. The trip shows whether it is ready to run — driver, truck and documents valid for the day — and the customer can be told who is coming.',
+    points: ['Driver notified instantly', '“Before it starts” readiness check', 'Driver’s phone: app version, battery, last seen', 'Send driver and truck to the customer’s WhatsApp group'],
+    shots: [
+      { kind: 'phone', src: '/screens/op-create-done.webp', alt: 'Trip created', caption: 'Created — tell the customer' },
+      { kind: 'phone', src: '/screens/op-trip-new.webp', alt: 'Scheduled trip', caption: 'Scheduled — starts tomorrow 08:00' },
+      { kind: 'phone', src: '/screens/op-trip-ready.webp', alt: 'Trip readiness check', caption: 'Ready: driver, truck, documents' },
+    ],
+  },
+  {
+    n: '04',
+    title: 'Drive and deliver',
+    who: 'Driver · Driver app',
+    text: 'The driver app walks each stop in order — arrive, photo, depart. GPS runs while the trip is live and confirms arrivals, so everyone sees the same times.',
+    points: ['Phone number and licence login', 'Big buttons, English and Urdu', 'Photos at pickup, every stop and delivery', 'Emergency button and notifications'],
+    shots: [
+      { kind: 'phone', src: '/screens/driver-trips.webp', alt: 'Driver app trips', caption: 'The driver’s trips' },
+      { kind: 'phone', src: '/screens/driver-home.webp', alt: 'Driver app trip in progress', caption: 'The trip in progress' },
+      { kind: 'phone', src: '/screens/driver-delivery.webp', alt: 'Delivery photos', caption: 'Proof of delivery photos' },
+    ],
+  },
+  {
+    n: '05',
+    title: 'Track',
+    who: 'Operator · Customer',
+    text: 'Ops follow every truck live — distance and ETA to the next stop, on time or late. The customer gets a link to their own tracking page, no login needed.',
+    points: ['Full-screen live trip on the phone', 'Live operations map on the web', 'Share the ETA on WhatsApp', 'Customer tracking page with timeline and photos'],
+    shots: [
+      { kind: 'phone', src: '/screens/op-live.webp', alt: 'Live trip on the operator app', caption: 'Live trip — ETA to Jeddah DC' },
+      { kind: 'browser', src: '/screens/web-livemap.webp', alt: 'Live operations map', caption: 'Live operations on the web' },
+      { kind: 'browser', src: '/screens/web-ttrack.webp', alt: 'Customer tracking page', caption: 'What your customer sees', url: 'track.linaul.com' },
+    ],
+  },
+  {
+    n: '06',
+    title: 'Close the trip',
+    who: 'Operator',
+    text: 'Every stop has its planned, arrived and left time, with photos as proof. Late stops carry a reason, so the delay report writes itself.',
+    points: ['Planned vs actual at every stop', 'Edit actual times when they need correcting', 'Delay reasons per stop', 'Confirm delivery from the phone'],
+    shots: [
+      { kind: 'phone', src: '/screens/op-trip-stops.webp', alt: 'Trip stops', caption: 'Stops: planned, arrived, left' },
+      { kind: 'browser', src: '/screens/web-tripdetail.webp', alt: 'Trip details on the web', caption: 'The full trip record' },
+    ],
+  },
+  {
+    n: '07',
+    title: 'Bill and account',
+    who: 'Accountant',
+    text: 'Invoice from the completed trip. Freight, extra charges, fuel, tolls and driver pay land in the books as the work happens — margin per trip and per truck.',
+    points: ['Invoices with balances and payment status', 'Extra charges from the trip', 'Trip profitability and vehicle P&L', 'VAT return and financial statements'],
+    shots: [
+      { kind: 'browser', src: '/screens/web-invoices.webp', alt: 'Invoices', caption: 'Invoices' },
+      { kind: 'browser', src: '/screens/web-profit.webp', alt: 'Trip profitability', caption: 'Margin on every trip' },
     ],
   },
 ];
