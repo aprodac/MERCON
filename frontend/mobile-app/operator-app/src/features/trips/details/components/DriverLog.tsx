@@ -89,13 +89,14 @@ export function DriverLog({ trip, f, onOpen, onPick, onDone }: {
       <Text style={s.lead}>Stops weren{"'"}t known at booking. Turn each send into a stop, or add it to one.</Text>
       {entries.map((e, i) => {
         const stopIdx = e.stop_id ? stops.findIndex((st) => st.id === e.stop_id) : -1;
+        const confirmed = e.docs.every((d) => d.status === 'Verified');
         return (
           <View key={e.id} style={[s.row, i > 0 && s.rowLine]}>
             {/* Time and place on the left, what happened to it on the right. */}
             <View style={s.head}>
               <View style={{ flex: 1, minWidth: 0 }}>
                 {/* Numbered in the order sent (owner, 23 Oct). */}
-                <Text style={s.time}><Text style={s.num}>#{i + 1}</Text>{'  '}{f.smart(e.at)}</Text>
+                <Text style={s.time}><Text style={s.num}>#{i + 1}</Text>{'  '}{f.smart(e.at)}{stopIdx < 0 ? <Text style={[s.timeState, s.timeTodo]}>{'  '}· time to confirm</Text> : null}</Text>
                 {e.place ? (
                   <View style={s.placeRow}>
                     <MapPin size={12} color={MUTED} />
@@ -104,9 +105,13 @@ export function DriverLog({ trip, f, onOpen, onPick, onDone }: {
                 ) : <Text style={s.place}>{e.docs.length} screenshot{e.docs.length === 1 ? '' : 's'}</Text>}
               </View>
               {stopIdx >= 0 ? (
+                <View style={{ alignItems: 'flex-end', gap: 3, maxWidth: '55%' }}>
                 <View style={s.onStop}>
                   <CircleCheck size={13} color="#15803D" />
                   <Text style={s.onStopText} numberOfLines={1}>Stop {stopIdx + 1} · {stopName(stops[stopIdx], stopIdx)}</Text>
+                </View>
+                {/* Whether its time was checked (TestFlight 24 Oct: "show whether the times are confirmed or not"). */}
+                <Text style={[s.timeState, confirmed ? s.timeOk : s.timeTodo]}>{confirmed ? '✓ Time confirmed' : 'Time to confirm'}</Text>
                 </View>
               ) : (
                 <TouchableOpacity style={s.btn} onPress={() => { tap(); onPick(e); }} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Make a stop or add to one">
@@ -280,7 +285,10 @@ const s = StyleSheet.create({
   timeValue: { fontSize: 15, fontWeight: '800', color: INK },
   timeNote: { fontSize: 12, color: MUTED },
   thumb: { width: 48, height: 72, borderRadius: 8, backgroundColor: '#F1F3F7', borderWidth: StyleSheet.hairlineWidth, borderColor: '#E4E4E7' },
-  onStop: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#ECFDF3', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, maxWidth: '55%' },
+  onStop: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#ECFDF3', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, maxWidth: '100%' },
+  timeState: { fontSize: 11.5, fontWeight: '700' },
+  timeOk: { color: '#15803D' },
+  timeTodo: { color: '#B54708' },
   onStopText: { fontSize: 12.5, fontWeight: '700', color: '#15803D' },
   suggest: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F5F2FD', borderRadius: 12, padding: 10, marginTop: 8 },
   suggestText: { fontSize: 13, fontWeight: '700', color: INK },

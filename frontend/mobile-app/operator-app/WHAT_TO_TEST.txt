@@ -1,3 +1,19 @@
+FIX: CREATING A PAST TRIP (25 Oct)
+1. New trip with a start time that has passed > Review: an amber warning "This trip's start time has passed" with the planned times. Nothing is picked and "Create trip" is greyed ("Choose one above").
+2. A trip planned until later today (e.g. 04:00 > 20:00) says "It is planned to run until 20:00".
+3. Pick "Yes, it's already completed": the button reads "Create as completed (driver not notified)". The trip is in History on its day and counts in Done.
+4. Pick "No, it still has to run (send to driver)": the trip is in Now / Schedule and the driver is told.
+
+FROM YOUR FEEDBACK (24–25 Oct, round 2)
+1. Check times: over the wheels, "‹ Fri 23 Oct ›" changes the day of that time. "‹ Back" goes to the time before.
+2. Check times: arrived 18:22 / left 23:53 with late taps — now saves without "left before arrived".
+3. Check times: if one stop is red, the others still save ("Save 2 stops · 1 to fix later"). The red one stays to check.
+4. Driver's log: each send says "Time confirmed" or "Time to confirm".
+5. Now: a trip whose driver tapped Start but never reached the pickup says "Starting late", not "Late arriving".
+6. A truck that left a stop (loaded and departed) is no longer shown late for that stop; it goes back to On the road.
+7. Trip > Details: "Transit time" line.
+8. Photo sent at the wrong stop: tap it > Move > pick the stop. Then "Driver's steps" if the steps went too far.
+
 FROM YOUR FEEDBACK (24 Oct, build 134)
 1. New trip > Way back: tick "Same as leg 1" — the transit time back is the same as leg 1.
 2. Driver page > Trips: shows every trip, not only 5.

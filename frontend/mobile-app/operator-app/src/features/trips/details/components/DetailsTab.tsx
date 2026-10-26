@@ -15,6 +15,7 @@ import { DriverAvatar } from '../../../drivers/components/DriverAvatar';
 import { PhoneActivityRow } from '../../../drivers/phone/PhoneActivityRow';
 import { DocumentPackSheet, type PackOwnerKind } from '../../../documents/DocumentPackSheet';
 import { initialsOf, niceName } from '../../create/components/ui';
+import { transitText } from '../../create/components/TransitSheet';
 import type { LiveGpsFix, OperatorTripDetail, OperatorTripDocument, TripOverview, TripPhase } from '../../../../lib/operator';
 import {
   ON_TIME_GRACE_MIN, TONE, type Tone, ago, billingLabel, canChangeAssignment, formatDuration, lineType, minutesLate, moneyOf, runTimes, sar, sortedStops,
@@ -45,17 +46,30 @@ function scheduleRows(trip: OperatorTripDetail, f: Formatters): { label: string;
   const legs = tripLegsOf(trip);
   const span = (a?: string | null, b?: string | null) =>
     a && b ? `${f.dayTime(a)} → ${f.dayKey(a) === f.dayKey(b) ? f.time(b) : f.dayTime(b)}` : a ? f.dayTime(a) : b ? `by ${f.dayTime(b)}` : '—';
+  // The planned transit time, as set on Create / Edit trip (TestFlight 24 Oct: "transit time should be shown").
+  const tt = (a?: string | null, b?: string | null) => {
+    const min = a && b ? Math.round((Date.parse(b) - Date.parse(a)) / 60_000) : NaN;
+    return Number.isFinite(min) && min > 0 ? transitText(min) : null;
+  };
   if (!legs.round) {
+    const st = sortedStops(trip);
+    const time = tt(st[0]?.planned_arrival || trip.planned_start, st[st.length - 1]?.planned_arrival || trip.planned_end);
     return [
       { label: 'Scheduled', value: trip.planned_start ? f.dayTime(trip.planned_start) : '—' },
       ...(trip.planned_end ? [{ label: 'Due by', value: f.dayTime(trip.planned_end) }] : []),
+      ...(time ? [{ label: 'Transit time', value: time }] : []),
     ];
   }
   const out = legs.outbound;
   const back = legs.ret;
+  const going = [out[0]?.planned_arrival || trip.planned_start, out[out.length - 1]?.planned_arrival] as const;
+  const returning = [back[0]?.planned_arrival, back[back.length - 1]?.planned_arrival || trip.planned_end] as const;
+  const ttGoing = tt(...going);
+  const ttBack = tt(...returning);
   return [
-    { label: 'Leg 1 · going', value: span(out[0]?.planned_arrival || trip.planned_start, out[out.length - 1]?.planned_arrival) },
-    { label: 'Leg 2 · returning', value: span(back[0]?.planned_arrival, back[back.length - 1]?.planned_arrival || trip.planned_end) },
+    { label: 'Leg 1 · going', value: span(...going) },
+    { label: 'Leg 2 · returning', value: span(...returning) },
+    ...(ttGoing || ttBack ? [{ label: 'Transit time', value: [ttGoing ? `${ttGoing} going` : null, ttBack ? `${ttBack} back` : null].filter(Boolean).join(' · ') }] : []),
   ];
 }
 

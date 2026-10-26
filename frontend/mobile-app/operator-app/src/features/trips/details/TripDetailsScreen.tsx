@@ -69,6 +69,8 @@ export default function TripDetailsScreen() {
   const [checkingTimes, setCheckingTimes] = useState(false);
   const [timesStop, setTimesStop] = useState<string | null>(null);
   const [logEntry, setLogEntry] = useState<LogEntry | null>(null);
+  /** A photo being moved to another stop (the stop picker is open). */
+  const [moving, setMoving] = useState<{ docId: string; fromStopId: string | null } | null>(null);
   const [pinTarget, setPinTarget] = useState<{ stop: Stop; label: string; photoPins?: PhotoPin[]; preselect?: string | null } | null>(null);
   const [sheet, setSheet] = useState<'more' | 'upload' | 'activity' | 'charges' | 'stepback' | null>(null);
   const [fullMap, setFullMap] = useState(false);
@@ -353,6 +355,22 @@ export default function TripDetailsScreen() {
     ]);
   };
 
+  // TestFlight 25 Oct: a screenshot sent at the wrong stop ("Riyadh reached" sent as Al Bahah) can be moved.
+  const movePhoto = async (stopId: string) => {
+    const m = moving;
+    setMoving(null);
+    if (!m) return;
+    try {
+      await operatorService.moveTripPhoto(trip!.id, m.docId, stopId);
+      const st = stops.find((x) => x.id === stopId);
+      Alert.alert('Photo moved', `It is now on ${st ? stopName(st, stops.indexOf(st)) : 'that stop'}. If the driver's steps went too far, take them back with "Driver's steps", then check the times.`);
+      reload();
+    } catch (e) {
+      Alert.alert('Could not move', getApiErrorMessage(e));
+    }
+  };
+  const askMove = (docId: string, fromStopId: string | null) => { setViewer(null); setTimeout(() => setMoving({ docId, fromStopId }), 300); };
+
   const openPhotos = (u: DriverUpdate, index: number) => {
     const st = stops.find((x) => x.id === u.stop?.id);
     const name = st ? stopName(st, stops.indexOf(st)) : null;
@@ -381,6 +399,7 @@ export default function TripDetailsScreen() {
           onPress: () => { setViewer(null); setTimeout(() => { setTimesStop(st.id); setCheckingTimes(true); }, 300); },
         } : null,
         deleteAction: { onPress: () => deletePhoto(m.id) },
+        moveAction: stops.length > 1 ? { onPress: () => askMove(m.id, st?.id ?? null) } : null,
         pinAction: canPin ? {
           label: needsPin(st!) ? `Use as ${name}'s pin` : `Move ${name}'s pin here`,
           onPress: () => { setViewer(null); setTimeout(() => openPin(st!, m.id), 300); },
@@ -661,6 +680,19 @@ export default function TripDetailsScreen() {
         onClose={() => setPicker(null)}
         searchPlaceholder={picker?.kind === 'driver' ? 'Search drivers' : 'Search trucks'}
         emptyText={picker?.kind === 'driver' ? 'No drivers available right now' : 'No trucks available right now'}
+      />
+
+      <PickerSheet
+        visible={!!moving}
+        title="Move the photo to"
+        options={stops.filter((x) => x.id !== moving?.fromStopId).map((x) => ({
+          value: x.id,
+          label: `${stops.indexOf(x) + 1} · ${stopName(x, stops.indexOf(x))}`,
+          sub: [x.stop_type === 'Pickup' ? 'Loading' : 'Offloading', x.actual_arrival ? `arrived ${f.smart(x.actual_arrival)}` : null].filter(Boolean).join(' · '),
+        }))}
+        onSelect={(v) => { void movePhoto(v); }}
+        onClose={() => setMoving(null)}
+        searchPlaceholder="Search stops"
       />
 
       {/* Full-screen map */}

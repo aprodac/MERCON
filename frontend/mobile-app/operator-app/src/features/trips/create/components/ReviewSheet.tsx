@@ -1,14 +1,14 @@
 /** The last look before creating: who for, where, when, who drives, and the money. */
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
-import { CalendarDays, CircleAlert, Clock3, TriangleAlert, FileText, Handshake, Receipt, Truck, Users } from 'lucide-react-native';
+import { CalendarDays, Clock3, TriangleAlert, FileText, Handshake, Receipt, Truck, Users } from 'lucide-react-native';
 import { Colors, Spacing, Radius } from '@mercon/mobile-shared/theme/tokens';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { addDaysToDateStr, dropoffDayOffset, lineTypeLabel, returnLegDayOffsets, sameDayWarning, truckClassOfVehicle, type SameDayConflict } from '@mercon/shared-types';
 import { DriverAvatar } from '../../../drivers/components/DriverAvatar';
 import { UNASSIGNED, type CreateTripForm } from '../useCreateTrip';
 import type { OperatorDriverOption } from '../../../../lib/operator';
-import { CompanyAvatar, Segmented, fmtDay, fmtSar, initialsOf, niceName, shortName } from './ui';
+import { CompanyAvatar, fmtDay, fmtSar, initialsOf, niceName, shortName } from './ui';
 
 const fullName = (d?: { first_name?: string; last_name?: string } | null) => (d ? niceName(`${d.first_name || ''} ${d.last_name || ''}`.trim()) : '');
 
@@ -47,11 +47,14 @@ export function ReviewSheet({
   sameDay?: SameDayConflict[] | null;
   checking?: boolean;
 }) {
-  const [pastChoice, setPastChoice] = useState<'Completed' | 'Incomplete'>('Completed');
+  const [pastChoice, setPastChoice] = useState<'Completed' | 'Incomplete' | null>(null);
+  const needsChoice = form.pastTripCount > 0 && pastChoice === null;
+  const asCompleted = form.pastTripCount > 0 && pastChoice === 'Completed';
   const warning = sameDay?.length ? sameDayWarning(sameDay, form.tz) : null;
   const { slot, money } = form;
   const trips = money.trips;
   const multi = form.isMonthly && trips > 1;
+  const createLabel = asCompleted ? 'Create as completed (driver not notified)' : trips > 1 ? `Create ${trips} trips` : 'Create trip';
   const stopFees = [...(slot.intermediateStopFees || []), ...(slot.returnIntermediateStopFees || [])].reduce((a, f) => a + (Number(f) || 0), 0);
 
   const outbound = [
@@ -210,22 +213,34 @@ export function ReviewSheet({
         ) : null}
 
         {form.pastTripCount > 0 ? (
-          <View style={[styles.note, { flexDirection: 'column', alignItems: 'stretch' }]}>
+          <View style={styles.pastWarn}>
             <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-              <CircleAlert size={15} color="#854F0B" />
-              <Text style={styles.noteText}>
-                {form.pastTripCount === 1 && trips === 1 ? 'This trip is in the past.' : `${form.pastTripCount} of these trips are in the past.`} Did it happen?
+              <TriangleAlert size={18} color="#B45309" strokeWidth={2.4} />
+              <Text style={styles.pastTitle}>
+                {form.pastTripCount === 1 && trips === 1 ? "This trip's start time has passed" : `${form.pastTripCount} of these trips have already started`}
               </Text>
             </View>
-            <Segmented
-              options={[
-                { value: 'Completed', label: 'Yes, completed' },
-                { value: 'Incomplete', label: 'Not finished' },
-              ]}
-              value={pastChoice}
-              onChange={setPastChoice}
-              style={{ marginTop: 8 }}
-            />
+            {form.pastTripTimes?.start ? (
+              <Text style={styles.pastLine}>
+                Planned {form.pastTripTimes.start}{form.pastTripTimes.end ? ` → ${form.pastTripTimes.end}` : ''}
+              </Text>
+            ) : null}
+            {form.pastTripTimes?.endInFuture ? (
+              <Text style={styles.pastLine}>It is planned to run until {form.pastTripTimes.end} — don't pick “completed” unless it is already done.</Text>
+            ) : null}
+            <Text style={styles.pastAsk}>Did it happen?</Text>
+            {([
+              { value: 'Completed', label: "Yes, it's already completed" },
+              { value: 'Incomplete', label: 'No, it still has to run (send to driver)' },
+            ] as const).map((o) => {
+              const on = pastChoice === o.value;
+              return (
+                <TouchableOpacity key={o.value} style={[styles.pastChoice, on && styles.pastChoiceOn]} onPress={() => setPastChoice(o.value)} activeOpacity={0.85}>
+                  <View style={[styles.pastRadio, on && styles.pastRadioOn]} />
+                  <Text style={[styles.pastChoiceText, on && { color: '#7C2D12' }]}>{o.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         ) : null}
       </ScrollView>
@@ -243,8 +258,8 @@ export function ReviewSheet({
             {warning.more > 0 ? <Text style={styles.clashLine}>+{warning.more} more</Text> : null}
             <Text style={styles.clashNote}>{warning.note}</Text>
           </View>
-          <TouchableOpacity style={[styles.primary, styles.anyway, form.submitting && { opacity: 0.7 }]} disabled={form.submitting} onPress={() => onConfirm(pastChoice, true)} activeOpacity={0.85}>
-            {form.submitting ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.primaryText}>{trips > 1 ? `Create ${trips} trips anyway` : 'Create anyway'}</Text>}
+          <TouchableOpacity style={[styles.primary, styles.anyway, (form.submitting || needsChoice) && { opacity: 0.7 }]} disabled={form.submitting || needsChoice} onPress={() => pastChoice && onConfirm(pastChoice, true)} activeOpacity={0.85}>
+            {form.submitting ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.primaryText}>{asCompleted ? `${createLabel} — anyway` : trips > 1 ? `Create ${trips} trips anyway` : 'Create anyway'}</Text>}
           </TouchableOpacity>
           <TouchableOpacity style={styles.secondary} onPress={onClose} disabled={form.submitting}>
             <Text style={styles.secondaryText}>Cancel</Text>
@@ -252,9 +267,10 @@ export function ReviewSheet({
         </>
       ) : (
         <>
-          <TouchableOpacity style={[styles.primary, (form.submitting || checking) && { opacity: 0.7 }]} disabled={form.submitting || checking} onPress={() => onConfirm(pastChoice)} activeOpacity={0.85}>
-            {form.submitting || checking ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.primaryText}>{trips > 1 ? `Create ${trips} trips` : 'Create trip'}</Text>}
+          <TouchableOpacity style={[styles.primary, (form.submitting || checking || needsChoice) && { opacity: 0.5 }]} disabled={form.submitting || checking || needsChoice} onPress={() => pastChoice && onConfirm(pastChoice)} activeOpacity={0.85}>
+            {form.submitting || checking ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.primaryText}>{createLabel}</Text>}
           </TouchableOpacity>
+          {needsChoice ? <Text style={styles.chooseHint}>Choose one above</Text> : null}
           <TouchableOpacity style={styles.secondary} onPress={onClose} disabled={form.submitting}>
             <Text style={styles.secondaryText}>Back to edit</Text>
           </TouchableOpacity>
@@ -454,6 +470,16 @@ const styles = StyleSheet.create({
   grandValue: { fontSize: 15, fontWeight: '800', color: Colors.charcoal },
   note: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 14, backgroundColor: '#FFFBF2', borderWidth: 1, borderColor: '#FAC775' },
   noteText: { flex: 1, fontSize: 13, color: '#854F0B', fontWeight: '600' },
+  pastWarn: { padding: 14, borderRadius: 14, backgroundColor: '#FFF7ED', borderWidth: 2, borderColor: '#F59E0B', gap: 6 },
+  pastTitle: { flex: 1, fontSize: 15, fontWeight: '800', color: '#92400E' },
+  pastLine: { fontSize: 13, color: '#92400E', fontWeight: '600' },
+  pastAsk: { fontSize: 13, fontWeight: '800', color: '#7C2D12', marginTop: 4 },
+  pastChoice: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 12, backgroundColor: Colors.white, borderWidth: 1.5, borderColor: '#FCD34D' },
+  pastChoiceOn: { borderColor: '#B45309', backgroundColor: '#FFEDD5' },
+  pastRadio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#B45309' },
+  pastRadioOn: { backgroundColor: '#B45309' },
+  pastChoiceText: { flex: 1, fontSize: 14, fontWeight: '700', color: '#78350F' },
+  chooseHint: { textAlign: 'center', fontSize: 12, color: '#B45309', fontWeight: '600', marginTop: 6 },
   primary: { marginTop: Spacing.md, backgroundColor: Colors.primary, borderRadius: 14, paddingVertical: 15, alignItems: 'center' },
   primaryText: { color: Colors.white, fontSize: 16, fontWeight: '700' },
   anyway: { backgroundColor: Colors.danger },

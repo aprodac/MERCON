@@ -8,7 +8,7 @@ import {
 import { exportTrips } from '../controllers/tripExportController';
 import { getTripTrackingLink, getTripTrackingLinks, trackingLinkBody, trackingLinksBody } from '../controllers/trackingController';
 import { idParam, logEntryToStopBody } from '../schemas';
-import { deleteTripPhoto, logEntryToStop } from '../controllers/tripLogController';
+import { deleteTripPhoto, logEntryToStop, moveTripPhoto } from '../controllers/tripLogController';
 import { getTripDriverTrail } from '../controllers/driverPhoneController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles, requireModuleEnabled } from '../middlewares/rbac';
@@ -57,6 +57,8 @@ router.post('/:id/step-forward', validate({ params: idParam }), stepForward);
 router.post('/:id/log/:entry/stop', validate({ body: logEntryToStopBody }), logEntryToStop);
 // A driver's photo / screenshot sent by mistake → Recently deleted.
 router.delete('/:id/photos/:docId', deleteTripPhoto);
+// …or sent at the wrong stop → move it to the right one.
+router.patch('/:id/photos/:docId', moveTripPhoto);
 router.patch('/:id/financials', updateTripFinancials);
 router.post('/:id/charge-review', validate({ body: reviewTripChargesBody }), reviewTripCharges);
 

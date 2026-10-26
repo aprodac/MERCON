@@ -14,6 +14,7 @@ import { resolveVehicleLocation, resolveVehicleLocationsForTrips } from '../serv
 import { parseOptionalFloat, getValidUuid } from '../utils/uuid';
 import { buildSearchAnd } from '../utils/search';
 import { getCompanyLegalName } from './settingsController';
+import { completedOnCreateTimes, stampCompletedStops } from '../utils/completedOnCreate';
 import { computeTripChargesTotal, calculateBackendTripFinancials, resolveDriverPayout, resolveInitialTripStatus, splitCoDriverPayout } from '../utils/tripFinancials';
 import { resolveMonth, toDayKey } from '../utils/tripBoard';
 import { validateTripDrivers, TripDriverInput, validateTripSchedule, validateTripStops } from '../services/tripValidationService';
@@ -1016,6 +1017,7 @@ export const createTrip = async (req: Request, res: Response) => {
               planned_start: parsedPlannedStart,
               planned_end: parsedPlannedEnd,
               status: targetStatus,
+              ...(completedOnCreateTimes(targetStatus, parsedPlannedStart, parsedPlannedEnd) ?? {}),
               carrier_name: carrierName,
               ...(createdBy ? { created_by: createdBy } : {}),
               financials: {
@@ -1064,7 +1066,9 @@ export const createTrip = async (req: Request, res: Response) => {
               } : {}),
               ...(stopsToCreate.length > 0 ? {
                 stops: {
-                  create: stopsToCreate,
+                  create: completedOnCreateTimes(targetStatus, parsedPlannedStart, parsedPlannedEnd)
+                    ? stampCompletedStops(stopsToCreate, parsedPlannedStart!, parsedPlannedEnd)
+                    : stopsToCreate,
                 }
               } : {})
             } as any,
@@ -1341,6 +1345,11 @@ export const bulkImportTrips = async (req: Request, res: Response) => {
           rowCharges.push({ amount: Number(row.additional_charge), description: 'Additional Charge' });
         }
 
+        const completedTimes = completedOnCreateTimes(targetStatus, parsedPlannedStart, parsedPlannedEnd);
+        const tripStopsToWrite = completedTimes
+          ? stampCompletedStops(resolvedImportStops, completedTimes.actual_start, completedTimes.actual_end)
+          : resolvedImportStops;
+
         const rowAwb = (row as any).awb_number ? String((row as any).awb_number).trim() : '';
         const updateQuotationPayout = (row as any).update_quotation_driver_payout === true;
 
@@ -1403,6 +1412,7 @@ export const bulkImportTrips = async (req: Request, res: Response) => {
               planned_start: parsedPlannedStart,
               planned_end: parsedPlannedEnd,
               status: targetStatus,
+              ...(completedTimes ?? {}),
               financials: {
                 create: {
                   quotationId: appliedQuotation ? appliedQuotation.id : null,
@@ -1432,9 +1442,9 @@ export const bulkImportTrips = async (req: Request, res: Response) => {
                   })),
                 }
               } : {}),
-              ...(resolvedImportStops.length > 0 ? {
+              ...(tripStopsToWrite.length > 0 ? {
                 stops: {
-                  create: resolvedImportStops,
+                  create: tripStopsToWrite,
                 }
               } : {})
             } as any,
@@ -2044,7 +2054,8 @@ export const confirmEvidenceTime = async (req: Request, res: Response) => {
  * Confirm a whole EXTERNAL_APP trip's stop times at once. The customer's app
  * shows every stop's arrive/departure time on one screen, so the operator
  * copies them all in one pass instead of one screenshot at a time. Saves the
- * times and marks every pending screenshot on the trip as checked.
+ * times and marks every pending screenshot on the trip as checked — except those
+ * on `keep_pending_stop_ids`, stops left out because their times still need fixing.
  *
  * Same post-completion rule as confirmEvidenceTime: no frozen-trip guard.
  */
@@ -2083,19 +2094,22 @@ export const confirmTripTimes = async (req: Request, res: Response) => {
       if (Object.keys(data).length) updates.push({ id: stop.id, data });
     }
 
+    // Stops the operator still has to fix were left out of the save: their screenshots stay to check.
+    const keepPending = new Set((req.body.keep_pending_stop_ids ?? []) as string[]);
     const verifiedBy = isUuid((req as any).user?.id) ? (req as any).user.id : null;
     const verified = await prisma.$transaction(async (tx) => {
       for (const u of updates) await tx.tripStop.update({ where: { id: u.id }, data: u.data });
-      return tx.document.updateMany({
-        where: {
-          entity_type: 'Trip',
-          entity_id: tripId,
-          deletedAt: null,
-          status: DocStatus.PendingReview,
-          ai_extracted_json: { path: ['source'], equals: 'external_app_screenshot' },
-        },
-        data: { status: DocStatus.Verified, verified_by: verifiedBy },
-      });
+      const where = {
+        entity_type: 'Trip',
+        entity_id: tripId,
+        deletedAt: null,
+        status: DocStatus.PendingReview,
+        ai_extracted_json: { path: ['source'], equals: 'external_app_screenshot' },
+      };
+      if (!keepPending.size) return tx.document.updateMany({ where, data: { status: DocStatus.Verified, verified_by: verifiedBy } });
+      const pending = await tx.document.findMany({ where, select: { id: true, ai_extracted_json: true } });
+      const ids = pending.filter((d) => !keepPending.has((d.ai_extracted_json as any)?.stop_id)).map((d) => d.id);
+      return tx.document.updateMany({ where: { id: { in: ids } }, data: { status: DocStatus.Verified, verified_by: verifiedBy } });
     });
 
     res.json({ success: true, data: { stops_updated: updates.length, screenshots_verified: verified.count } });

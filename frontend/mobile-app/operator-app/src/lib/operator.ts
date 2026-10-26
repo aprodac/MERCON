@@ -1287,6 +1287,11 @@ export const operatorService = {
     await api.delete(`/trips/${tripId}/photos/${docId}`);
   },
 
+  /** A driver's photo / screenshot sent at the wrong stop → onto the right one. */
+  async moveTripPhoto(tripId: string, docId: string, stopId: string): Promise<void> {
+    await api.patch(`/trips/${tripId}/photos/${docId}`, { stop_id: stopId });
+  },
+
   /** Mark the next step done — or every step up to `toIndex`. */
   async stepForwardTrip(id: string, toIndex?: number): Promise<{ to: { index: number; label: string; next: string } }> {
     const { data } = await api.post(`/trips/${id}/step-forward`, toIndex === undefined ? {} : { to_index: toIndex });
@@ -1418,9 +1423,11 @@ export const operatorService = {
    * Only changed times are sent; an empty list confirms the tapped times. */
   async confirmTripTimes(
     tripId: string,
-    stops: { stop_id: string; actual_arrival?: string; actual_departure?: string }[]
+    stops: { stop_id: string; actual_arrival?: string; actual_departure?: string }[],
+    /** Stops left out because their times still have a problem: their screenshots stay to check. */
+    keepPendingStopIds: string[] = [],
   ): Promise<{ stops_updated: number; screenshots_verified: number }> {
-    const { data } = await api.patch(`/trips/${tripId}/confirm-times`, { stops });
+    const { data } = await api.patch(`/trips/${tripId}/confirm-times`, { stops, ...(keepPendingStopIds.length ? { keep_pending_stop_ids: keepPendingStopIds } : {}) });
     return data.data;
   },
 
