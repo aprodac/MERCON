@@ -293,3 +293,19 @@ a.cell:hover { background: var(--panel); }
 .app-block .shots { grid-column: 1 / -1; margin-top: 16px; }
 .app-block .shots.browsers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
 @media (max-width: 800px) { .app-block .shots.browsers { grid-template-columns: 1fr; } }
+
+/* ---------- Operator app page ---------- */
+
+.tour-block { padding: 72px 0; border-top: 1px solid var(--rule); scroll-margin-top: 60px; }
+.tour-block.panel { background: var(--panel); }
+.tour-block .grid { row-gap: 32px; }
+.tour-block .meta { grid-column: span 3; display: flex; flex-direction: column; gap: 8px; }
+.tour-block .body { grid-column: span 5; display: flex; flex-direction: column; gap: 20px; }
+.tour-block .list { grid-column: span 4; }
+.tour-block .shots { grid-column: 1 / -1; margin-top: 16px; }
+.phone-row.steps .shot figcaption { font-family: var(--mono); font-size: 12px; color: var(--fg); white-space: pre; }
+@media (max-width: 900px) { .tour-block .meta, .tour-block .body, .tour-block .list { grid-column: 1 / -1; } }
+@media (max-width: 600px) { .phone-row.steps .shot figcaption { white-space: normal; } }
+@media (min-width: 901px) { .tour-block .phone-row { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.nav a { white-space: nowrap; }
+@media (max-width: 420px) { .nav { gap: 12px; font-size: 12px; } .logo { font-size: 18px; } }

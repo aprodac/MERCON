@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { Cta } from '@/components/Cta';
 import { Browser, Phone, PhoneRow } from '@/components/Shots';
 import { apps } from '@/lib/content';
@@ -36,6 +37,11 @@ export default function AppsPage() {
             <div className="body">
               <h2 className="h2">{a.name}</h2>
               <p className="lead">{a.summary}</p>
+              {a.id === 'operator' && (
+                <Link className="btn btn-ghost" href="/operator-app/" style={{ alignSelf: 'flex-start' }}>
+                  Tour the operator app <span className="arrow">→</span>
+                </Link>
+              )}
             </div>
             <ul className="ticks list">
               {a.features.map((f) => (

@@ -12,6 +12,7 @@ export const site = {
 export const nav = [
   { href: '/', label: 'Overview' },
   { href: '/modules/', label: 'Modules' },
+  { href: '/operator-app/', label: 'Operator app' },
   { href: '/apps/', label: 'Apps' },
 ];
 
@@ -78,6 +79,10 @@ export const moduleGroups: ModuleGroup[] = [
           'Assign driver and truck now, or leave for later as a draft',
           'Monthly recurring runs with overlap warnings',
           'Replace driver mid-trip, cancel, or edit actual times',
+          'Start from a recent trip or a saved route in one tap',
+          'Suggested drivers ranked by where their last trip ends',
+          'Road distance, drive time and margin before you dispatch',
+          'Co-driver, AWB number and extra charges on the same trip',
         ],
       },
       {
@@ -89,6 +94,9 @@ export const moduleGroups: ModuleGroup[] = [
           'Automatic arrival detection at each stop',
           'Driver breaks and stops visible on the route',
           'Find the nearest suitable truck for a new load',
+          'Search a lane like “riyadh to jeddah” or a place to see trucks near it',
+          'Road distance and ETA to the next stop, with on-time status',
+          'Driver view and a dark map for night shifts',
         ],
       },
       {
@@ -97,9 +105,11 @@ export const moduleGroups: ModuleGroup[] = [
         summary: 'Price, send and track quotes, then turn them into trips.',
         points: [
           'Rate cards and a rate finder for lanes you already priced',
+          'Compare one lane’s price across every customer: low, average, high',
           'Branded PDF quotations',
           'Import existing quotes with AI-assisted extraction',
           'Expiry alerts before a quote lapses',
+          'Create a trip straight from a quotation',
         ],
       },
       {
@@ -167,6 +177,8 @@ export const moduleGroups: ModuleGroup[] = [
           'Performance overview and trip history',
           'Driver pay, advances and settlements',
           'Phone health check: GPS, battery and notification status',
+          'Ready / not ready at a glance before you dispatch',
+          'Licence expiry flagged on the driver list',
         ],
       },
       {
@@ -214,6 +226,8 @@ export const moduleGroups: ModuleGroup[] = [
           'Delivery photos as proof, in a shareable gallery',
           'Fleet-level tracking page for key accounts',
           'One-tap “Ask us” button to your operations WhatsApp',
+          'Share a live ETA from the operator app over WhatsApp',
+          'Links expire on their own; see which ones were opened',
         ],
       },
     ],
@@ -377,17 +391,19 @@ export const apps: AppInfo[] = [
     audience: 'Operators and admins on the move',
     summary: 'Run the operation from your phone — create, dispatch and follow trips anywhere.',
     features: [
-      'Live trip cards and fleet map',
-      'Create and edit trips, replace drivers',
-      'Quotations with rate finder and PDF',
-      'Customers, vehicles, drivers, invoices and expenses',
+      'Today at a glance: trips done, on the road and still to start',
+      'Create a trip in three steps, with suggested drivers and the margin up front',
+      'Full-screen live trip with road distance and ETA to the next stop',
+      'Fleet map with lane and nearby-place search',
+      'Quotations, rate finder and one-tap trip from a quote',
+      'Drivers, trucks, customers, invoices and expenses',
       'Push alerts for delays and expiring documents',
     ],
     phones: [
-      { src: '/screens/op-trips.webp', alt: 'Operator app trips', caption: 'Trips now' },
-      { src: '/screens/op-drivers.webp', alt: 'Operator app drivers', caption: 'Driver phone readiness' },
-      { src: '/screens/op-quotations.webp', alt: 'Operator app quotations', caption: 'Quotations' },
-      { src: '/screens/op-invoices.webp', alt: 'Operator app invoices', caption: 'Invoices' },
+      { src: '/screens/op-home.webp', alt: 'Operator app home', caption: 'Today' },
+      { src: '/screens/op-create-who.webp', alt: 'Create trip: driver and truck', caption: 'Create trip' },
+      { src: '/screens/op-live.webp', alt: 'Live trip on the map', caption: 'Live trip' },
+      { src: '/screens/op-fleet.webp', alt: 'Fleet map', caption: 'Fleet map' },
     ],
   },
   {
@@ -434,4 +450,118 @@ export const principles = [
   { title: 'Proof by default', text: 'Photos, timestamps and GPS are captured as the work happens, so disputes end with evidence.' },
   { title: 'Modular', text: 'Switch on only the modules you need. Add finance, quotations or reports when you are ready.' },
   { title: 'Your brand', text: 'Your name and logo on the dashboard, the apps, the tracking page and every PDF.' },
+];
+
+// The operator app page (/operator-app/): one section per job, real screens on sample data.
+export type Tour = {
+  id: string;
+  label: string;
+  title: string;
+  text: string;
+  points: string[];
+  phones: Screenshot[];
+  /** Number the phones as steps (01, 02 …) instead of plain captions. */
+  steps?: boolean;
+};
+
+export const operatorTour: Tour[] = [
+  {
+    id: 'create',
+    label: 'Create a trip',
+    title: 'A new trip in three steps.',
+    text: 'Job, when, who. The price comes from the customer’s quotation, the drive time from the road network, and the best drivers are suggested for you — so the margin is on screen before anything is dispatched.',
+    points: [
+      'Start from a recent trip or a saved route in one tap',
+      'Quotation price and driver pay filled in, editable',
+      'Exact map pins confirmed for every stop',
+      'Planned arrival suggested from the road drive time',
+      'Drivers ranked by fit: free now, ending near the pickup, idle',
+      'Own fleet or a 3PL partner, co-driver and AWB number',
+      'Review the whole trip and its margin, then create',
+    ],
+    steps: true,
+    phones: [
+      { src: '/screens/op-create-job.webp', alt: 'Create trip step 1: customer, price and route', caption: 'Job — customer, quotation and route' },
+      { src: '/screens/op-create-when.webp', alt: 'Create trip step 2: schedule and route timing', caption: 'When — pickup time and drive time' },
+      { src: '/screens/op-create-who.webp', alt: 'Create trip step 3: suggested drivers', caption: 'Who — the best drivers for this trip' },
+      { src: '/screens/op-create-review.webp', alt: 'Review trip before creating', caption: 'Review — schedule, driver and margin' },
+    ],
+  },
+  {
+    id: 'live',
+    label: 'Follow it live',
+    title: 'Every running trip, live on the map.',
+    text: 'Open any trip full screen and see the truck move along the road, the distance left and the ETA to the next stop — and whether it is on time. One tap shares that ETA with the customer.',
+    points: [
+      'Road distance and ETA to the next stop',
+      'On-time or late, worked out from the plan',
+      'Driven path and the road ahead on one map',
+      'Speed, GPS freshness and phone or tracker feed',
+      'Call the driver or share the ETA on WhatsApp',
+      'Driver view and a dark map for night shifts',
+    ],
+    phones: [
+      { src: '/screens/op-live.webp', alt: 'Live trip Riyadh to Jeddah', caption: 'Live trip — 428 km to Jeddah DC' },
+      { src: '/screens/op-live-2.webp', alt: 'Live trip Riyadh to Abha', caption: 'Another truck, heading for Abha' },
+      { src: '/screens/op-trip.webp', alt: 'Trip details with map', caption: 'The trip: route, driver and progress' },
+      { src: '/screens/op-trip-stops.webp', alt: 'Trip stops with planned and actual times', caption: 'Stops: planned, arrived and left' },
+    ],
+  },
+  {
+    id: 'fleet',
+    label: 'The whole fleet',
+    title: 'Your day, then your fleet.',
+    text: 'Home tells you what happened today and what needs you next. The fleet map shows every truck, what it is doing and where it is free, with search by plate, driver, place or lane.',
+    points: [
+      'Trips done, on the road and still to start',
+      '“Needs you” list: unassigned trips, expiring documents',
+      'Live trip cards with a mini map for each truck',
+      'Fleet map: on trip, delayed and free trucks',
+      'Find trucks near a place or along a lane',
+      'Schedule by day for the trips coming up',
+    ],
+    phones: [
+      { src: '/screens/op-home.webp', alt: 'Operator app home', caption: 'Home — today and what needs you' },
+      { src: '/screens/op-fleet.webp', alt: 'Fleet map', caption: 'Fleet map — 6 of 24 trucks working' },
+      { src: '/screens/op-trips.webp', alt: 'Trips on the road', caption: 'Trips on the road now' },
+      { src: '/screens/op-schedule.webp', alt: 'Trip schedule by day', caption: 'Schedule — tomorrow’s trips' },
+    ],
+  },
+  {
+    id: 'pricing',
+    label: 'Price on the spot',
+    title: 'Quote with confidence, from anywhere.',
+    text: 'Every customer’s rates are in your pocket. Compare a lane across all of them before you answer a call, and turn a quotation into a trip with one tap.',
+    points: [
+      'Rate finder: one lane across every customer',
+      'Lowest, average and highest price per truck size',
+      'Driver pay and margin on every rate',
+      'How often a rate is used, and when it was last used',
+      'Create, duplicate or share a quotation',
+    ],
+    phones: [
+      { src: '/screens/op-ratefinder.webp', alt: 'Rate finder Riyadh to Jeddah', caption: 'Rate finder — 5 rates for one lane' },
+      { src: '/screens/op-quotation.webp', alt: 'Quotation details', caption: 'A quotation — create a trip from it' },
+      { src: '/screens/op-quotations.webp', alt: 'Quotations by customer', caption: 'Quotations by customer' },
+    ],
+  },
+  {
+    id: 'people',
+    label: 'People and trucks',
+    title: 'Know who is ready before you dispatch.',
+    text: 'Each driver’s phone reports back — app version, battery, notifications, location permission — so you know who will actually receive the trip. Trucks, customers and their history are one tap away.',
+    points: [
+      'Driver app readiness: ready, check, not ready, not installed',
+      'Licence expiry and documents per driver and truck',
+      'Where each truck is right now, from phone or tracker',
+      'Customer page with trips, sharing, invoices, quotes and places',
+      'Call or WhatsApp any driver or contact directly',
+    ],
+    phones: [
+      { src: '/screens/op-drivers.webp', alt: 'Drivers with phone readiness', caption: 'Drivers — phone readiness' },
+      { src: '/screens/op-driver.webp', alt: 'Driver details', caption: 'A driver, right now' },
+      { src: '/screens/op-vehicle.webp', alt: 'Truck details', caption: 'A truck and its location' },
+      { src: '/screens/op-customer.webp', alt: 'Customer details', caption: 'A customer and their trips' },
+    ],
+  },
 ];

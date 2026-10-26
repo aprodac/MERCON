@@ -135,9 +135,38 @@ export default function HomePage() {
       </section>
 
       <section className="section">
+        <div className="wrap grid split">
+          <div className="copy">
+            <span className="label">04 — On the move</span>
+            <h2 className="h2">Dispatch from anywhere.</h2>
+            <p className="lead muted">
+              The operator app puts the ops desk on your phone. Create a trip in three steps with the price, drive time
+              and margin worked out for you, then follow the truck live until it is delivered.
+            </p>
+            <ul className="ticks">
+              <li>Start from a recent trip or a saved route</li>
+              <li>Drivers ranked by who is free and ending near the pickup</li>
+              <li>Road distance, ETA and on-time status for every running trip</li>
+              <li>Share a live ETA with the customer on WhatsApp</li>
+              <li>Rate finder: one lane, every customer’s price</li>
+            </ul>
+            <Link className="btn btn-ghost" href="/operator-app/" style={{ alignSelf: 'flex-start' }}>
+              Tour the operator app <span className="arrow">→</span>
+            </Link>
+          </div>
+          <div className="visual">
+            <div className="phone-pair">
+              <Phone src="/screens/op-create-who.webp" alt="Operator app: suggested drivers for a new trip" caption="Create a trip — best drivers suggested" />
+              <Phone src="/screens/op-live.webp" alt="Operator app: live trip on the map" caption="Live trip — distance and ETA to the next stop" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="section">
         <div className="wrap">
           <div className="grid sh">
-            <span className="label">04 — Modules</span>
+            <span className="label">05 — Modules</span>
             <h2 className="h2">Switch on what you need. Add the rest when you grow.</h2>
           </div>
           <div className="cells c3">
@@ -156,7 +185,7 @@ export default function HomePage() {
       <section className="section dark">
         <div className="wrap grid split">
           <div className="copy">
-            <span className="label">05 — Finance</span>
+            <span className="label">06 — Finance</span>
             <h2 className="h2">Know what every trip earned.</h2>
             <p className="lead muted">
               Double-entry accounting is built around the trip. Freight, extra charges, fuel, tolls and driver pay
@@ -178,7 +207,7 @@ export default function HomePage() {
       <section className="section">
         <div className="wrap">
           <div className="grid sh">
-            <span className="label">06 — Surfaces</span>
+            <span className="label">07 — Surfaces</span>
             <h2 className="h2">One platform, four ways in.</h2>
           </div>
           <div className="cells">
@@ -196,7 +225,7 @@ export default function HomePage() {
       <section className="section panel">
         <div className="wrap">
           <div className="grid sh">
-            <span className="label">07 — Principles</span>
+            <span className="label">08 — Principles</span>
             <h2 className="h2">Made by people who run trucks.</h2>
             <p className="lead muted">
               {site.name} started as the in-house system of a working logistics company. Every screen was shaped by
