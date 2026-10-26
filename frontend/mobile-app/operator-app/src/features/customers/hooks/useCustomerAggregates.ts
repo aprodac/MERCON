@@ -17,10 +17,13 @@ export function useCustomerAggregates() {
   const query = useQuery({
     queryKey: customerAggregatesKey,
     queryFn: async () => {
+      // Invoices sit behind the Finance module: when it is off that call fails,
+      // and failing all three left every customer on "0 trips this month"
+      // (TestFlight 26 Oct). Only trips have to load.
       const [trips, invoices, rateCards] = await Promise.all([
         customersApi.getTripsForAggregation(),
-        customersApi.getInvoicesForAggregation(),
-        customersApi.getRateCards(),
+        customersApi.getInvoicesForAggregation().catch(() => []),
+        customersApi.getRateCards().catch(() => []),
       ]);
       return { trips, invoices, rateCards };
     },

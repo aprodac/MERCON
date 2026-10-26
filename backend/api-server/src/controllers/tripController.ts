@@ -2000,6 +2000,25 @@ export const logStopDelay = async (req: Request, res: Response) => {
  * evidence is exactly the case that needs review *after* completion. Mirrors
  * logStopDelay, which edits TripStop post-completion for the same reason.
  */
+/**
+ * A trip starts when the truck leaves its first stop. The driver often taps
+ * Start well after that (and sends the screenshot later), so once the office
+ * confirms the first stop's departure the trip's start moves to it — the
+ * activity log read "Trip started 05:21" after "Left riyadh 04:32" (TestFlight 26 Oct).
+ */
+async function alignTripStartToFirstDeparture(db: Prisma.TransactionClient | typeof prisma, tripId: string) {
+  const first = await db.tripStop.findFirst({
+    where: { tripId, deletedAt: null },
+    orderBy: { stop_sequence: 'asc' },
+    select: { actual_departure: true },
+  });
+  if (!first?.actual_departure) return;
+  await db.trip.updateMany({
+    where: { id: tripId, OR: [{ actual_start: null }, { actual_start: { not: first.actual_departure } }] },
+    data: { actual_start: first.actual_departure },
+  });
+}
+
 export const confirmEvidenceTime = async (req: Request, res: Response) => {
   try {
     const { id: rawTripId, stopId } = req.params as { id: string; stopId: string };
@@ -2042,6 +2061,7 @@ export const confirmEvidenceTime = async (req: Request, res: Response) => {
         data: { status: DocStatus.Verified, verified_by: (req as any).user?.id ?? null },
       }),
     ]);
+    if (actual_departure) await alignTripStartToFirstDeparture(prisma, tripId);
 
     res.json({ success: true, data: updatedStop });
   } catch (error) {
@@ -2099,6 +2119,7 @@ export const confirmTripTimes = async (req: Request, res: Response) => {
     const verifiedBy = isUuid((req as any).user?.id) ? (req as any).user.id : null;
     const verified = await prisma.$transaction(async (tx) => {
       for (const u of updates) await tx.tripStop.update({ where: { id: u.id }, data: u.data });
+      if (updates.some((u) => u.data.actual_departure)) await alignTripStartToFirstDeparture(tx, tripId);
       const where = {
         entity_type: 'Trip',
         entity_id: tripId,

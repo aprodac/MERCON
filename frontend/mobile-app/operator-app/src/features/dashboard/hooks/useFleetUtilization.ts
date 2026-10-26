@@ -14,7 +14,7 @@ export function useFleetUtilization(period: FleetPeriod) {
       const range = periodRange(period);
       const [vehicles, tripCounts] = await Promise.all([
         dashboardApi.getVehicles(),
-        // Behind the Reports module; without it the figures fall back to "on a trip now".
+        // Fails → the figures fall back to "on a trip now".
         dashboardApi.getFleetTripCounts(range).catch(() => null),
       ]);
       return buildFleetUtilization(vehicles, tripCounts);

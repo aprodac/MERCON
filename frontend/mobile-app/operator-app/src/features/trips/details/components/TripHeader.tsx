@@ -6,7 +6,7 @@
  */
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { RotateCcw } from 'lucide-react-native';
+import { RotateCcw, UserRound } from 'lucide-react-native';
 import { CompanyAvatar, niceName } from '../../create/components/ui';
 import type { OperatorTripDetail, TripPhase } from '../../../../lib/operator';
 import { TONE, delayText, sortedStops, statusChip, stopName, tripLegsOf, tripStopProgress, type Formatters, type Tone, statePhrase } from '../tripDetailsModel';
@@ -36,6 +36,11 @@ export function TripHeader({ trip, phase, f, children }: { trip: OperatorTripDet
   const now = delayed ? `Delayed${reported ? ` · ${delayText(reported)}` : ''}` : phrase;
   // Progress only means something while the trip is running.
   const showProgress = phase === 'active' && stops.length > 0;
+  // Who drove it, on every trip — a finished one showed no driver (TestFlight 25 Oct "Show driver").
+  const driverName = trip.is_third_party
+    ? trip.third_party_driver_name
+    : trip.driver ? niceName(`${trip.driver.first_name} ${trip.driver.last_name}`.trim()) : null;
+  const plate = trip.is_third_party ? trip.third_party_vehicle_plate : trip.vehicle?.plate_number;
 
   return (
     <Card style={{ gap: 14 }}>
@@ -68,6 +73,15 @@ export function TripHeader({ trip, phase, f, children }: { trip: OperatorTripDet
               <Text style={s.backText} numberOfLines={1}>{`Round trip · back to ${back}`}</Text>
             </View>
           ) : null}
+        </View>
+      ) : null}
+
+      {driverName || plate ? (
+        <View style={s.driverRow}>
+          <UserRound size={14} color={MUTED} strokeWidth={2.4} />
+          <Text style={s.driverText} numberOfLines={1}>
+            {driverName || 'No driver'}{plate ? <Text style={s.plate}>{`  ·  ${plate}`}</Text> : null}
+          </Text>
         </View>
       ) : null}
 
@@ -105,6 +119,9 @@ const s = StyleSheet.create({
   railLine: { flex: 1, width: 2, backgroundColor: '#C9C9D1', marginVertical: 2 },
   route: { fontSize: 15, fontWeight: '600', color: INK, lineHeight: 20 },
   via: { fontSize: 12, fontWeight: '600', color: MUTED, backgroundColor: '#E9E9EC', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, overflow: 'hidden' },
+  driverRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: -4 },
+  driverText: { flex: 1, fontSize: 14, fontWeight: '600', color: INK },
+  plate: { fontWeight: '500', color: MUTED, fontVariant: ['tabular-nums'] },
   now: { fontSize: 14, fontWeight: '600' },
   note: { fontSize: 12, color: MUTED },
   segments: { flexDirection: 'row', gap: 4 },

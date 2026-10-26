@@ -371,6 +371,9 @@ export default function TripDetailsScreen() {
   };
   const askMove = (docId: string, fromStopId: string | null) => { setViewer(null); setTimeout(() => setMoving({ docId, fromStopId }), 300); };
 
+  const externalApp = trip.driver_workflow === 'EXTERNAL_APP';
+  const openTimes = (stopId: string | null) => { setViewer(null); setTimeout(() => { setTimesStop(stopId); setCheckingTimes(true); }, 300); };
+
   const openPhotos = (u: DriverUpdate, index: number) => {
     const st = stops.find((x) => x.id === u.stop?.id);
     const name = st ? stopName(st, stops.indexOf(st)) : null;
@@ -394,10 +397,12 @@ export default function TripDetailsScreen() {
         sent: u.sent_ids.includes(m.id),
         geo: m.gps ? { lat: m.gps.lat, lng: m.gps.lng, captured_at: m.captured_at, place: name, address: st?.location?.city ?? null, customer: trip.customer?.name ?? null } : null,
         info: facts,
-        timeAction: st && st.actual_arrival ? {
-          label: `Edit ${name}'s time`,
-          onPress: () => { setViewer(null); setTimeout(() => { setTimesStop(st.id); setCheckingTimes(true); }, 300); },
-        } : null,
+        // Times are edited from the photo itself (TestFlight 25 Oct): a stop's own times,
+        // or — on a customer-app trip — Check times for the whole trip.
+        timeAction: st && (st.actual_arrival || externalApp) ? {
+          label: st.actual_arrival ? `Edit ${name}'s time` : `Set ${name}'s time`,
+          onPress: () => openTimes(st.id),
+        } : externalApp ? { label: 'Check times', onPress: () => openTimes(null) } : null,
         deleteAction: { onPress: () => deletePhoto(m.id) },
         moveAction: stops.length > 1 ? { onPress: () => askMove(m.id, st?.id ?? null) } : null,
         pinAction: canPin ? {
@@ -549,6 +554,10 @@ export default function TripDetailsScreen() {
                 items: e.docs.map((d) => ({
                   id: d.id, url: d.file_url, kind: 'photo' as const, caption: [f.smart(e.at), e.place ? `near ${e.place}` : null].filter(Boolean).join(' · '),
                   deleteAction: { onPress: () => deletePhoto(d.id) },
+                  // On a stop: its times. Not on one yet: put it on a stop, with its times.
+                  timeAction: e.stop_id
+                    ? { label: 'Edit times', onPress: () => openTimes(e.stop_id) }
+                    : { label: 'Put on a stop · set times', onPress: () => { setViewer(null); setTimeout(() => setLogEntry(e), 300); } },
                 })),
               })}
               onPick={setLogEntry}

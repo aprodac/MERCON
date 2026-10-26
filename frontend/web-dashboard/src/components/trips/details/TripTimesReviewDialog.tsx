@@ -57,6 +57,7 @@ export default function TripTimesReviewDialog({ open, onOpenChange, trip, docume
     recordedDeparture: s.actual_departure,
     arrival: typed[s.id]?.arrival ?? '',
     departure: typed[s.id]?.departure ?? '',
+    place: (s as any).locationId || (s as any).location?.id || s.location_name?.trim().toLowerCase() || null,
   }));
   const fallback = trip.actual_start || trip.planned_start || stops[0]?.planned_arrival || new Date().toISOString();
   const resolved = resolveStopTimes(rows, tz, fallback);
