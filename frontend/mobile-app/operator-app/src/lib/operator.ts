@@ -825,6 +825,12 @@ export interface TransitRouteDetail extends TransitRow {
   canUseActual: boolean; suggestedMin: number | null;
   recent: Array<{ tripId: string; ref: string | null; departedAt: string; actualMin: number; plannedMin: number | null }>;
 }
+export interface QuotationTransitLeg {
+  key: string; leg: 'out' | 'return'; from: string; to: string; via: number; size: string;
+  estimatedMin: number | null; estimateSource: 'road' | 'approx' | 'duty' | null;
+  savedMin: number | null; actualAvgMin: number | null; trips: number;
+}
+export interface QuotationTransit { quotationId: string; number: number | null; name: string; lineType: string | null; size: string; legs: QuotationTransitLeg[] }
 export interface SavedTransit { origin_key: string; destination_key: string; leg: string; truck_class: string; planned_minutes: number }
 
 export type RepeatResult =
@@ -1148,6 +1154,17 @@ export const operatorService = {
     } catch {
       return [];
     }
+  },
+
+  /** Each active quotation's legs: Create trip's estimate, the saved time and what trips took (last 90 days). */
+  async quotationTransits(customerId: string): Promise<QuotationTransit[]> {
+    const { data } = await api.get(`/customers/${customerId}/transit-times/quotations`);
+    return (data?.data ?? []) as QuotationTransit[];
+  },
+
+  /** Removes a saved planned time: new trips on that route go back to the estimate. */
+  async clearPlannedTransit(customerId: string, key: string): Promise<void> {
+    await api.delete(`/customers/${customerId}/transit-times/planned`, { params: { key } });
   },
 
   /** "Use actual as the planned time": new trips of this route and truck size plan with it; existing trips don't change. */

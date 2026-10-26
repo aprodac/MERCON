@@ -4,6 +4,8 @@ NEW: TRANSIT TIMES (27 Oct)
 3. Tap a route: Planned, Actual avg, Slowest 1 in 10, and "Where the time goes" (loading, on the road, waiting / offloading) with the biggest in red.
 4. Under the list: how many finished trips were left out (missing times, times out of order, created as completed).
 5. A route with 3+ trips more than 15 min off plan shows "Use 3h 35 as the planned time for new trips" (Admin / Operator). It asks first, then saves.
+7. Transit times > Quotations: each quotation's legs with Estimate (what Create trip works out: road route, or the duty length for 10 / 12 h lines), Planned (what new trips use) and Actual avg (last 90 days).
+8. "Set time" picks a time on the wheels and saves it for that route and truck size. "Use estimate" removes it. "Use actual" shows with 3+ trips (not on duty lines).
 6. New trip > When: a new trip on that route and truck size now plans the saved time. "See transit times" link under the transit time. Existing trips do not change.
 
 NEW: REPEAT A DAY'S TRIPS (27 Oct)

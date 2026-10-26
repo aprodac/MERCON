@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../db';
 import { logger } from '../utils/logger';
 import { getValidUuid } from '../utils/uuid';
+import { clearPlannedTransit, quotationTransits } from '../services/transitQuotations';
 import { PERIODS, loadSavedTransits, setPlannedTransit, transitRouteDetail, transitSummary } from '../services/transitTimes';
 
 export const transitQuery = z.object({
@@ -59,5 +60,24 @@ export const putPlannedTransit = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: err.message === 'INVALID_MINUTES' ? 'Use between 5 minutes and 7 days' : 'Not a route key' } });
     }
     fail(res, err, 'Could not save the planned time');
+  }
+};
+
+/** GET /customers/:id/transit-times/quotations — each quotation line's estimated, saved and actual transit time. */
+export const getQuotationTransits = async (req: Request, res: Response) => {
+  try {
+    res.json({ success: true, data: await quotationTransits(String(req.params.id)) });
+  } catch (err) { fail(res, err, 'Could not load the quotations’ transit times'); }
+};
+
+export const transitKeyQuery = z.object({ key: z.string().trim().min(3).max(300) });
+
+/** DELETE /customers/:id/transit-times/planned?key= — new trips go back to the estimate. */
+export const deletePlannedTransit = async (req: Request, res: Response) => {
+  try {
+    res.json({ success: true, data: await clearPlannedTransit(String(req.params.id), String(req.query.key)) });
+  } catch (err: any) {
+    if (err?.message === 'INVALID_ROUTE_KEY') return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Not a route key' } });
+    fail(res, err, 'Could not clear the planned time');
   }
 };

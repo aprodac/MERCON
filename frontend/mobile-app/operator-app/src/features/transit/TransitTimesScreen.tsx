@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ChevronRight } from 'lucide-react-native';
 import { TRUCK_CLASSES } from '@mercon/shared-types';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
@@ -17,12 +17,15 @@ import { operatorService, type TransitRow } from '../../lib/operator';
 import { Card, INK, MUTED, PAGE, tap } from '../trips/details/components/parts';
 import { niceName } from '../trips/create/components/ui';
 import { PERIOD_OPTIONS, TONE, hm, skippedText } from './transitModel';
+import { QuotationTransits } from './QuotationTransits';
 
 export default function TransitTimesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { customerId, customerName } = useLocalSearchParams<{ customerId: string; customerName?: string }>();
+  const { customerId, customerName, tab: tabParam } = useLocalSearchParams<{ customerId: string; customerName?: string; tab?: string }>();
+  const [tab, setTab] = useState<'routes' | 'quotations'>(tabParam === 'quotations' ? 'quotations' : 'routes');
   const cid = String(customerId ?? '');
+  const queryClient = useQueryClient();
   const [size, setSize] = useState<string | null>(null);
   const [days, setDays] = useState<number>(30);
   const q = useQuery({ queryKey: ['transit', cid, size, days], queryFn: () => operatorService.transitTimes(cid, { size, days }), enabled: !!cid });
@@ -38,8 +41,18 @@ export default function TransitTimesScreen() {
         <PageTitle title="Transit times" />
         <View style={{ width: 40 }} />
       </View>
-      <ScrollView contentContainerStyle={s.body} refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => q.refetch()} />}>
+      <ScrollView contentContainerStyle={s.body} refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => { q.refetch(); queryClient.invalidateQueries({ queryKey: ['transit', cid, 'quotations'] }); }} />}>
         {customerName ? <Text style={s.customer}>{niceName(String(customerName))}</Text> : null}
+
+        <View style={s.seg}>
+          {([['routes', 'Routes'], ['quotations', 'Quotations']] as const).map(([k, label]) => (
+            <TouchableOpacity key={k} style={[s.segItem, tab === k && s.segOn]} onPress={() => { tap(); setTab(k); }} accessibilityRole="tab" accessibilityState={{ selected: tab === k }}>
+              <Text style={[s.segText, tab === k && s.segTextOn]}>{label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {tab === 'quotations' ? <QuotationTransits customerId={cid} /> : (<>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips}>
           {[null, ...TRUCK_CLASSES].map((c) => (
@@ -67,6 +80,7 @@ export default function TransitTimesScreen() {
         )}
         {skipped ? <Text style={s.skipped}>{skipped}</Text> : null}
         <Text style={s.note}>Green: at most 15 min over the planned time · amber: up to 1 h over · red: more.</Text>
+        </>)}
       </ScrollView>
     </View>
   );
@@ -122,6 +136,11 @@ const s = StyleSheet.create({
   barBtn: { width: 40, height: 40, borderRadius: 13, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E9E9EC' },
   body: { paddingHorizontal: 16, paddingBottom: 40, gap: 12 },
   customer: { fontSize: 13, fontWeight: '700', color: MUTED },
+  seg: { flexDirection: 'row', backgroundColor: '#E9EAEE', borderRadius: 12, padding: 3 },
+  segItem: { flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center' },
+  segOn: { backgroundColor: Colors.white },
+  segText: { fontSize: 14, fontWeight: '700', color: MUTED },
+  segTextOn: { color: INK, fontWeight: '800' },
   chips: { flexDirection: 'row', gap: 8 },
   pill: { paddingHorizontal: 13, paddingVertical: 7, borderRadius: 999, backgroundColor: Colors.white, borderWidth: 1, borderColor: '#E4E4E8' },
   pillOn: { backgroundColor: INK, borderColor: INK },

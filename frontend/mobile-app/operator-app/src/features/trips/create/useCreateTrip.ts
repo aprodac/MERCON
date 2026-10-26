@@ -349,13 +349,14 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
   const travelMinutes = eta ? eta.totalMinutes : null;
 
   // Planned times saved from Transit times ("Use actual as the planned time"): they win over the live estimate.
-  const [savedTransits, setSavedTransits] = useState<SavedTransit[]>([]);
+  // Kept with the customer they belong to, so another customer's times never apply.
+  const [savedFor, setSavedFor] = useState<{ customerId: string; list: SavedTransit[] }>({ customerId: '', list: [] });
   useEffect(() => {
     let alive = true;
-    setSavedTransits([]);
-    if (customerId) operatorService.savedTransits(customerId).then((t) => alive && setSavedTransits(t));
+    if (customerId) operatorService.savedTransits(customerId).then((list) => alive && setSavedFor({ customerId, list }));
     return () => { alive = false; };
   }, [customerId]);
+  const savedTransits = useMemo(() => (savedFor.customerId === customerId ? savedFor.list : []), [savedFor, customerId]);
   const savedOutbound = useMemo(
     () => savedTransitMinutes(savedTransits, 'out', rawSlot.origin, rawSlot.destination, vehicleType),
     [savedTransits, rawSlot.origin, rawSlot.destination, vehicleType],
@@ -413,7 +414,8 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
 
     let out = base;
     if (!dropoffTouched && rawSlot.pickupTime && (isMonthly || rawSlot.date)) {
-      const total = toMin(rawSlot.pickupTime) + Math.ceil((dutyMinutes ?? outboundMinutes ?? 240) / 15) * 15;
+      // A time saved by hand for this route (Transit times) wins over the duty length and the estimate.
+      const total = toMin(rawSlot.pickupTime) + Math.ceil((savedOutbound ?? dutyMinutes ?? outboundMinutes ?? 240) / 15) * 15;
       out = {
         ...out,
         dropoffTime: hhmm(total),
@@ -435,7 +437,7 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
       };
     }
     return out;
-  }, [rawSlot, dropoffTouched, returnDropoffTouched, outboundMinutes, returnMinutes, isMonthly, isRoundTrip, dutyMinutes]);
+  }, [rawSlot, dropoffTouched, returnDropoffTouched, outboundMinutes, returnMinutes, isMonthly, isRoundTrip, dutyMinutes, savedOutbound]);
   const isRound = isRoundTripCategory(rateCategory);
   const toUtcIso = useCallback((date: string, time: string) => zonedWallTimeToUtcIso(date, time, tz), [tz]);
 
