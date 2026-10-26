@@ -48,6 +48,7 @@ export function ReviewSheet({
   checking?: boolean;
 }) {
   const [pastChoice, setPastChoice] = useState<'Completed' | 'Incomplete' | null>(null);
+  // Only past trips need a choice; for the rest submit() ignores it (a null here left Create doing nothing).
   const needsChoice = form.pastTripCount > 0 && pastChoice === null;
   const asCompleted = form.pastTripCount > 0 && pastChoice === 'Completed';
   const warning = sameDay?.length ? sameDayWarning(sameDay, form.tz) : null;
@@ -258,7 +259,7 @@ export function ReviewSheet({
             {warning.more > 0 ? <Text style={styles.clashLine}>+{warning.more} more</Text> : null}
             <Text style={styles.clashNote}>{warning.note}</Text>
           </View>
-          <TouchableOpacity style={[styles.primary, styles.anyway, (form.submitting || needsChoice) && { opacity: 0.7 }]} disabled={form.submitting || needsChoice} onPress={() => pastChoice && onConfirm(pastChoice, true)} activeOpacity={0.85}>
+          <TouchableOpacity style={[styles.primary, styles.anyway, (form.submitting || needsChoice) && { opacity: 0.7 }]} disabled={form.submitting || needsChoice} onPress={() => onConfirm(pastChoice ?? 'Incomplete', true)} activeOpacity={0.85}>
             {form.submitting ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.primaryText}>{asCompleted ? `${createLabel} — anyway` : trips > 1 ? `Create ${trips} trips anyway` : 'Create anyway'}</Text>}
           </TouchableOpacity>
           <TouchableOpacity style={styles.secondary} onPress={onClose} disabled={form.submitting}>
@@ -267,7 +268,7 @@ export function ReviewSheet({
         </>
       ) : (
         <>
-          <TouchableOpacity style={[styles.primary, (form.submitting || checking || needsChoice) && { opacity: 0.5 }]} disabled={form.submitting || checking || needsChoice} onPress={() => pastChoice && onConfirm(pastChoice)} activeOpacity={0.85}>
+          <TouchableOpacity style={[styles.primary, (form.submitting || checking || needsChoice) && { opacity: 0.5 }]} disabled={form.submitting || checking || needsChoice} onPress={() => onConfirm(pastChoice ?? 'Incomplete')} activeOpacity={0.85}>
             {form.submitting || checking ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.primaryText}>{createLabel}</Text>}
           </TouchableOpacity>
           {needsChoice ? <Text style={styles.chooseHint}>Choose one above</Text> : null}
