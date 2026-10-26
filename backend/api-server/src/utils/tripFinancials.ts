@@ -8,7 +8,7 @@
 import { TripStatus } from '@prisma/client';
 import { parseOptionalFloat } from './uuid';
 
-type Money = number | string | null | undefined | { toNumber(): number };
+export type Money = number | string | null | undefined | { toNumber(): number };
 
 export const asNumber = (v: Money): number => {
   if (v == null) return 0;

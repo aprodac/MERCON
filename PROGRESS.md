@@ -747,6 +747,11 @@ names, unreliable arrivals and no reasons, and cannot be backfilled.
 
 ## 3. 🔜 What's next (remaining work)
 
+### Remove driver payouts from quotations (owner, 26 Oct) — ✅ built 2026-10-26 (branch `ilan`), needs operator build + backend release
+- ✅ Operator app Quotations → ⋯ → "Remove driver payouts…": pick customers (the open company is picked to start with) or All customers → "Remove from N quotations" → confirm with the server's counts → clears `driver_payout` on those quotations (`RemovePayoutsSheet`, `QuotationsHeader`).
+- ✅ `POST /quotations/clear-driver-payouts { customer_ids?, dry_run? }` (Admin/Operator, like every quotation route). A trip with no pay of its own was paid its quotation's payout, so before clearing, each such trip (not third-party, deleted ones too) gets the pay it was getting written onto itself — past driver pay, settlements and margins don't change; only new trips start with no default payout. One `QuotationHistory` row per quotation ("Driver payouts removed"), audit `QUOTATION_PAYOUTS_CLEARED` (`services/quotationPayoutClear.ts`, `clearDriverPayouts`).
+- Checked: new `test:quotation-payout-clear` (pay before = pay after for 126 driver / co-driver combinations against `calculateBackendTripFinancials`), `test:unit` all pass, tsc api + operator 0 errors, eslint clean; curl on a local DB (one customer, then all; own-pay and third-party trips untouched; co-driver trip kept 300 + 200; second run changes nothing). Not yet on a phone.
+
 ### TestFlight feedback 25–26 Oct round 3 (operator build 134, driver build 115) — ✅ built 2026-10-26 (branch `ilan`), needs operator build + backend release
 - ✅ Home → Fleet utilisation: Today / Week / Month showed the same "right now" figure — `/reports/fleet` sits behind the Reports module (off on production). Trucks that ran a trip in the window now come from `/trips` (planned in the window or still open, plus finished in it; a trip counts when it was on the road inside the window) (`dashboardApi.getFleetTripCounts`).
 - ✅ Trip card: driver and truck on every trip ("Show driver" on a completed trip) (`TripHeader`).

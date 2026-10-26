@@ -11,6 +11,7 @@ import {
   getQuotationHistory,
   getLanePriceHistory,
   getQuotationsPdf,
+  clearDriverPayouts,
 } from '../controllers/quotationController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles } from '../middlewares/rbac';
@@ -23,6 +24,7 @@ router.use(authorizeRoles('Admin', 'Operator'));
 
 router.post('/bulk-delete', bulkDeleteQuotations);
 router.post('/import', bulkImportQuotations);
+router.post('/clear-driver-payouts', clearDriverPayouts);
 
 // Must stay above '/:id' — otherwise Express matches "lookup", "lane-history" or "pdf" as an id.
 router.get('/lookup', lookupQuotation);
