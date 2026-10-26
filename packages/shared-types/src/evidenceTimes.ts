@@ -79,6 +79,13 @@ export interface StopTimeRow {
    */
   arrivalDate?: string;
   departureDate?: string;
+  /**
+   * Which place the stop is (location id or name). Two stops in a row at the
+   * same place — a round trip's offload then return loading — are one visit:
+   * the truck arrived once (TestFlight 25 Oct: "arrived 18:33:06 at al bahah is
+   * before the truck reached al bahah (18:33:28)").
+   */
+  place?: string | null;
 }
 
 export interface ResolvedTime {
@@ -200,7 +207,24 @@ export function resolveStopTimes(rows: StopTimeRow[], tz: string, fallbackIso: s
 
   // Day offsets and impossible orderings, now that every instant is known.
   let last: string | null = null;
-  for (const s of out) {
+  for (const [i, s] of out.entries()) {
+    const prev = i > 0 ? out[i - 1] : null;
+    // Same place as the stop before, arriving a little earlier than its (tapped) arrival:
+    // it's the same arrival, so the stop before takes it too instead of flagging this one.
+    if (prev && s.arrival.iso && rows[i].place && rows[i].place === rows[i - 1].place
+      && prev.arrival.iso && Date.parse(s.arrival.iso) < Date.parse(prev.arrival.iso)
+      && Date.parse(prev.arrival.iso) - Date.parse(s.arrival.iso) <= 3 * 3_600_000) {
+      if (!rows[i - 1].arrival.trim()) {
+        prev.arrival = { ...prev.arrival, iso: s.arrival.iso, changed: !sameSecond(s.arrival.iso, rows[i - 1].recordedArrival), error: null };
+        if (rows[i - 1].leftFollowsArrival) {
+          prev.departure = { ...prev.departure, iso: s.arrival.iso, changed: !sameSecond(s.arrival.iso, rows[i - 1].recordedDeparture), error: null };
+        }
+      }
+      last = s.arrival.iso;
+    } else if (prev && s.arrival.iso && rows[i].place && rows[i].place === rows[i - 1].place && last && Date.parse(s.arrival.iso) < Date.parse(last)) {
+      // …or the stop before's (hidden) "Left" is a little after this arrival: still one visit.
+      if (Date.parse(last) - Date.parse(s.arrival.iso) <= 3 * 3_600_000) last = s.arrival.iso;
+    }
     for (const t of [s.arrival, s.departure]) {
       if (!t.iso) continue;
       const date = isoToWall(t.iso, tz).date;

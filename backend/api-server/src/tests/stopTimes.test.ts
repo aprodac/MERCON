@@ -89,3 +89,23 @@ test('Check times: a "Left" just before its own "Arrived" is flagged on that sto
   const r = resolveStopTimes(rows, TZ, at('17:00:00'), new Date('2026-10-19T12:00:00+03:00').toISOString());
   assert.equal(r[1].departure.error, 'Left before arrived');
 });
+
+test('Check times: offload then return loading at the same place is one arrival', () => {
+  // TRP-0066 (TestFlight 25 Oct): al bahah offload tapped 18:33:28, the return loading
+  // there read 18:33:06 off the screenshot — flagged "before the truck reached al bahah".
+  const rows: StopTimeRow[] = [
+    { stopId: 'riyadh', recordedArrival: at('03:49:16'), recordedDeparture: at('04:32:51'), arrival: '', departure: '', place: 'riyadh' },
+    { stopId: 'bahah-drop', recordedArrival: at('18:33:28'), recordedDeparture: at('18:33:28'), arrival: '', departure: '', leftFollowsArrival: true, place: 'al bahah' },
+    { stopId: 'bahah-load', recordedArrival: at('18:33:30'), recordedDeparture: null, arrival: '18:33:06', departure: '19:42:06', place: 'al bahah' },
+    { stopId: 'riyadh-back', recordedArrival: null, recordedDeparture: null, arrival: '', departure: '', leftFollowsArrival: true, place: 'riyadh' },
+  ];
+  const r = resolveStopTimes(rows, TZ, at('03:00:00'), at('23:00:00'));
+  assert.deepEqual(r.map((s) => [s.arrival.error, s.departure.error]), [[null, null], [null, null], [null, null], [null, null]]);
+  assert.equal(r[1].arrival.iso, at('18:33:06'));
+  assert.equal(r[1].arrival.changed, true);
+  assert.equal(r[2].departure.iso, at('19:42:06'));
+
+  // Different places stay flagged.
+  const apart = resolveStopTimes(rows.map((x, i) => (i === 2 ? { ...x, place: 'baljurashi' } : x)), TZ, at('03:00:00'), at('23:00:00'));
+  assert.equal(apart[2].arrival.error, 'Earlier than the stop before');
+});

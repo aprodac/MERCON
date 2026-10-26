@@ -49,7 +49,8 @@ export function aggregateTrips(trips: RawCustomerTrip[], now = new Date()): Map<
     const current = byCustomer.get(trip.customerId) ?? { total: 0, thisMonth: 0, lastTripAt: null };
 
     current.total += 1;
-    if (isSameMonth(trip.createdAt, now)) current.thisMonth += 1;
+    // The month the trip runs in, not the day it was typed in.
+    if (isSameMonth(trip.planned_start || trip.createdAt, now)) current.thisMonth += 1;
     if (!current.lastTripAt || new Date(trip.createdAt) > new Date(current.lastTripAt)) {
       current.lastTripAt = trip.createdAt;
     }
@@ -212,7 +213,7 @@ export function computeCustomerStats(
   return {
     totalCustomers,
     activeRateCards: rateCards.filter((c) => c.is_active).length,
-    tripsThisMonth: trips.filter((t) => isSameMonth(t.createdAt, now)).length,
+    tripsThisMonth: trips.filter((t) => isSameMonth(t.planned_start || t.createdAt, now)).length,
     pendingBills: invoices.filter((i) => i.status === 'Pending' || i.status === 'Overdue').length,
   };
 }

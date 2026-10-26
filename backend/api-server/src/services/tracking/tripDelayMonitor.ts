@@ -286,7 +286,11 @@ export async function checkTripsForDelay(now: Date = new Date()): Promise<number
         let reached = -1;
         trip.stops.forEach((s, i) => { if (s.actual_arrival !== null || s.actual_departure !== null) reached = i; });
         const pendingStop = trip.stops.slice(reached + 1).find((s) => s.actual_arrival === null);
-        const plannedTime = pendingStop?.planned_arrival || trip.planned_end;
+        // A way-back stop with no planned time has no deadline: the trip's planned end
+        // is the way out's, so it read "Delayed" the moment the truck turned back
+        // (TestFlight 25 Oct, TRP-0066: "leg 2 time not set, but it's showing delayed").
+        const unplannedReturn = !!pendingStop && !pendingStop.planned_arrival && (pendingStop.leg_index ?? 0) > 0;
+        const plannedTime = pendingStop?.planned_arrival || (unplannedReturn ? null : trip.planned_end);
 
         if (plannedTime) {
           const diffMs = now.getTime() - plannedTime.getTime();
