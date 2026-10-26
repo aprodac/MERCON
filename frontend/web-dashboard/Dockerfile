@@ -49,7 +49,9 @@ RUN npm run build -w @mercon/web-dashboard
 FROM node:20-slim AS site
 WORKDIR /site
 COPY website/package.json website/package-lock.json ./
-RUN npm ci --no-audit --no-fund && npm cache clean --force
+# `npx --no-install next --version` fails the build if npm ci silently left
+# next uninstalled (npm can exit 0 after a network error).
+RUN npm ci --no-audit --no-fund && npx --no-install next --version && npm cache clean --force
 COPY website ./
 ENV BASE_PATH=/linaul NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
