@@ -102,6 +102,16 @@ export const quotationsApi = {
     return { trips: data?.data ?? [], total: data?.meta?.total ?? (data?.data ?? []).length };
   },
 
+  /**
+   * POST /quotations/clear-driver-payouts — clears the driver payout on every
+   * quotation of these customers (null = all customers). Trips that were paid
+   * the quotation's payout keep it. `dryRun` only counts.
+   */
+  async clearDriverPayouts(customerIds: string[] | null, dryRun: boolean): Promise<{ quotations: number; trips_kept: number }> {
+    const { data } = await api.post('/quotations/clear-driver-payouts', { ...(customerIds ? { customer_ids: customerIds } : {}), dry_run: dryRun });
+    return data.data;
+  },
+
   async getQuotations(params: {
     page?: number;
     per_page?: number | 'all';

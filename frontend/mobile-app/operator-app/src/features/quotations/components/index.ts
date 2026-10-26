@@ -6,3 +6,4 @@ export * from './QuotationsHeader';
 export * from './RoutePriceCard';
 export * from './RouteSketch';
 export * from './status';
+export * from './RemovePayoutsSheet';

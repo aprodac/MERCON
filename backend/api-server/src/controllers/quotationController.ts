@@ -9,6 +9,8 @@ import { getValidUuid } from '../utils/uuid';
 import { logger } from '../utils/logger';
 import { renderQuotationPdf } from '../services/quotationPdf';
 import { vehicleTypeField, rateCategoryField, billingTypeField } from '../schemas';
+import { clearQuotationDriverPayouts } from '../services/quotationPayoutClear';
+import { logAuditEvent } from '../services/auditService';
 
 /**
  * Normalises tier fields from request body.
@@ -869,6 +871,38 @@ export const bulkImportQuotations = async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.error({ err: error }, 'Bulk import failed');
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message || 'Bulk import failed' } });
+  }
+};
+
+/**
+ * POST /quotations/clear-driver-payouts { customer_ids?: string[], dry_run?: boolean }
+ * Clears the driver payout on every quotation of those customers (all customers
+ * when none are sent). Trips that were paid the quotation's payout keep it —
+ * see services/quotationPayoutClear. `dry_run` only counts.
+ */
+export const clearDriverPayouts = async (req: Request, res: Response) => {
+  try {
+    const raw = req.body?.customer_ids;
+    let customerIds: string[] | null = null;
+    if (raw !== undefined && raw !== null) {
+      if (!Array.isArray(raw) || raw.length === 0 || raw.some((id) => !getValidUuid(id))) {
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'customer_ids must be a non-empty list of customer ids' } });
+      }
+      customerIds = raw as string[];
+    }
+    const dryRun = req.body?.dry_run === true;
+    const userId = getValidUuid((req as any).user?.id);
+    const userObj = userId ? await prisma.user.findFirst({ where: { id: userId }, select: { name: true, username: true } }) : null;
+    const userName = userObj ? (userObj.name || userObj.username) : null;
+
+    const result = await clearQuotationDriverPayouts({ customerIds, dryRun, user: { id: userId, name: userName } });
+    if (!dryRun && result.quotations > 0) {
+      void logAuditEvent({ req, action: 'QUOTATION_PAYOUTS_CLEARED', entityType: 'Quotation', metadata: { customer_ids: customerIds ?? 'all', ...result } });
+    }
+    res.json({ success: true, data: { ...result, dry_run: dryRun } });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Failed to clear quotation driver payouts');
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to remove driver payouts' } });
   }
 };
 
