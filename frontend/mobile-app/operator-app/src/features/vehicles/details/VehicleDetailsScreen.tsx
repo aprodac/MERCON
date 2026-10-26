@@ -388,6 +388,7 @@ export default function VehicleDetailsScreen() {
                   </TouchableOpacity>
                 ) : null}
                 <FactRow label="Capacity" value={`${cls}  ·  ${(vehicle.capacity_kg || 0).toLocaleString('en-US')} kg`} />
+                <FactRow label="Tailgate" value={vehicle.has_tailgate ? 'Yes' : 'No'} />
                 {vehicle.trailer_number ? (
                   <FactRow
                     label="Trailer"

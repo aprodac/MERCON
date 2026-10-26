@@ -61,7 +61,8 @@
     "test:same-day-trips": "node -r ts-node/register --test src/tests/sameDayTrips.test.ts",
     "test:trip-log": "node -r ts-node/register --test src/tests/tripLog.test.ts src/tests/tripLogRead.test.ts src/tests/tripLogArrive.test.ts",
     "test:completed-on-create": "node -r ts-node/register --test src/tests/completedOnCreate.test.ts",
-    "test:stop-times": "node -r ts-node/register --test src/tests/stopTimes.test.ts"
+    "test:stop-times": "node -r ts-node/register --test src/tests/stopTimes.test.ts",
+    "test:quotation-payout-clear": "node -r ts-node/register --test src/tests/quotationPayoutClear.test.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
