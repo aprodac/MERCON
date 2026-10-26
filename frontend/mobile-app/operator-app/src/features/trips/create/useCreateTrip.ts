@@ -39,6 +39,7 @@ import {
 } from '@mercon/shared-types';
 import {
   operatorService,
+  type SavedTransit,
   invalidateOperatorTrips,
   type OperatorCustomer,
   type OperatorDriverOption,
@@ -54,6 +55,7 @@ import {
   type VehicleCompatibilityRule,
 } from '../../../lib/operator';
 import { estimateRoute, routeKeyOf, routePoints, type RouteEstimate } from './routeEstimate';
+import { savedTransitMinutes } from '../../transit/transitModel';
 
 export type CreateTripStep = 1 | 2 | 3;
 export type AssignmentType = 'own' | 'third_party';
@@ -346,25 +348,44 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
   const eta = routeEstimate && routeEstimate.key === etaKey && routeReady ? routeEstimate : null;
   const travelMinutes = eta ? eta.totalMinutes : null;
 
+  // Planned times saved from Transit times ("Use actual as the planned time"): they win over the live estimate.
+  const [savedTransits, setSavedTransits] = useState<SavedTransit[]>([]);
+  useEffect(() => {
+    let alive = true;
+    setSavedTransits([]);
+    if (customerId) operatorService.savedTransits(customerId).then((t) => alive && setSavedTransits(t));
+    return () => { alive = false; };
+  }, [customerId]);
+  const savedOutbound = useMemo(
+    () => savedTransitMinutes(savedTransits, 'out', rawSlot.origin, rawSlot.destination, vehicleType),
+    [savedTransits, rawSlot.origin, rawSlot.destination, vehicleType],
+  );
+  const savedReturn = useMemo(
+    () => (isRoundTrip ? savedTransitMinutes(savedTransits, 'return', rawSlot.returnOrigin?.trim() || rawSlot.destination, rawSlot.returnDestination?.trim() || rawSlot.origin, vehicleType) : null),
+    [savedTransits, isRoundTrip, rawSlot.returnOrigin, rawSlot.returnDestination, rawSlot.destination, rawSlot.origin, vehicleType],
+  );
+
   /** Minutes from leaving pickup to reaching the drop-off — not the whole round trip. */
   const outboundMinutes = useMemo(() => {
+    if (savedOutbound != null) return savedOutbound;
     if (!eta) return null;
     const end = eta.points.findIndex((p) => p.kind === 'dropoff');
     if (end < 0) return eta.totalMinutes;
     let t = 0;
     for (let i = 0; i < end; i++) t += eta.dwell[i] + eta.legs[i].minutes;
     return t;
-  }, [eta]);
+  }, [eta, savedOutbound]);
 
   /** Round trip: minutes from loading for the way back to arriving home. */
   const returnMinutes = useMemo(() => {
+    if (savedReturn != null) return savedReturn;
     if (!eta || !isRoundTrip) return null;
     const start = eta.points.findIndex((p) => p.kind === 'returnPickup' || p.alsoReturnPickup);
     if (start < 0) return null;
     let t = 0;
     for (let i = start; i < eta.legs.length; i++) t += (i === start ? 0 : eta.dwell[i]) + eta.legs[i].minutes;
     return t;
-  }, [eta, isRoundTrip]);
+  }, [eta, isRoundTrip, savedReturn]);
 
   /** A duty trip's length (10 / 12 hours), or null for a trip that runs as long as the drive. */
   const dutyMinutes = useMemo(() => {
@@ -1361,6 +1382,8 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     lineTypeOptions,
     refreshFleet,
     recentRoutes,
+    savedOutbound,
+    savedReturn,
     applyRecentRoute,
     copyTrip,
     quotationUse,

@@ -818,7 +818,7 @@ export const createTrip = async (req: Request, res: Response) => {
     targetStatus = resolveInitialTripStatus(targetStatus, requestedStatus, parsedPlannedStart);
 
     // No double booking — the same rule as bulk import.
-    if (!is_third_party && !CLASH_IGNORED_STATUSES.includes(targetStatus)) {
+    if (!is_third_party && !(req as any).allowScheduleClash && !CLASH_IGNORED_STATUSES.includes(targetStatus)) {
       const clash = await findScheduleClash({
         tripId: null,
         start: parsedPlannedStart,
