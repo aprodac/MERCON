@@ -747,12 +747,12 @@ names, unreliable arrivals and no reasons, and cannot be backfilled.
 
 ## 3. 🔜 What's next (remaining work)
 
-### Remove driver payouts from quotations (owner, 26 Oct) — ✅ built 2026-10-26 (branch `ilan`), needs operator build + backend release
+### Remove driver payouts from quotations (owner, 26 Oct) — ✅ built 2026-10-26 (branch `ilan`), released 2026-10-26, on TestFlight 27 Oct: operator build 137, driver build 118
 - ✅ Operator app Quotations → ⋯ → "Remove driver payouts…": pick customers (the open company is picked to start with) or All customers → "Remove from N quotations" → confirm with the server's counts → clears `driver_payout` on those quotations (`RemovePayoutsSheet`, `QuotationsHeader`).
 - ✅ `POST /quotations/clear-driver-payouts { customer_ids?, dry_run? }` (Admin/Operator, like every quotation route). A trip with no pay of its own was paid its quotation's payout, so before clearing, each such trip (not third-party, deleted ones too) gets the pay it was getting written onto itself — past driver pay, settlements and margins don't change; only new trips start with no default payout. One `QuotationHistory` row per quotation ("Driver payouts removed"), audit `QUOTATION_PAYOUTS_CLEARED` (`services/quotationPayoutClear.ts`, `clearDriverPayouts`).
 - Checked: new `test:quotation-payout-clear` (pay before = pay after for 126 driver / co-driver combinations against `calculateBackendTripFinancials`), `test:unit` all pass, tsc api + operator 0 errors, eslint clean; curl on a local DB (one customer, then all; own-pay and third-party trips untouched; co-driver trip kept 300 + 200; second run changes nothing). Not yet on a phone.
 
-### TestFlight feedback 25–26 Oct round 3 (operator build 134, driver build 115) — ✅ built 2026-10-26 (branch `ilan`), needs operator build + backend release
+### TestFlight feedback 25–26 Oct round 3 (operator build 134, driver build 115) — ✅ built 2026-10-26 (branch `ilan`), released 2026-10-26, on TestFlight 27 Oct: operator build 137, driver build 118
 - ✅ Home → Fleet utilisation: Today / Week / Month showed the same "right now" figure — `/reports/fleet` sits behind the Reports module (off on production). Trucks that ran a trip in the window now come from `/trips` (planned in the window or still open, plus finished in it; a trip counts when it was on the road inside the window) (`dashboardApi.getFleetTripCounts`).
 - ✅ Trip card: driver and truck on every trip ("Show driver" on a completed trip) (`TripHeader`).
 - ✅ Photo viewer: "Edit / Set {stop}'s time" on every photo of a customer-app trip, "Check times" when the send isn't on a stop; driver's log photos get "Edit times" or "Put on a stop · set times" (`TripDetailsScreen`).
@@ -764,7 +764,7 @@ names, unreliable arrivals and no reasons, and cannot be backfilled.
 - Checked: tsc (api, web, shared-types; operator shows only existing route-type / pdf-lib errors), `test:stop-times` 10/10, delay monitor tests pass except test 7 (failed before). Not yet on a phone.
 - ✅ TestFlight 26 Oct 14:11 (screenshot: Create trip → Driver and truck): "Show whether the truck is with or without tailgate" — truck lines read "KSA-6098 · 5 TON · Tailgate / No tailgate" on suggested drivers, the driver and truck pickers and the rotation list, plus a chip on the chosen truck; Vehicle details has a "Tailgate Yes / No" row. `GET /vehicles?mode=lookup` now sends `has_tailgate` (an older API leaves the label off rather than saying "No tailgate") (`StepAssign`, `VehicleDetailsScreen`, `vehicleController`). Checked: tsc operator 0 errors, api 0 errors. Not yet on a phone.
 
-### TestFlight feedback 24–25 Oct round 2 (operator build 134) — ✅ built 2026-10-25 (branch `ilan`), needs operator build + backend release
+### TestFlight feedback 24–25 Oct round 2 (operator build 134) — ✅ built 2026-10-25 (branch `ilan`), released 2026-10-26, on TestFlight 27 Oct: operator build 137, driver build 118
 - ✅ Check times, day of a typed time: a tapped time's day is the one nearest the tap among the days that keep the stops in order and before any later stop's tap (TRP-0053: every tap made at 10:56–11:01 the next morning put "left 23:53" the night before "arrived 18:22"); a time under 3 h before the one before stays on its day and is flagged on its own row (TRP-0056 Najran) (`shared-types/evidenceTimes.resolveStopTimes`, 4 new cases in `stopTimes.test.ts`).
 - ✅ Check times: "‹ Fri 23 Oct ›" over the wheels sets the day of a time ("set by you"; `arrivalDate` / `departureDate` on `StopTimeRow`); "‹ Back" beside "Next"; errors say the day when two times are on different days.
 - ✅ Check times: a stop with a problem no longer blocks the rest — "Save 2 stops · 1 to fix later"; its screenshots stay to check (`PATCH /trips/:id/confirm-times` takes `keep_pending_stop_ids`). Checked with curl on a local DB.
@@ -776,7 +776,7 @@ names, unreliable arrivals and no reasons, and cannot be backfilled.
 - Fixed before shipping: the Move picker's state hook sat below the screen's early return (crashed trip details in the web build).
 - Checked: tsc (api, operator, web, shared-types), backend unit tests 42/42, eslint no new problems, screens in the web export on a local DB. Not yet on a phone.
 
-### TestFlight feedback 24 Oct (operator build 134) — ✅ built 2026-10-24 (branch `ilan`), needs operator build + backend release
+### TestFlight feedback 24 Oct (operator build 134) — ✅ built 2026-10-24 (branch `ilan`), released 2026-10-26, on TestFlight 27 Oct: operator build 137, driver build 118
 - ✅ Create trip → Way back: "Same as leg 1 · 2 h 45 m" tick — the transit time back follows leg 1's, also when the return loading or leg 1's transit changes later; picking a time by hand unticks it (`create/components/StepSchedule.tsx`).
 - ✅ Driver page → Trips: every trip of the driver, latest first (was the last 5) (`DriverDetailsScreen`).
 - ✅ Driver suggestions: "N× done on this lane" counts delivered trips only and no longer adds "· N booked" / "N booked on this lane" (`shared-types/driverRecommendation.ts`).
@@ -788,7 +788,7 @@ names, unreliable arrivals and no reasons, and cannot be backfilled.
 - ✅ Driver's log: "Edit time" beside each send's screenshots opens the stop sheet with an Arrived time wheel (default the send time); a time set there is saved as the stop's arrival (`DriverLog`, `LogStopSheet`).
 - Checked: tsc (api, operator, shared-types), backend unit tests 42/42, eslint no new problems; screenshots from the web export against a local DB with demo data. Not yet on a phone.
 
-### TestFlight feedback 20–22 Oct (operator build 130) — 🔄 built 2026-10-22 (branch `ilan`), needs app builds + backend release
+### TestFlight feedback 20–22 Oct (operator build 130) — 🔄 built 2026-10-22 (branch `ilan`), released 2026-10-26, on TestFlight 27 Oct: operator build 137, driver build 118
 - ✅ Trip summary: Started / Delivered / Time taken from the stop times (taps only as fallback) + "Leg 1 going / Leg 2 returning" times (`runTimes`, tripDetailsModel).
 - ✅ Driver app Trips → Scheduled shows the pickup time, and Today/Tomorrow by calendar day in the company zone (`driver-app/src/screens/TripsScreen.tsx`).
 - ✅ Driver payout (finance module off): only Completed/Invoiced trips earn, dated by when they ran (`useDriverPayouts`).
