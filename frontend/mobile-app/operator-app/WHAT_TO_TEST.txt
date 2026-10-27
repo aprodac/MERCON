@@ -1,3 +1,10 @@
+FIX: CHECK TIMES "NEXT" (27 Oct)
+1. Trip with screenshots > Check times > tap a time > set it > "Next". The sheet scrolls so the next time (e.g. Najran Arrived) sits at the top of the list, in view.
+2. Look at screenshot #2 or #3, then press "Next" / "Back": the screenshot stays on the one you are on. Only your own swipe changes it.
+3. Swipe to another screenshot while editing: the time being edited moves to that screenshot's stop (as before).
+4. Opening Check times from a stop still starts on that stop's first screenshot.
+5. While a time is being edited the screenshot is shorter (tap it to enlarge) and the wheels show 3 rows, so about 150 px more of the time list stays visible.
+
 NEW: TRANSIT TIMES (27 Oct)
 1. Customers > open a customer > "Transit times". Filter by size and 7 / 30 / 90 days. Shows routes, on-time % and average late.
 2. Each row: From > To (and "· return" for the way back), size, Planned, Actual avg (green up to 15 min over, amber up to 1 h, red more), trip count.

@@ -5,7 +5,7 @@
  * time, rolls the hour / minute / second wheels to the screenshot's value and
  * hits "Next" to move on. An untouched time keeps the driver's tapped time.
  */
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView, FlatList } from 'react-native';
 import { isoToWall, resolveStopTimes, type StopTimeRow } from '@mercon/shared-types';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
@@ -70,6 +70,9 @@ export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: P
   /** Width of the screenshot strip — one screenshot per page, swiped sideways. */
   const [shotW, setShotW] = useState(0);
   const shotList = useRef<FlatList<OperatorTripDocument>>(null);
+  /** The time rows' list, and where each stop's row sits in it — Next scrolls the new time into view. */
+  const rowsScroll = useRef<ScrollView>(null);
+  const rowY = useRef<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
   /** Which time the wheels are editing: index into stops × FIELDS. */
   const [active, setActive] = useState<number | null>(null);
@@ -174,12 +177,20 @@ export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: P
   };
 
   /** Start editing a time; the strip switches to that stop's own screenshots when it has any. */
-  const edit = (idx: number | null) => {
+  const edit = (idx: number | null, keepShot = false) => {
     setActive(idx);
-    if (idx === null) return;
+    // Next / Back only move the time being edited; the screenshot stays where the operator swiped to.
+    if (idx === null || keepShot) return;
     const id = stops[Math.floor(idx / 2)]?.id;
     if (id && id !== onlyStop && shotsOf(id).length) { setOnlyStop(id); setShotIdx(0); }
   };
+
+  // Bring the time being edited to the top of the rows (the wheels take room below, so it would sit out of view).
+  useEffect(() => {
+    if (active === null) return;
+    const y = rowY.current[stops[Math.floor(active / 2)]?.id ?? ''];
+    if (y !== undefined) rowsScroll.current?.scrollTo({ y: Math.max(0, y - 4), animated: true });
+  }, [active, stops]);
 
   /**
    * A problem with stop i's times, said in full on its own line under the row
@@ -260,7 +271,7 @@ export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: P
                       </Text>
                     </View>
                     {/* Pinch to zoom at either size, also while a time is being edited (TestFlight: "not able to zoom"). */}
-                    <ZoomableImage uri={resolveMediaUrl(item.file_url)} style={[s.shot, tall && (active === null ? s.shotTall : s.shotTallEditing)]} />
+                    <ZoomableImage uri={resolveMediaUrl(item.file_url)} style={[s.shot, active !== null && !tall && s.shotEditing, tall && (active === null ? s.shotTall : s.shotTallEditing)]} />
                   </TouchableOpacity>
                 )}
               />
@@ -288,7 +299,7 @@ export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: P
         </View>
       ) : null}
 
-      <ScrollView style={{ marginTop: 10 }} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={rowsScroll} style={{ marginTop: 10 }} keyboardShouldPersistTaps="handled">
         <View style={s.headRow}>
           <Text style={[s.cap, { flex: 1 }]}>Stop</Text>
           <Text style={[s.cap, s.col]}>Arrived</Text>
@@ -298,7 +309,7 @@ export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: P
           const r = resolved[i];
           const problem = problemOf(i);
           return (
-            <View key={st.id} style={s.rowWrap}>
+            <View key={st.id} style={s.rowWrap} onLayout={(e) => { rowY.current[st.id] = e.nativeEvent.layout.y; }}>
               <View style={s.row}>
                 <View style={{ flex: 1, minWidth: 0, paddingTop: 7 }}>
                   <Text style={s.name} numberOfLines={1}>{stopName(st, i)}</Text>
@@ -366,10 +377,10 @@ export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: P
                 <Text style={s.dayBtnText}>›</Text>
               </TouchableOpacity>
             </View>
-            <TimeWheel key={active} value={wheelStart(active)} onChange={(v) => set(st.id, field, v)} />
+            <TimeWheel compact key={active} value={wheelStart(active)} onChange={(v) => set(st.id, field, v)} />
             <View style={s.panelBtns}>
               {prev !== null ? (
-                <TouchableOpacity style={s.ghostBtn} onPress={() => edit(prev)} accessibilityLabel="Back to the time before">
+                <TouchableOpacity style={s.ghostBtn} onPress={() => edit(prev, true)} accessibilityLabel="Back to the time before">
                   <Text style={s.ghostText} numberOfLines={1}>‹ Back</Text>
                 </TouchableOpacity>
               ) : null}
@@ -377,7 +388,7 @@ export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: P
                 <Text style={s.ghostText}>Done</Text>
               </TouchableOpacity>
               {next !== null ? (
-                <TouchableOpacity style={[s.ghostBtn, { flex: 2 }]} onPress={() => edit(next)}>
+                <TouchableOpacity style={[s.ghostBtn, { flex: 2 }]} onPress={() => edit(next, true)}>
                   <Text style={s.ghostText} numberOfLines={1}>
                     Next: {stopName(stops[Math.floor(next / 2)], Math.floor(next / 2))} · {FIELD_LABEL[FIELDS[next % 2]]} ›
                   </Text>
@@ -402,6 +413,8 @@ export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: P
 
 const s = StyleSheet.create({
   shot: { width: '100%', height: 200, borderRadius: 14, backgroundColor: '#F1F3F7' },
+  // While a time is being edited the picture shrinks so the rows above the wheel stay readable.
+  shotEditing: { height: 120 },
   shotTall: { height: 440 },
   shotTallEditing: { height: 320 },
   shotNo: { position: 'absolute', top: 8, left: 8, zIndex: 2, backgroundColor: 'rgba(17,17,17,0.72)', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 },
