@@ -62,6 +62,9 @@
     "test:trip-log": "node -r ts-node/register --test src/tests/tripLog.test.ts src/tests/tripLogRead.test.ts src/tests/tripLogArrive.test.ts",
     "test:completed-on-create": "node -r ts-node/register --test src/tests/completedOnCreate.test.ts",
     "test:stop-times": "node -r ts-node/register --test src/tests/stopTimes.test.ts",
+    "test:transit-times": "node -r ts-node/register --test src/tests/transitTimes.test.ts src/tests/transitQuotations.test.ts",
+    "test:repeat-trips": "node -r ts-node/register --test src/tests/repeatTrips.test.ts",
+    "test:repeat-trips-db": "node -r ts-node/register --test src/tests/repeatTripsDb.test.ts",
     "test:quotation-payout-clear": "node -r ts-node/register --test src/tests/quotationPayoutClear.test.ts"
   },
   "prisma": {

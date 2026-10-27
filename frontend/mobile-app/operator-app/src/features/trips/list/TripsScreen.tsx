@@ -21,7 +21,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  BookOpen, Building2, CalendarDays, CircleCheckBig, History, MessageCircle, Phone, Plus, Radio, Search, Send, Trash2, Truck, UserRound, X, ArrowUpRight, type LucideIcon,
+  BookOpen, Building2, CalendarDays, CircleCheckBig, Copy, History, MessageCircle, Phone, Plus, Radio, Search, Send, Trash2, Truck, UserRound, X, ArrowUpRight, type LucideIcon,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
@@ -37,6 +37,8 @@ import { askDeleteTrip, canDeleteTrip } from '../edit/movePlan';
 import {
   clashesOf, dayLabel, isLateToStart, dayRange, daysBetween, driverNameOf, driverPhoneOf, historyDayIso, needsAttention, phaseOf, tripDayIso, type TimeFmt,
 } from './tripListModel';
+
+import { RepeatTripsSheet } from './RepeatTripsSheet';
 
 const INK = '#3E3C3D';
 const MUTED = '#5F5F6E';
@@ -75,6 +77,7 @@ export default function TripsScreen() {
   const [historyFilter, setHistoryFilter] = useState<'all' | 'done' | 'cancelled' | 'deleted'>('all');
   // Schedule as a list of cards, or one row per truck across the day.
   const [actionsFor, setActionsFor] = useState<OperatorTrip | null>(null);
+  const [repeatOpen, setRepeatOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const now = useNow();
@@ -330,6 +333,7 @@ export default function TripsScreen() {
                       {selectedCount?.attention ? <Text style={{ color: '#B42318' }}> · {selectedCount.attention} need attention</Text> : null}
                     </Text>
                   </View>
+                  {dayTrips.length ? <RepeatLink onPress={() => { tap(); setRepeatOpen(true); }} /> : null}
                   {ranEarly.map((t) => (
                     <TouchableOpacity key={t.id} style={s.earlyRow} onPress={() => { tap(); open(t); }} activeOpacity={0.7} accessibilityRole="button">
                       <CircleCheckBig size={16} color="#146C3C" />
@@ -376,6 +380,7 @@ export default function TripsScreen() {
                       {historyCount?.cancelled ? <Text> · {historyCount.cancelled} cancelled</Text> : null}
                     </Text>
                   </View>
+                  {historyAll.length ? <RepeatLink onPress={() => { tap(); setRepeatOpen(true); }} /> : null}
                   <FilterChips
                     value={historyFilter}
                     onChange={(v) => setHistoryFilter(v)}
@@ -410,6 +415,16 @@ export default function TripsScreen() {
         </>
       )}
 
+      <RepeatTripsSheet
+        visible={repeatOpen}
+        trips={view === 'schedule' ? dayTrips : historyAll}
+        sourceDay={view === 'schedule' ? selectedDay : historySelected}
+        todayKey={todayKey}
+        f={f}
+        onClose={() => setRepeatOpen(false)}
+        onCreated={() => queryClient.invalidateQueries({ queryKey: ['trips'] })}
+      />
+
       <QuickActions
         trip={actionsFor}
         onClose={() => setActionsFor(null)}
@@ -423,6 +438,12 @@ export default function TripsScreen() {
 // ── Pieces ─────────────────────────────────────────────────────────────────────
 
 const Gap = () => <View style={{ height: 12 }} />;
+const RepeatLink = ({ onPress }: { onPress: () => void }) => (
+  <TouchableOpacity onPress={onPress} style={s.repeat} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Repeat trips">
+    <Copy size={15} color={INK} strokeWidth={2.4} />
+    <Text style={s.repeatText}>Repeat trips…</Text>
+  </TouchableOpacity>
+);
 const Loading = () => <ActivityIndicator color={Colors.primary} style={{ marginVertical: 30 }} />;
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -633,6 +654,8 @@ const s = StyleSheet.create({
   deletedRef: { fontSize: 15, fontWeight: '800', color: INK },
   deletedWhen: { fontSize: 13, color: MUTED },
   dayCount: { fontSize: 13, fontWeight: '700', color: MUTED, flexShrink: 1, textAlign: 'right' },
+  repeat: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E4E4E8' },
+  repeatText: { fontSize: 13, fontWeight: '800', color: INK },
   day: { width: 52, height: 80, borderRadius: 16, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', gap: 1, borderWidth: 1, borderColor: '#EEF0F4' },
   dayOn: { backgroundColor: INK, borderColor: INK },
   dayToday: { borderColor: '#C4432F', borderWidth: 1.5 },

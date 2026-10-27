@@ -9,7 +9,7 @@
 const { spawnSync } = require('child_process');
 const pkg = require('../package.json');
 
-const NEEDS_DATABASE = new Set(['test:quotation-number', 'test:expense-ledger']);
+const NEEDS_DATABASE = new Set(['test:quotation-number', 'test:expense-ledger', 'test:repeat-trips-db']);
 
 const scripts = Object.keys(pkg.scripts).filter((k) => k.startsWith('test:') && k !== 'test:unit' && !NEEDS_DATABASE.has(k));
 const failed = [];
