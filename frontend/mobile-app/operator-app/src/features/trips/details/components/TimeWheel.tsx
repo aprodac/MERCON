@@ -12,14 +12,14 @@ import { INK, MUTED } from './parts';
 
 const ROW = 36;
 const VISIBLE = 5; // odd, so one row sits in the middle
-const PAD = ROW * ((VISIBLE - 1) / 2);
+const padFor = (visible: number) => ROW * ((visible - 1) / 2);
 /** The rows repeat this many times; the wheel sits in the middle copy and hops back to it after each turn. */
 const COPIES = 5;
 const MID = Math.floor(COPIES / 2);
 
 const p2 = (n: number) => String(n).padStart(2, '0');
 
-function Wheel({ count, value, onChange, label }: { count: number; value: number; onChange: (v: number) => void; label: string }) {
+function Wheel({ count, value, onChange, label, visible }: { count: number; value: number; onChange: (v: number) => void; label: string; visible: number }) {
   const ref = useRef<ScrollView>(null);
   const last = useRef(value);
   const home = (v: number) => (MID * count + v) * ROW;
@@ -52,7 +52,7 @@ function Wheel({ count, value, onChange, label }: { count: number; value: number
   };
 
   return (
-    <View style={s.wheel}>
+    <View style={{ width: 64, height: ROW * visible }}>
       <ScrollView
         ref={ref}
         nestedScrollEnabled
@@ -63,7 +63,7 @@ function Wheel({ count, value, onChange, label }: { count: number; value: number
         onLayout={() => ref.current?.scrollTo({ y: home(value), animated: false })}
         onScrollEndDrag={onDragEnd}
         onMomentumScrollEnd={(e) => settle(e.nativeEvent.contentOffset.y)}
-        contentContainerStyle={{ paddingVertical: PAD }}
+        contentContainerStyle={{ paddingVertical: padFor(visible) }}
         accessibilityLabel={label}
       >
         {Array.from({ length: count * COPIES }, (_, row) => {
@@ -86,25 +86,26 @@ function Wheel({ count, value, onChange, label }: { count: number; value: number
   );
 }
 
-export function TimeWheel({ value, onChange }: { value: string; onChange: (clock: string) => void }) {
+/** `compact` shows 3 rows instead of 5, for screens that also need room for a list above. */
+export function TimeWheel({ value, onChange, compact = false }: { value: string; onChange: (clock: string) => void; compact?: boolean }) {
+  const visible = compact ? 3 : VISIBLE;
   const [h = 0, m = 0, sec = 0] = value.split(':').map((x) => Number(x) || 0);
   const emit = (nh: number, nm: number, ns: number) => onChange(`${p2(nh)}:${p2(nm)}:${p2(ns)}`);
   return (
-    <View style={s.wrap}>
-      <View style={s.band} pointerEvents="none" />
-      <Wheel label="Hour" count={24} value={h} onChange={(v) => emit(v, m, sec)} />
+    <View style={[s.wrap, { height: ROW * visible }]}>
+      <View style={[s.band, { top: padFor(visible) }]} pointerEvents="none" />
+      <Wheel visible={visible} label="Hour" count={24} value={h} onChange={(v) => emit(v, m, sec)} />
       <Text style={s.colon}>:</Text>
-      <Wheel label="Minute" count={60} value={m} onChange={(v) => emit(h, v, sec)} />
+      <Wheel visible={visible} label="Minute" count={60} value={m} onChange={(v) => emit(h, v, sec)} />
       <Text style={s.colon}>:</Text>
-      <Wheel label="Second" count={60} value={sec} onChange={(v) => emit(h, m, v)} />
+      <Wheel visible={visible} label="Second" count={60} value={sec} onChange={(v) => emit(h, m, v)} />
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  wrap: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: ROW * VISIBLE },
-  band: { position: 'absolute', left: 0, right: 0, top: PAD, height: ROW, borderRadius: 10, backgroundColor: '#F1F1F3' },
-  wheel: { width: 64, height: ROW * VISIBLE },
+  wrap: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  band: { position: 'absolute', left: 0, right: 0, height: ROW, borderRadius: 10, backgroundColor: '#F1F1F3' },
   item: { height: ROW, alignItems: 'center', justifyContent: 'center' },
   itemText: { fontSize: 20, fontVariant: ['tabular-nums'] },
   itemOn: { color: INK, fontWeight: '700', fontSize: 22 },
