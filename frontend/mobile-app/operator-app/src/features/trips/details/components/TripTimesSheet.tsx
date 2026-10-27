@@ -271,7 +271,7 @@ export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: P
                       </Text>
                     </View>
                     {/* Pinch to zoom at either size, also while a time is being edited (TestFlight: "not able to zoom"). */}
-                    <ZoomableImage uri={resolveMediaUrl(item.file_url)} style={[s.shot, tall && (active === null ? s.shotTall : s.shotTallEditing)]} />
+                    <ZoomableImage uri={resolveMediaUrl(item.file_url)} style={[s.shot, active !== null && !tall && s.shotEditing, tall && (active === null ? s.shotTall : s.shotTallEditing)]} />
                   </TouchableOpacity>
                 )}
               />
@@ -377,7 +377,7 @@ export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: P
                 <Text style={s.dayBtnText}>›</Text>
               </TouchableOpacity>
             </View>
-            <TimeWheel key={active} value={wheelStart(active)} onChange={(v) => set(st.id, field, v)} />
+            <TimeWheel compact key={active} value={wheelStart(active)} onChange={(v) => set(st.id, field, v)} />
             <View style={s.panelBtns}>
               {prev !== null ? (
                 <TouchableOpacity style={s.ghostBtn} onPress={() => edit(prev, true)} accessibilityLabel="Back to the time before">
@@ -413,6 +413,8 @@ export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: P
 
 const s = StyleSheet.create({
   shot: { width: '100%', height: 200, borderRadius: 14, backgroundColor: '#F1F3F7' },
+  // While a time is being edited the picture shrinks so the rows above the wheel stay readable.
+  shotEditing: { height: 120 },
   shotTall: { height: 440 },
   shotTallEditing: { height: 320 },
   shotNo: { position: 'absolute', top: 8, left: 8, zIndex: 2, backgroundColor: 'rgba(17,17,17,0.72)', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 },
