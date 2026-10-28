@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../db';
 import { logger } from '../utils/logger';
 import { getValidUuid } from '../utils/uuid';
-import { clearPlannedTransit, quotationTransits } from '../services/transitQuotations';
+import { allQuotationTransits, clearPlannedTransit, quotationTransits } from '../services/transitQuotations';
 import { PERIODS, loadSavedTransits, setPlannedTransit, transitRouteDetail, transitSummary } from '../services/transitTimes';
 
 export const transitQuery = z.object({
@@ -80,4 +80,11 @@ export const deletePlannedTransit = async (req: Request, res: Response) => {
     if (err?.message === 'INVALID_ROUTE_KEY') return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Not a route key' } });
     fail(res, err, 'Could not clear the planned time');
   }
+};
+
+/** GET /customers/transit-overview — every customer's quotation routes with Given TT, actual and map points (Transit times page). */
+export const getTransitOverview = async (_req: Request, res: Response) => {
+  try {
+    res.json({ success: true, data: await allQuotationTransits() });
+  } catch (err) { fail(res, err, 'Could not load the routes'); }
 };

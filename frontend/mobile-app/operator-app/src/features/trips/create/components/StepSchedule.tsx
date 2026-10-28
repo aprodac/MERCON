@@ -113,7 +113,7 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
       hitSlop={8}
     >
       <Text style={styles.transitLink}>
-        {form.savedOutbound != null && !form.dropoffTouched ? `Planned with the saved ${transitText(form.savedOutbound)} for this route · ` : ''}See transit times
+        {form.savedOutbound != null && !form.dropoffTouched ? `Given TT ${transitText(form.savedOutbound)} for this route · ` : ''}See transit times
       </Text>
     </TouchableOpacity>
   ) : null;
