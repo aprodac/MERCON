@@ -1,7 +1,7 @@
 import { normalizeLineTypeToken, normalizeTruckClass } from '@mercon/shared-types';
 import { prisma } from '../db';
 import { getDrivingRouteThrough, MAX_ROUTE_POINTS, type GeoPoint } from './routing/routeProvider';
-import { ANY_SIZE, loadCustomerSamples, loadSavedTransits, placeKey, routeKeyOf, savedFor, type Leg, type LegSample, type SavedTransit } from './transitTimes';
+import { ANY_SIZE, loadCustomerSamples, loadSamplesByCustomer, loadSavedTransits, placeKey, routeKeyOf, savedFor, type Leg, type LegSample, type SavedTransit } from './transitTimes';
 
 /**
  * Transit times per quotation line: for each leg of each of the customer's
@@ -29,6 +29,8 @@ export interface QuotationLegRow {
   savedMin: number | null;
   actualAvgMin: number | null;
   trips: number;
+  /** The leg's stops that are on the map, in order, as [lng, lat] — the route preview. */
+  points: Array<[number, number]>;
 }
 
 export interface QuotationTransit {
@@ -94,19 +96,27 @@ export function legStats(samples: LegSample[], key: string) {
   return { trips: mine.length, avg: mine.length ? Math.round(mine.reduce((a, s) => a + s.actualMin, 0) / mine.length) : null };
 }
 
+const QUOTE_SELECT = {
+  id: true, quotation_number: true, name: true, line_type: true, vehicle_class: true, source_vehicle_label: true,
+  stops: { select: { sequence: true, leg_index: true, source_label: true, location: { select: { name: true, lat: true, lng: true } } } },
+} as const;
+
+interface QuoteRow {
+  id: string; quotation_number: number | null; name: string; line_type: string | null;
+  vehicle_class: string | null; source_vehicle_label: string | null; stops: unknown[];
+}
+
 export async function quotationTransits(customerId: string, days = 90): Promise<QuotationTransit[]> {
   const [quotes, saved, { samples }] = await Promise.all([
-    prisma.quotation.findMany({
-      where: { customerId, deletedAt: null, is_active: true },
-      select: {
-        id: true, quotation_number: true, name: true, line_type: true, vehicle_class: true, source_vehicle_label: true,
-        stops: { select: { sequence: true, leg_index: true, source_label: true, location: { select: { name: true, lat: true, lng: true } } } },
-      },
-      orderBy: [{ quotation_number: 'asc' }],
-    }),
+    prisma.quotation.findMany({ where: { customerId, deletedAt: null, is_active: true }, select: QUOTE_SELECT, orderBy: [{ quotation_number: 'asc' }] }),
     loadSavedTransits(customerId),
     loadCustomerSamples(customerId, days),
   ]);
+  return buildQuotationTransits(quotes as QuoteRow[], saved, samples);
+}
+
+/** One customer's quotation legs: estimate, saved time, actual average and the stops for the map. */
+export async function buildQuotationTransits(quotes: QuoteRow[], saved: SavedTransit[], samples: LegSample[]): Promise<QuotationTransit[]> {
   const savedBy = new Map(saved.map((r: SavedTransit) => [routeKeyOf(r.leg === 'return' ? 'return' : 'out', r.origin_key, r.destination_key, r.truck_class), r.planned_minutes]));
 
   const out: QuotationTransit[] = [];
@@ -131,11 +141,46 @@ export async function quotationTransits(customerId: string, days = 90): Promise<
         estimateSource = d.source;
       }
       const st = legStats(samples, key);
-      legs.push({ key, leg: l.leg, from, to, via: Math.max(0, l.stops.length - 2), size, estimatedMin, estimateSource, savedMin: savedFor(savedBy, key) ?? null, actualAvgMin: st.avg, trips: st.trips });
+      legs.push({
+        key, leg: l.leg, from, to, via: Math.max(0, l.stops.length - 2), size, estimatedMin, estimateSource,
+        savedMin: savedFor(savedBy, key) ?? null, actualAvgMin: st.avg, trips: st.trips,
+        points: pts.map((p) => [p.lng, p.lat] as [number, number]),
+      });
     }
     if (legs.length) out.push({ quotationId: q.id, number: q.quotation_number, name: q.name, lineType: q.line_type, size, legs });
   }
   return out;
+}
+
+export interface CustomerRouteTransits { customerId: string; name: string; quotations: QuotationTransit[] }
+
+/**
+ * Every customer's quotation routes for the Transit times page (sidebar): one
+ * query each for quotations, saved times and finished trips, grouped by customer.
+ */
+export async function allQuotationTransits(days = 90): Promise<CustomerRouteTransits[]> {
+  const [quotes, saved, byCustomer] = await Promise.all([
+    prisma.quotation.findMany({
+      where: { deletedAt: null, is_active: true, customer: { deletedAt: null } },
+      select: { ...QUOTE_SELECT, customerId: true, customer: { select: { name: true } } },
+      orderBy: [{ quotation_number: 'asc' }],
+    }),
+    prisma.customerRouteTransit.findMany({ select: { customerId: true, origin_key: true, destination_key: true, leg: true, truck_class: true, planned_minutes: true } }),
+    loadSamplesByCustomer(days),
+  ]);
+  const groups = new Map<string, { name: string; quotes: QuoteRow[] }>();
+  for (const q of quotes) {
+    if (!q.customerId) continue;
+    const g = groups.get(q.customerId) ?? { name: q.customer?.name ?? 'Customer', quotes: [] };
+    g.quotes.push(q as unknown as QuoteRow);
+    groups.set(q.customerId, g);
+  }
+  const out: CustomerRouteTransits[] = [];
+  for (const [customerId, g] of groups) {
+    const quotations = await buildQuotationTransits(g.quotes, saved.filter((r) => r.customerId === customerId), byCustomer.get(customerId) ?? []);
+    if (quotations.length) out.push({ customerId, name: g.name, quotations });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** Back to the estimate: removes the saved time of one route and size — of every size for an ANY key. */

@@ -829,8 +829,12 @@ export interface QuotationTransitLeg {
   key: string; leg: 'out' | 'return'; from: string; to: string; via: number; size: string;
   estimatedMin: number | null; estimateSource: 'road' | 'approx' | 'duty' | null;
   savedMin: number | null; actualAvgMin: number | null; trips: number;
+  /** The leg's located stops, in order, as [lng, lat] (older API: missing). */
+  points?: [number, number][];
 }
 export interface QuotationTransit { quotationId: string; number: number | null; name: string; lineType: string | null; size: string; legs: QuotationTransitLeg[] }
+/** One customer's quotation routes — the Transit times page (sidebar). */
+export interface CustomerRouteTransits { customerId: string; name: string; quotations: QuotationTransit[] }
 export interface SavedTransit { origin_key: string; destination_key: string; leg: string; truck_class: string; planned_minutes: number }
 
 export type RepeatResult =
@@ -1160,6 +1164,12 @@ export const operatorService = {
   async quotationTransits(customerId: string): Promise<QuotationTransit[]> {
     const { data } = await api.get(`/customers/${customerId}/transit-times/quotations`);
     return (data?.data ?? []) as QuotationTransit[];
+  },
+
+  /** Every customer's quotation routes with Given TT, actual average and map points. */
+  async transitOverview(): Promise<CustomerRouteTransits[]> {
+    const { data } = await api.get('/customers/transit-overview');
+    return (data?.data ?? []) as CustomerRouteTransits[];
   },
 
   /** Removes a saved planned time: new trips on that route go back to the estimate. */

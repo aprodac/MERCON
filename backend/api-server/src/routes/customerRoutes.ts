@@ -5,7 +5,7 @@ import { authorizeRoles } from '../middlewares/rbac';
 import { validate } from '../middlewares/validate';
 import { storeInlineImages } from '../middlewares/inlineImages';
 import { createCustomerBody, updateCustomerBody, listQuery, idParam } from '../schemas';
-import { getTransitSummary, getTransitRoute, getSavedTransits, putPlannedTransit, getQuotationTransits, deletePlannedTransit, transitQuery, transitRouteQuery, transitPlannedBody, transitKeyQuery } from '../controllers/transitTimesController';
+import { getTransitSummary, getTransitRoute, getSavedTransits, putPlannedTransit, getQuotationTransits, deletePlannedTransit, getTransitOverview, transitQuery, transitRouteQuery, transitPlannedBody, transitKeyQuery } from '../controllers/transitTimesController';
 import { getCustomerTrackingLink, getCustomerTrackingOpens, trackingLinkBody } from '../controllers/trackingController';
 
 const router = Router();
@@ -15,6 +15,7 @@ router.use(authorizeRoles('Admin', 'Operator'));
 
 router.get('/', validate({ query: listQuery }), getCustomers);
 router.get('/summary', getCustomerSummary);
+router.get('/transit-overview', getTransitOverview);
 router.post('/import', bulkImportCustomers);
 router.post('/', validate({ body: createCustomerBody }), storeInlineImages('logo_url'), createCustomer);
 router.get('/:id/transit-times', validate({ params: idParam, query: transitQuery }), getTransitSummary);

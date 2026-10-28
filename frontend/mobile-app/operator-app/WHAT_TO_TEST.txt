@@ -5,6 +5,13 @@ FIX: CHECK TIMES "NEXT" (27 Oct)
 4. Opening Check times from a stop still starts on that stop's first screenshot.
 5. While a time is being edited the screenshot is shorter (tap it to enlarge) and the wheels show 3 rows, so about 150 px more of the time list stays visible.
 
+NEW: TRANSIT TIMES PAGE IN THE MENU (28 Oct)
+1. Menu (☰) > Fleet > Transit times. Map on top with every customer's routes; numbers: routes, Given TT set, running late.
+2. Tap a route card: the map zooms to it, bold blue with A (start) and B (end). Tap it again to see all routes.
+3. Each card: small route drawing, Given TT (blue when you set it), actual average coloured (green / amber / red), +/- against the TT, trips, ~km, quotation numbers.
+4. Search a place, customer or "#3"; customer chips; filters All / Given TT set / Not set / Running late.
+5. On the picked card: Set TT, Use actual (3+ trips), Reset, "Trips & detail" (opens that customer's Transit times).
+
 NEW: TESTFLIGHT ROUND 4 (28 Oct)
 1. Transit times > Quotations: each route shows once (even if it is on several quotations or truck sizes), with the quotation numbers under it. Search box at the top (a place or "#3").
 2. The big number is "Given TT" (no Estimate column). "Set TT" / "Use actual" / "Reset" — the time applies to every truck size. New trip on that route with a 5 TON and a 40 FEET: both plan the same Given TT.

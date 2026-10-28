@@ -96,9 +96,11 @@ export interface QuotationRoute {
   trips: number;
   /** "#2", "#5 Khamis daily" — the quotations it comes from. */
   quotes: string[];
+  /** The located stops of the route, [lng, lat] — the map preview; empty when not located. */
+  points: [number, number][];
 }
 
-type QLeg = { key: string; leg: 'out' | 'return'; from: string; to: string; via: number; estimatedMin: number | null; estimateSource: 'road' | 'approx' | 'duty' | null; savedMin: number | null; actualAvgMin: number | null; trips: number };
+type QLeg = { key: string; leg: 'out' | 'return'; from: string; to: string; via: number; estimatedMin: number | null; estimateSource: 'road' | 'approx' | 'duty' | null; savedMin: number | null; actualAvgMin: number | null; trips: number; points?: [number, number][] };
 
 /** Groups the quotations' legs by route (places + leg; a duty line apart), across truck sizes. */
 export function quotationRoutes(quotes: { number: number | null; name: string; legs: QLeg[] }[]): QuotationRoute[] {
@@ -110,7 +112,7 @@ export function quotationRoutes(quotes: { number: number | null; name: string; l
     for (const l of q.legs) {
       const duty = l.estimateSource === 'duty';
       const id = `${l.leg}|${placeKey(l.from)}|${placeKey(l.to)}${duty ? '|duty' : ''}`;
-      const g = by.get(id) ?? { id, key: anySizeKey(l.key), leg: l.leg, from: l.from, to: l.to, via: l.via, givenMin: null, saved: false, source: l.estimateSource, actualAvgMin: null, trips: 0, quotes: [], sum: 0 };
+      const g = by.get(id) ?? { id, key: anySizeKey(l.key), leg: l.leg, from: l.from, to: l.to, via: l.via, givenMin: null, saved: false, source: l.estimateSource, actualAvgMin: null, trips: 0, quotes: [], points: [], sum: 0 };
       if (l.savedMin != null && !g.saved) { g.givenMin = l.savedMin; g.saved = true; }
       if (!g.saved && g.givenMin == null && l.estimatedMin != null) { g.givenMin = l.estimatedMin; g.source = l.estimateSource; }
       if (l.actualAvgMin != null && l.trips && !counted.has(l.key)) {
@@ -118,6 +120,7 @@ export function quotationRoutes(quotes: { number: number | null; name: string; l
         g.sum += l.actualAvgMin * l.trips;
         g.trips += l.trips;
       }
+      if (g.points.length < 2 && (l.points?.length ?? 0) >= 2) g.points = l.points!;
       if (!g.quotes.includes(label)) g.quotes.push(label);
       by.set(id, g);
     }
@@ -128,3 +131,39 @@ export function quotationRoutes(quotes: { number: number | null; name: string; l
 /** A route matches a search on its places or a quotation it comes from. */
 export const quotationRouteMatches = (r: QuotationRoute, search: string) =>
   routeMatches({ from: r.from, to: `${r.to} ${r.quotes.join(' ')}` }, search);
+
+/** A route of the Transit times page: a quotation route with its customer. */
+export interface OverviewRoute extends QuotationRoute { customerId: string; customerName: string; uid: string }
+
+/** Every customer's routes, each once, for the Transit times page. */
+export function overviewRoutes(customers: { customerId: string; name: string; quotations: { number: number | null; name: string; legs: QLeg[] }[] }[]): OverviewRoute[] {
+  return customers.flatMap((c) => quotationRoutes(c.quotations).map((r) => ({ ...r, customerId: c.customerId, customerName: c.name, uid: `${c.customerId}~${r.id}` })));
+}
+
+/** How the actual average compares with the Given TT: null with no trips or no Given TT. */
+export const routeTone = (r: { actualAvgMin: number | null; givenMin: number | null; trips: number }) =>
+  r.trips ? toneFor(r.actualAvgMin, r.givenMin) : null;
+
+/** The bounding box of some [lng, lat] points, padded so a single place still frames: [w, s, e, n]. */
+export function boundsOf(points: [number, number][]): [number, number, number, number] | null {
+  if (!points.length) return null;
+  let [w, s, e, n] = [points[0][0], points[0][1], points[0][0], points[0][1]];
+  for (const [x, y] of points) { w = Math.min(w, x); e = Math.max(e, x); s = Math.min(s, y); n = Math.max(n, y); }
+  if (e - w < 0.02) { w -= 0.05; e += 0.05; }
+  if (n - s < 0.02) { s -= 0.05; n += 0.05; }
+  return [w, s, e, n];
+}
+
+/** Road-ish km between the stops (straight line × 1.22, as the API's fallback estimate). */
+export function routeKm(points: [number, number][]): number | null {
+  if (points.length < 2) return null;
+  let km = 0;
+  const r = Math.PI / 180;
+  for (let i = 1; i < points.length; i++) {
+    const [lng1, lat1] = points[i - 1];
+    const [lng2, lat2] = points[i];
+    const h = Math.sin(((lat2 - lat1) * r) / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(((lng2 - lng1) * r) / 2) ** 2;
+    km += 2 * 6371 * Math.asin(Math.sqrt(h)) * 1.22;
+  }
+  return Math.round(km);
+}

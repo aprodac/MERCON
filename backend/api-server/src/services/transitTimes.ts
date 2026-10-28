@@ -335,6 +335,31 @@ export function samplesOfTrips(trips: TripFacts[]): { samples: LegSample[]; skip
 /** "Planned" for new trips: leg times a customer's trips should be planned with. */
 export const FINISHED: TripStatus[] = [TripStatus.Completed, TripStatus.Invoiced];
 
+const SAMPLE_SELECT = {
+  id: true, ref_id: true, vehicle_type: true, planned_start: true, planned_end: true, actual_start: true, actual_end: true,
+  vehicle: { select: { capacity_kg: true, asset_type: true } },
+  stops: {
+    where: { deletedAt: null },
+    select: { stop_sequence: true, leg_index: true, location_name: true, location: { select: { name: true } }, planned_arrival: true, actual_arrival: true, actual_departure: true },
+  },
+} as const;
+
+/** Every customer's finished-trip samples in one query, by customer — the Transit times page. */
+export async function loadSamplesByCustomer(days: number, now = new Date()): Promise<Map<string, LegSample[]>> {
+  const from = new Date(now.getTime() - (days + 3) * 86_400_000);
+  const trips = await prisma.trip.findMany({
+    where: { deletedAt: null, status: { in: FINISHED }, planned_start: { gte: from } },
+    select: { ...SAMPLE_SELECT, customerId: true },
+  });
+  const by = new Map<string, TripFacts[]>();
+  for (const t of trips) {
+    const list = by.get(t.customerId as string) ?? [];
+    list.push(t as unknown as TripFacts);
+    by.set(t.customerId as string, list);
+  }
+  return new Map([...by].map(([id, list]) => [id, samplesOfTrips(list).samples]));
+}
+
 export async function loadCustomerSamples(customerId: string, days: number, now = new Date()) {
   // A trip's loading departure can lag its planned start by a day or two.
   const from = new Date(now.getTime() - (days + 3) * 86_400_000);
