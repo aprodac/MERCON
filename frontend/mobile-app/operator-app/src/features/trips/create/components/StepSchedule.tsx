@@ -104,15 +104,16 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
       style={{ flex: 1 }}
     />
   );
-  // Planned vs real transit times of this customer; says so when this route is planned with a saved time.
+  // Planned vs real transit times of this customer, opened on this truck size; says so when the drop-off
+  // still follows a saved time (not once the user set the drop-off by hand).
   const transitLink = form.customerId ? (
     <TouchableOpacity
-      onPress={() => { tap(); router.push({ pathname: '/transit-times', params: { customerId: form.customerId, customerName: form.selectedCustomer?.name ?? '' } }); }}
+      onPress={() => { tap(); router.push({ pathname: '/transit-times', params: { customerId: form.customerId, customerName: form.selectedCustomer?.name ?? '', size: form.vehicleType ?? '' } }); }}
       accessibilityRole="link"
       hitSlop={8}
     >
       <Text style={styles.transitLink}>
-        {form.savedOutbound != null ? `Planned with the saved ${transitText(form.savedOutbound)} for this route · ` : ''}See transit times
+        {form.savedOutbound != null && !form.dropoffTouched ? `Planned with the saved ${transitText(form.savedOutbound)} for this route · ` : ''}See transit times
       </Text>
     </TouchableOpacity>
   ) : null;
