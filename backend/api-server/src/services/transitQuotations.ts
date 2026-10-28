@@ -1,7 +1,7 @@
 import { normalizeLineTypeToken, normalizeTruckClass } from '@mercon/shared-types';
 import { prisma } from '../db';
 import { getDrivingRouteThrough, MAX_ROUTE_POINTS, type GeoPoint } from './routing/routeProvider';
-import { loadCustomerSamples, loadSavedTransits, placeKey, routeKeyOf, type Leg, type LegSample, type SavedTransit } from './transitTimes';
+import { ANY_SIZE, loadCustomerSamples, loadSavedTransits, placeKey, routeKeyOf, savedFor, type Leg, type LegSample, type SavedTransit } from './transitTimes';
 
 /**
  * Transit times per quotation line: for each leg of each of the customer's
@@ -131,17 +131,19 @@ export async function quotationTransits(customerId: string, days = 90): Promise<
         estimateSource = d.source;
       }
       const st = legStats(samples, key);
-      legs.push({ key, leg: l.leg, from, to, via: Math.max(0, l.stops.length - 2), size, estimatedMin, estimateSource, savedMin: savedBy.get(key) ?? null, actualAvgMin: st.avg, trips: st.trips });
+      legs.push({ key, leg: l.leg, from, to, via: Math.max(0, l.stops.length - 2), size, estimatedMin, estimateSource, savedMin: savedFor(savedBy, key) ?? null, actualAvgMin: st.avg, trips: st.trips });
     }
     if (legs.length) out.push({ quotationId: q.id, number: q.quotation_number, name: q.name, lineType: q.line_type, size, legs });
   }
   return out;
 }
 
-/** Back to the estimate: removes the saved time of one route and size. */
+/** Back to the estimate: removes the saved time of one route and size — of every size for an ANY key. */
 export async function clearPlannedTransit(customerId: string, key: string) {
   const [leg, origin_key, destination_key, truck_class] = key.split('|');
   if (!origin_key || !destination_key || !truck_class || (leg !== 'out' && leg !== 'return')) throw new Error('INVALID_ROUTE_KEY');
-  const r = await prisma.customerRouteTransit.deleteMany({ where: { customerId, origin_key, destination_key, leg, truck_class } });
+  const r = await prisma.customerRouteTransit.deleteMany({
+    where: { customerId, origin_key, destination_key, leg, ...(truck_class === ANY_SIZE ? {} : { truck_class }) },
+  });
   return { removed: r.count };
 }

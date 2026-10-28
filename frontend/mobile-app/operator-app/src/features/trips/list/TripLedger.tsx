@@ -15,7 +15,7 @@ import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import type { OperatorTrip } from '../../../lib/operator';
 import { PHASE_STYLE, phaseOf, plateOf, routeOf, statusText, type TimeFmt } from './tripListModel';
-import { canDeleteTrip, deleteTrips } from '../edit/movePlan';
+import { COMPLETED_DELETE_WARNING, canDeleteTrip, deleteTrips } from '../edit/movePlan';
 
 const INK = '#3E3C3D';
 const MUTED = '#6E6E80';
@@ -184,9 +184,10 @@ export function TripLedger({ f, todayKey, scope, onOpen }: {
     if (!picked?.size) return;
     const ids = [...picked];
     const refs = rows.filter((r) => picked.has(r.key)).map((r) => r.ref);
+    const done = rows.filter((r) => picked.has(r.key) && r.trip?.status === 'Completed').length;
     Alert.alert(
       `Delete ${ids.length} trip${ids.length === 1 ? '' : 's'}?`,
-      `${refs.slice(0, 8).join(', ')}${refs.length > 8 ? ` +${refs.length - 8} more` : ''}\n\nThey disappear from the trip lists, the driver app and the customer link. Admins can restore them from the Recycle bin.`,
+      `${refs.slice(0, 8).join(', ')}${refs.length > 8 ? ` +${refs.length - 8} more` : ''}\n\nThey disappear from the trip lists, the driver app and the customer link. Admins can restore them from the Recycle bin.${done ? `\n\n${done} ${done === 1 ? 'is' : 'are'} delivered: ${COMPLETED_DELETE_WARNING.replace('This trip was delivered: ', '')}` : ''}`,
       [
         { text: 'Keep', style: 'cancel' },
         {

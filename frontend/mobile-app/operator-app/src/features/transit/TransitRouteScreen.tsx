@@ -1,7 +1,7 @@
 /**
  * Route: /transit-route — one route of a customer: planned vs actual average,
  * the slowest 1 in 10, where the time goes, and (Admin/Operator) "Use <actual>
- * as the planned time for new trips", a time set by hand, or back to the estimate.
+ * as the planned time for new trips", a time set by hand, or a reset — for every truck size.
  */
 import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, RefreshControl } from 'react-native';
@@ -19,7 +19,7 @@ import { operatorService } from '../../lib/operator';
 import { Card, INK, MUTED, PAGE, tap } from '../trips/details/components/parts';
 import { niceName } from '../trips/create/components/ui';
 import { TransitSheet } from '../trips/create/components/TransitSheet';
-import { PERIOD_OPTIONS, TONE, hm, overText, toneFor } from './transitModel';
+import { PERIOD_OPTIONS, TONE, anySizeKey, hm, overText, sizeLabel, toneFor } from './transitModel';
 
 const PART_LABEL = { loading: 'Loading at pickup', road: 'Pickup → drop-off', offload: 'Waiting / offloading' } as const;
 
@@ -63,12 +63,12 @@ export default function TransitRouteScreen() {
       setSaving(false);
     }
   };
-  const applyActual = () => d?.suggestedMin != null && run(() => operatorService.setPlannedTransit(cid, d.key, d.suggestedMin!), 'Saved — new trips will plan with it', 'Couldn’t save the planned time');
+  const applyActual = () => d?.suggestedMin != null && run(() => operatorService.setPlannedTransit(cid, anySizeKey(d.key), d.suggestedMin!), 'Saved — new trips plan it, every truck size', 'Couldn’t save the planned time');
   const setByHand = (min: number) => {
     setEditing(false);
-    if (d) run(() => operatorService.setPlannedTransit(cid, d.key, min), `New trips will plan ${hm(min)}`, 'Couldn’t save the planned time');
+    if (d) run(() => operatorService.setPlannedTransit(cid, anySizeKey(d.key), min), `New trips plan ${hm(min)}, every truck size`, 'Couldn’t save the planned time');
   };
-  const clearSaved = () => d && run(() => operatorService.clearPlannedTransit(cid, d.key), 'Back to the estimate for new trips', 'Couldn’t reset the time');
+  const clearSaved = () => d && run(() => operatorService.clearPlannedTransit(cid, anySizeKey(d.key)), 'Given TT reset — new trips plan what Create trip works out', 'Couldn’t reset the time');
 
   const tone = d?.tone ? TONE[d.tone] : null;
   const route = d ? `${niceName(d.from)} → ${niceName(d.to)}` : '';
@@ -104,7 +104,7 @@ export default function TransitRouteScreen() {
             <View style={{ gap: 6 }}>
               <Text style={s.title}>{route}</Text>
               <View style={s.tags}>
-                <View style={s.tag}><Text style={s.tagStrong}>{d.size}</Text></View>
+                <View style={s.tag}><Text style={s.tagStrong}>{sizeLabel(d.size)}</Text></View>
                 {d.leg === 'return' ? <View style={s.tag}><Text style={s.tagText}>Way back</Text></View> : null}
                 <View style={s.tag}><Text style={s.tagText}>{`${d.trips} ${d.trips === 1 ? 'trip' : 'trips'} · ${d.days} days`}</Text></View>
                 {q.isFetching && q.isPlaceholderData ? <ActivityIndicator size="small" color={MUTED} /> : null}
@@ -112,7 +112,7 @@ export default function TransitRouteScreen() {
             </View>
 
             <Card style={s.stats}>
-              <Stat label="Planned" value={hm(d.plannedMin)} sub={d.plannedSaved ? 'saved time' : 'as booked'} />
+              <Stat label="Given TT" value={hm(d.plannedMin)} sub={d.plannedSaved ? 'set by you' : 'as booked'} />
               <Stat label="Actual avg" value={hm(d.actualAvgMin)} color={tone?.fg} bg={tone?.bg} sub={overText(d.actualAvgMin, d.plannedMin) || (d.trips ? '' : 'no trips')} />
               <Stat label="Slowest 1 in 10" value={hm(d.p90Min)} />
             </Card>
@@ -122,8 +122,8 @@ export default function TransitRouteScreen() {
                 <Text style={s.h}>New trips on this route</Text>
                 <Text style={s.explain}>
                   {d.plannedSaved
-                    ? `Create trip plans ${hm(d.plannedMin)} (saved). Trips already created keep their own times.`
-                    : 'Create trip plans with its road estimate (or the duty length). Save a time to plan with it instead.'}
+                    ? `Given TT ${hm(d.plannedMin)}: Create trip plans it in every truck size. Trips already created keep their own times.`
+                    : 'Create trip plans with the road route (or the duty length). Set a TT to plan with it instead, in every truck size.'}
                 </Text>
                 {d.canUseActual && d.suggestedMin != null ? (
                   <TouchableOpacity style={s.use} onPress={() => { tap(); setConfirm({ kind: 'actual' }); }} activeOpacity={0.85} accessibilityRole="button" disabled={saving}>
@@ -133,12 +133,12 @@ export default function TransitRouteScreen() {
                 <View style={s.actions}>
                   <TouchableOpacity style={s.soft} onPress={() => { tap(); setEditing(true); }} disabled={saving} accessibilityRole="button">
                     <SquarePen size={14} color={INK} strokeWidth={2.4} />
-                    <Text style={s.softText}>Set time</Text>
+                    <Text style={s.softText}>Set TT</Text>
                   </TouchableOpacity>
                   {d.plannedSaved ? (
                     <TouchableOpacity style={s.soft} onPress={() => { tap(); setConfirm({ kind: 'clear' }); }} disabled={saving} accessibilityRole="button">
                       <RotateCcw size={14} color={INK} strokeWidth={2.4} />
-                      <Text style={s.softText}>Use estimate</Text>
+                      <Text style={s.softText}>Reset</Text>
                     </TouchableOpacity>
                   ) : null}
                 </View>
@@ -195,24 +195,24 @@ export default function TransitRouteScreen() {
         )}
       </ScrollView>
 
-      <AppModal visible={confirm != null} onClose={() => !saving && setConfirm(null)} type="bottom-sheet" title={confirm?.kind === 'clear' ? 'Go back to the estimate?' : 'Use the actual time?'}>
+      <AppModal visible={confirm != null} onClose={() => !saving && setConfirm(null)} type="bottom-sheet" title={confirm?.kind === 'clear' ? 'Reset the Given TT?' : 'Use the actual time?'}>
         <View style={{ gap: 16, paddingBottom: 12 }}>
           <Text style={s.confirm}>
             {!d ? '' : confirm?.kind === 'clear'
-              ? `New trips on ${route} ${d.size} will plan with Create trip’s estimate instead of ${hm(d.plannedMin)}. Existing trips don’t change.`
-              : `New trips on ${route} ${d.size} will plan ${hm(d.suggestedMin)} instead of ${hm(d.plannedMin)}. Existing trips don’t change.`}
+              ? `New trips on ${route} will plan what Create trip works out (road route or duty length) instead of ${hm(d.plannedMin)}, in every truck size. Existing trips don’t change.`
+              : `New trips on ${route} will plan ${hm(d.suggestedMin)} instead of ${hm(d.plannedMin)}, in every truck size. Existing trips don’t change.`}
           </Text>
           <View style={s.actions}>
             <TouchableOpacity style={s.cancel} onPress={() => setConfirm(null)} disabled={saving}><Text style={s.cancelText}>Cancel</Text></TouchableOpacity>
             <TouchableOpacity style={s.ok} onPress={confirm?.kind === 'clear' ? clearSaved : applyActual} disabled={saving} accessibilityRole="button">
-              {saving ? <ActivityIndicator color={Colors.white} /> : <Text style={s.okText}>{confirm?.kind === 'clear' ? 'Use estimate' : `Use ${d ? hm(d.suggestedMin) : ''}`}</Text>}
+              {saving ? <ActivityIndicator color={Colors.white} /> : <Text style={s.okText}>{confirm?.kind === 'clear' ? 'Reset' : `Use ${d ? hm(d.suggestedMin) : ''}`}</Text>}
             </TouchableOpacity>
           </View>
         </View>
       </AppModal>
       <TransitSheet
         visible={editing}
-        title={d ? `${route} · ${d.size}` : 'Transit time'}
+        title={d ? `${route} · every truck size` : 'Transit time'}
         value={d?.plannedMin ?? d?.suggestedMin ?? null}
         arrivalText={(m) => (d?.actualAvgMin != null ? `Actual avg ${hm(d.actualAvgMin)} · new trips plan ${hm(m)}` : `New trips plan ${hm(m)}`)}
         onDone={setByHand}

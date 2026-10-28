@@ -16,7 +16,7 @@ import { PageTitle } from '@/components/pageCues';
 import { operatorService, type TransitRow } from '../../lib/operator';
 import { Card, INK, MUTED, PAGE, tap } from '../trips/details/components/parts';
 import { niceName } from '../trips/create/components/ui';
-import { PERIOD_OPTIONS, TONE, hm, onTimeTone, overText, routeMatches, skippedText } from './transitModel';
+import { PERIOD_OPTIONS, TONE, hm, onTimeTone, overText, routeMatches, sizeLabel, skippedText } from './transitModel';
 import { QuotationTransits } from './QuotationTransits';
 
 /** Above this many routes a search box shows. */
@@ -173,7 +173,7 @@ export function RouteCard({ r, onPress }: { r: TransitRow; onPress: () => void }
           <View style={{ flex: 1, gap: 2 }}>
             <Text style={s.route} numberOfLines={2}>{`${niceName(r.from)} → ${niceName(r.to)}`}</Text>
             <View style={s.tags}>
-              <View style={s.sizeChip}><Text style={s.sizeText}>{r.size}</Text></View>
+              <View style={s.sizeChip}><Text style={s.sizeText}>{sizeLabel(r.size)}</Text></View>
               {r.leg === 'return' ? <View style={s.sizeChip}><Text style={s.tagText}>Way back</Text></View> : null}
               {r.plannedSaved ? <View style={[s.sizeChip, s.savedChip]}><Text style={[s.tagText, s.savedText]}>Saved time</Text></View> : null}
             </View>
@@ -184,7 +184,7 @@ export function RouteCard({ r, onPress }: { r: TransitRow; onPress: () => void }
           <Text style={s.none}>{`No trips in this period · new trips plan ${hm(r.plannedMin)}`}</Text>
         ) : (
           <View style={s.nums}>
-            <View style={s.num}><Text style={s.numLabel}>Planned</Text><Text style={s.numValue}>{hm(r.plannedMin)}</Text></View>
+            <View style={s.num}><Text style={s.numLabel}>Given TT</Text><Text style={s.numValue}>{hm(r.plannedMin)}</Text></View>
             <View style={s.num}>
               <Text style={s.numLabel}>Actual avg</Text>
               <View style={[s.actual, tone && { backgroundColor: tone.bg }]}><Text style={[s.numValue, tone && { color: tone.fg }]}>{hm(r.actualAvgMin)}</Text></View>

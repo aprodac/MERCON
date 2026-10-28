@@ -5,6 +5,13 @@ FIX: CHECK TIMES "NEXT" (27 Oct)
 4. Opening Check times from a stop still starts on that stop's first screenshot.
 5. While a time is being edited the screenshot is shorter (tap it to enlarge) and the wheels show 3 rows, so about 150 px more of the time list stays visible.
 
+NEW: TESTFLIGHT ROUND 4 (28 Oct)
+1. Transit times > Quotations: each route shows once (even if it is on several quotations or truck sizes), with the quotation numbers under it. Search box at the top (a place or "#3").
+2. The big number is "Given TT" (no Estimate column). "Set TT" / "Use actual" / "Reset" — the time applies to every truck size. New trip on that route with a 5 TON and a 40 FEET: both plan the same Given TT.
+3. Route screen: "Given TT", "Set TT", "Reset" — also every truck size.
+4. Delete a Completed trip whose charges were reviewed: the warning says the photos / POD go with it; it deletes; the other operators get a notification "Completed trip TRP-… deleted". An invoiced or paid trip still can't be deleted.
+5. Check times: a stop already checked and saved shows its times in green with "✓ checked".
+
 NEW: TRANSIT TIMES POLISH (28 Oct)
 1. Customers > customer > Transit times: customer name under the title; size chips and a 7 / 30 / 90 days switch. Changing a filter keeps the old list (faded) until the new one loads.
 2. Each route card: "Saved time" tag when a time was saved, "Way back" for the return leg, and +/- against the plan under Actual avg.

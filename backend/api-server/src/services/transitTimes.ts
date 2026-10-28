@@ -76,6 +76,16 @@ export const placeKey = (name: string | null | undefined) => (name ?? '').trim()
 
 export const routeKeyOf = (leg: Leg, fromKey: string, toKey: string, size: string) => `${leg}|${fromKey}|${toKey}|${size}`;
 
+/**
+ * A saved time for every truck size of a route (owner, TestFlight 28 Oct: "every vehicle type
+ * 5, 10, 40 ft have same TT"). Stored as the truck class; a size's own saved time still wins.
+ */
+export const ANY_SIZE = 'ANY';
+/** The same route and leg with the size swapped for ANY_SIZE. */
+export const anySizeKey = (key: string) => key.split('|').slice(0, 3).concat(ANY_SIZE).join('|');
+/** A saved time for a route key: that size's own, else the all-sizes one. */
+export const savedFor = (saved: Map<string, number>, key: string): number | undefined => saved.get(key) ?? saved.get(anySizeKey(key));
+
 const stopName = (s: StopFacts) => (s.location_name || s.location?.name || '').trim();
 
 export function sizeOf(trip: Pick<TripFacts, 'vehicle_type' | 'vehicle'>): string {
@@ -187,7 +197,7 @@ function groupSamples(samples: LegSample[]) {
 
 /** The planned time of a group: the saved one, else the average the trips were planned at. */
 function plannedOf(key: string, g: Group, saved: Map<string, number>) {
-  const s = saved.get(key);
+  const s = savedFor(saved, key);
   if (s != null) return { min: s, saved: true };
   return { min: mean(g.samples.map((x) => x.plannedMin).filter((x): x is number => x != null)), saved: false };
 }
@@ -222,11 +232,15 @@ export function summarize(
     }
     routes.push({ key, leg: g.leg, from: g.from, to: g.to, size: g.size, trips: g.samples.length, plannedMin: planned.min, plannedSaved: planned.saved, actualAvgMin: actual, tone: toneOf(actual, planned.min) });
   }
-  // Saved routes nobody drove in this period still get a row, "no trips yet".
+  // Saved routes nobody drove in this period still get a row, "no trips yet". An all-sizes time
+  // shows once, and not at all when the route was driven in any size.
+  const driven = new Set([...groups.keys()].map((k) => k.split('|').slice(0, 3).join('|')));
   for (const r of saved) {
     const leg: Leg = r.leg === 'return' ? 'return' : 'out';
     const key = routeKeyOf(leg, r.origin_key, r.destination_key, r.truck_class);
-    if (groups.has(key) || (opts.size && r.truck_class !== opts.size)) continue;
+    const any = r.truck_class === ANY_SIZE;
+    if (any ? driven.has(key.split('|').slice(0, 3).join('|')) : groups.has(key)) continue;
+    if (!any && opts.size && r.truck_class !== opts.size) continue;
     routes.push({ key, leg, from: r.origin_key, to: r.destination_key, size: r.truck_class, trips: 0, plannedMin: r.planned_minutes, plannedSaved: true, actualAvgMin: null, tone: null });
   }
   routes.sort((a, b) => b.trips - a.trips || a.from.localeCompare(b.from) || a.to.localeCompare(b.to));
@@ -279,7 +293,7 @@ export function routeDetail(
   const savedByKey = savedMap(saved);
   if (!g) {
     const [leg, from, to, size] = key.split('|');
-    const m = savedByKey.get(key);
+    const m = savedFor(savedByKey, key);
     if (m == null) return null;
     return { key, leg: leg === 'return' ? 'return' : 'out', from, to, size, days: opts.days, trips: 0, plannedMin: m, plannedSaved: true, actualAvgMin: null, p90Min: null, tone: null, time: { loadingMin: null, roadMin: null, offloadMin: null, biggest: null }, canUseActual: false, suggestedMin: null, recent: [] };
   }
@@ -353,7 +367,7 @@ export async function transitRouteDetail(customerId: string, key: string, days: 
 
 /** The minimal slice of the database setPlannedTransit needs — a fake in tests. */
 export interface TransitStore {
-  customerRouteTransit: { upsert(args: any): Promise<unknown> };
+  customerRouteTransit: { upsert(args: any): Promise<unknown>; deleteMany?(args: any): Promise<unknown> };
 }
 
 /**
@@ -369,6 +383,10 @@ export async function setPlannedTransit(
   const planned_minutes = Math.round(input.plannedMin);
   if (!Number.isFinite(planned_minutes) || planned_minutes < 5 || planned_minutes > 7 * 1440) throw new Error('INVALID_MINUTES');
   const where = { customerId_origin_key_destination_key_leg_truck_class: { customerId: input.customerId, origin_key, destination_key, leg, truck_class } };
+  // One time for every size: the sizes' own times go, so nothing overrides it.
+  if (truck_class === ANY_SIZE) {
+    await store.customerRouteTransit.deleteMany?.({ where: { customerId: input.customerId, origin_key, destination_key, leg, truck_class: { not: ANY_SIZE } } });
+  }
   await store.customerRouteTransit.upsert({
     where,
     create: { customerId: input.customerId, origin_key, destination_key, leg, truck_class, planned_minutes, updated_by: input.userId ?? null },
