@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import {
   Map as MapIcon,
-  Bell, BellRing, Building2, CreditCard, FileText, FolderOpen, House, Link2, Plus, Route, Search, SquareUserRound, Tag, Truck, UserCog, Users, Wrench, X,
+  Bell, BellRing, Building2, CreditCard, FileText, FolderOpen, House, Link2, Plus, Route, Search, SquareUserRound, Tag, Timer, Truck, UserCog, Users, Wrench, X,
   type LucideIcon,
   Trash2,
 } from 'lucide-react-native';
@@ -79,6 +79,7 @@ const GROUPS: MenuGroup[] = [
     tone: 'blue',
     items: [
       { Icon: MapIcon, label: 'Fleet map', route: '/fleet-map', badges: ['fleetMap'], keywords: 'live map trucks location gps tracking' },
+      { Icon: Timer, label: 'Transit times', route: '/transit', keywords: 'tt routes lanes given transit time planned actual late map quotations' },
       { Icon: Truck, label: 'Vehicles', route: '/vehicles', keywords: 'trucks trailers' },
       { Icon: Building2, label: '3rd party fleet', route: '/third-party', keywords: 'subcontractors providers 3pl' },
       // Hidden until these screens can do more than list (owner, 2026-09-26).

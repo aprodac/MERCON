@@ -28,6 +28,7 @@ import { pinTripStop, PinError } from '../services/locationPin';
 import { whatsappService } from '../services/whatsappService';
 import { getTripMediaPurge } from '../services/media/tripMediaRetention';
 import { findSameDayTrips } from '../services/sameDayTrips';
+import { blocksTripDelete, notifyCompletedTripsDeleted } from '../services/tripDeleteNotice';
 
 /** Fields the trip ledger search bar looks at. */
 const TRIP_SEARCH_FIELDS = [
@@ -2646,15 +2647,16 @@ export const bulkDeleteTrips = async (req: Request, res: Response) => {
       },
     });
 
-    const eligibleTrips = allTrips.filter((t) => !isFinanciallyProtectedTrip(t));
-    const blockedTrips = allTrips.filter((t) => isFinanciallyProtectedTrip(t));
+    // A reviewed (settled) Completed trip may be deleted; invoiced / paid ones are kept.
+    const eligibleTrips = allTrips.filter((t) => !blocksTripDelete(t));
+    const blockedTrips = allTrips.filter((t) => blocksTripDelete(t));
 
     if (eligibleTrips.length === 0) {
       return res.status(400).json({
         success: false,
         error: {
           code: 'PROTECTED_TRIP',
-          message: 'Selected trip(s) cannot be deleted because they are invoiced or financially settled.',
+          message: 'Selected trip(s) cannot be deleted because they are invoiced or paid.',
         },
         data: {
           deletedCount: 0,
@@ -2662,7 +2664,7 @@ export const bulkDeleteTrips = async (req: Request, res: Response) => {
           skippedTrips: blockedTrips.map((t) => ({
             id: t.id,
             ref_id: t.ref_id,
-            reason: 'Trip is invoiced or financially settled',
+            reason: 'Trip is invoiced or paid',
           })),
         },
       });
@@ -2716,10 +2718,12 @@ export const bulkDeleteTrips = async (req: Request, res: Response) => {
       await releaseVehiclesIfFree(tx, vehicleIds);
     });
 
+    void notifyCompletedTripsDeleted(eligibleTrips, getValidUuid(userId));
+
     const skippedReasons = blockedTrips.map((t) => ({
       id: t.id,
       ref_id: t.ref_id,
-      reason: 'Trip is invoiced or financially settled',
+      reason: 'Trip is invoiced or paid',
     }));
 
     res.json({
@@ -2730,7 +2734,7 @@ export const bulkDeleteTrips = async (req: Request, res: Response) => {
         skippedTrips: skippedReasons,
         message:
           blockedTrips.length > 0
-            ? `Soft-deleted ${eligibleTrips.length} trip(s). ${blockedTrips.length} trip(s) were protected from deletion (invoiced/settled).`
+            ? `Soft-deleted ${eligibleTrips.length} trip(s). ${blockedTrips.length} trip(s) were protected from deletion (invoiced/paid).`
             : `Successfully soft-deleted ${eligibleTrips.length} trip(s)`,
       },
     });

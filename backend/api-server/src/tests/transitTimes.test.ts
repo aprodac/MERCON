@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  legSamplesOf, summarize, routeDetail, percentile, toneOf, setPlannedTransit, samplesOfTrips, routeKeyOf, placeKey,
+  legSamplesOf, summarize, routeDetail, percentile, toneOf, setPlannedTransit, samplesOfTrips, routeKeyOf, placeKey, ANY_SIZE, anySizeKey,
   type TripFacts, type StopFacts, type LegSample, type SavedTransit,
 } from '../services/transitTimes';
 
@@ -187,6 +187,36 @@ describe('transit times: route detail', () => {
 
   it('returns null for an unknown route', () => {
     assert.equal(routeDetail([], [], key, { days: 30, now: NOW }), null);
+  });
+});
+
+describe('transit times: one time for every truck size (ANY)', () => {
+  it('an all-sizes time plans every size, a size’s own time still wins, and an undriven route shows once', () => {
+    const { samples: s } = samples(trip('1', 220), trip('2', 230));
+    const saved: SavedTransit[] = [
+      { origin_key: 'khamis', destination_key: 'najran', leg: 'out', truck_class: ANY_SIZE, planned_minutes: 240 },
+      { origin_key: 'abha', destination_key: 'jizan', leg: 'out', truck_class: ANY_SIZE, planned_minutes: 150 },
+    ];
+    const r = summarize(s, saved, { days: 30, size: null, now: NOW });
+    const k = r.routes.find((x) => x.trips === 2)!;
+    assert.equal(k.plannedMin, 240);
+    assert.equal(k.plannedSaved, true);
+    // khamis → najran was driven, so its ANY row isn't added again; abha → jizan shows once.
+    assert.equal(r.routes.length, 2);
+    assert.equal(r.routes.find((x) => x.trips === 0)!.size, ANY_SIZE);
+    // A size filter still shows the all-sizes row.
+    assert.ok(summarize(s, saved, { days: 30, size: '20 TON', now: NOW }).routes.some((x) => x.from === 'abha'));
+    const own: SavedTransit[] = [...saved, { origin_key: 'khamis', destination_key: 'najran', leg: 'out', truck_class: k.size, planned_minutes: 200 }];
+    assert.equal(summarize(s, own, { days: 30, size: null, now: NOW }).routes.find((x) => x.trips === 2)!.plannedMin, 200);
+  });
+
+  it('saving for every size removes the sizes’ own times', async () => {
+    const calls: Array<[string, any]> = [];
+    const store: any = { customerRouteTransit: { upsert: async (a: any) => { calls.push(['upsert', a]); }, deleteMany: async (a: any) => { calls.push(['deleteMany', a]); } } };
+    await setPlannedTransit(store, { customerId: 'c1', key: anySizeKey('out|khamis|najran|5 TON'), plannedMin: 240 });
+    assert.deepEqual(calls.map((c) => c[0]), ['deleteMany', 'upsert']);
+    assert.deepEqual(calls[0][1].where, { customerId: 'c1', origin_key: 'khamis', destination_key: 'najran', leg: 'out', truck_class: { not: ANY_SIZE } });
+    assert.equal(calls[1][1].create.truck_class, ANY_SIZE);
   });
 });
 

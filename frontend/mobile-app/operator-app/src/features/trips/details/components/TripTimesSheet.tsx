@@ -57,6 +57,16 @@ export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: P
   };
   const pending = allShots.filter(pendingTimeCheck).length;
   const shotsOf = (id: string) => allShots.filter((d) => d.ai_extracted_json?.stop_id === id);
+  /**
+   * A stop whose times were checked and saved: its screenshots are all verified, or every
+   * screenshot of the trip is and the stop has a time — shown green (TestFlight 26 Oct:
+   * "Show green colour if checked and saved").
+   */
+  const checked = (st: { id: string; actual_arrival?: string | null }) => {
+    const own = shotsOf(st.id);
+    if (own.length) return !own.some(pendingTimeCheck);
+    return allShots.length > 0 && pending === 0 && !!st.actual_arrival;
+  };
   /** Editing one stop shows only its screenshots; "See all" shows every one. */
   const [onlyStop, setOnlyStop] = useState<string | null>(null);
   const focused = onlyStop ? shotsOf(onlyStop) : [];
@@ -313,8 +323,8 @@ export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: P
               <View style={s.row}>
                 <View style={{ flex: 1, minWidth: 0, paddingTop: 7 }}>
                   <Text style={s.name} numberOfLines={1}>{stopName(st, i)}</Text>
-                  <Text style={s.hint} numberOfLines={1}>
-                    {st.actual_arrival ? `tapped ${clock(st.actual_arrival)?.slice(0, 5)}${st.actual_departure ? `–${clock(st.actual_departure)?.slice(0, 5)}` : ''}` : 'not reached'}
+                  <Text style={[s.hint, checked(st) && s.checkedHint]} numberOfLines={1}>
+                    {checked(st) ? '✓ checked · ' : ''}{st.actual_arrival ? `tapped ${clock(st.actual_arrival)?.slice(0, 5)}${st.actual_departure ? `–${clock(st.actual_departure)?.slice(0, 5)}` : ''}` : 'not reached'}
                   </Text>
                 </View>
                 {FIELDS.map((field, f) => {
@@ -329,7 +339,7 @@ export function TripTimesSheet({ visible, trip, tz, stopId, onClose, onDone }: P
                         activeOpacity={0.7}
                         onPress={() => edit(active === idx ? null : idx)}
                         accessibilityLabel={`${stopName(st, i)} ${FIELD_LABEL[field]}`}
-                        style={[s.input, t.changed && s.inputChanged, !!t.error && s.inputError, active === idx && s.inputActive]}
+                        style={[s.input, !t.changed && !t.error && !!recorded && checked(st) && s.inputChecked, t.changed && s.inputChanged, !!t.error && s.inputError, active === idx && s.inputActive]}
                       >
                         <Text style={[s.inputText, !typed[st.id]?.[field] && { color: '#A1A1AA' }]}>{value ?? 'set'}</Text>
                       </TouchableOpacity>
@@ -436,6 +446,8 @@ const s = StyleSheet.create({
   inputText: { fontSize: 14, fontVariant: ['tabular-nums'], color: INK },
   inputActive: { borderColor: INK, borderWidth: 2 },
   inputChanged: { borderColor: '#F59E0B', backgroundColor: '#FFFBEB' },
+  inputChecked: { borderColor: '#12B76A', backgroundColor: '#ECFDF3' },
+  checkedHint: { color: '#067647', fontWeight: '700' },
   inputError: { borderColor: '#F04438', backgroundColor: '#FEF3F2' },
   panel: { marginTop: 8, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#D4D4D8', gap: 4 },
   panelHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
