@@ -25,28 +25,30 @@ export function QuotationTransits({ customerId }: { customerId: string }) {
   const queryClient = useQueryClient();
   const q = useQuery({ queryKey: ['transit', customerId, 'quotations'], queryFn: () => operatorService.quotationTransits(customerId), enabled: !!customerId });
   const [editing, setEditing] = useState<QuotationTransitLeg | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
+  // The leg being saved: its buttons are locked so a double tap can't send two times.
+  const [busy, setBusy] = useState<string | null>(null);
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['transit', customerId] });
-  const save = async (leg: QuotationTransitLeg, min: number) => {
+  const run = async (leg: QuotationTransitLeg, work: () => Promise<void>, ok: string, fail: string) => {
+    if (busy) return;
+    setBusy(leg.key);
+    try {
+      await work();
+      setToast({ text: ok });
+      await refresh();
+    } catch {
+      setToast({ text: fail, error: true });
+    } finally {
+      setBusy(null);
+    }
+  };
+  const save = (leg: QuotationTransitLeg, min: number) => {
     setEditing(null);
-    try {
-      await operatorService.setPlannedTransit(customerId, leg.key, min);
-      setToast(`New trips on ${niceName(leg.from)} → ${niceName(leg.to)} ${leg.size} will plan ${hm(min)}`);
-      await refresh();
-    } catch {
-      setToast('Couldn’t save the time');
-    }
+    return run(leg, () => operatorService.setPlannedTransit(customerId, leg.key, min), `New trips on ${niceName(leg.from)} → ${niceName(leg.to)} ${leg.size} will plan ${hm(min)}`, 'Couldn’t save the time');
   };
-  const reset = async (leg: QuotationTransitLeg) => {
-    try {
-      await operatorService.clearPlannedTransit(customerId, leg.key);
-      setToast('Back to the estimate');
-      await refresh();
-    } catch {
-      setToast('Couldn’t reset the time');
-    }
-  };
+  const reset = (leg: QuotationTransitLeg) =>
+    run(leg, () => operatorService.clearPlannedTransit(customerId, leg.key), 'Back to the estimate', 'Couldn’t reset the time');
 
   if (q.isLoading) return <View style={{ gap: 10 }}><SkeletonBlock height={120} radius={16} /><SkeletonBlock height={120} radius={16} /></View>;
   if (q.isError) return <EmptyState title="Couldn’t load the quotations" subtitle="Pull down to try again." />;
@@ -79,7 +81,7 @@ export function QuotationTransits({ customerId }: { customerId: string }) {
                   <Num label="Actual avg" value={hm(leg.actualAvgMin)} sub={leg.trips ? `${leg.trips} trip${leg.trips === 1 ? '' : 's'}, 90 days` : 'no trips yet'} />
                 </View>
                 {canSet ? (
-                  <View style={s.actions}>
+                  <View style={[s.actions, busy === leg.key && { opacity: 0.5 }]} pointerEvents={busy ? 'none' : 'auto'}>
                     <TouchableOpacity style={s.btn} onPress={() => { tap(); setEditing(leg); }} accessibilityRole="button" accessibilityLabel={`Set the transit time for ${leg.from} to ${leg.to}`}>
                       <SquarePen size={14} color={INK} strokeWidth={2.4} />
                       <Text style={s.btnText}>Set time</Text>
@@ -112,7 +114,7 @@ export function QuotationTransits({ customerId }: { customerId: string }) {
         onDone={(m) => editing && save(editing, m)}
         onClose={() => setEditing(null)}
       />
-      <Toast visible={Boolean(toast)} message={toast ?? ''} type="success" onDismiss={() => setToast(null)} />
+      <Toast visible={Boolean(toast)} message={toast?.text ?? ''} type={toast?.error ? 'error' : 'success'} onDismiss={() => setToast(null)} />
     </View>
   );
 }

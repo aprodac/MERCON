@@ -49,3 +49,24 @@ export function savedTransitMinutes(
   if (!a || !b || !size) return null;
   return saved.find((r) => r.leg === leg && r.origin_key === a && r.destination_key === b && r.truck_class === size)?.planned_minutes ?? null;
 }
+
+/** The tone of an on-time share: green from 80 %, amber from 60 %, red below. */
+export function onTimeTone(pct: number | null): { fg: string; bg: string } | null {
+  if (pct == null) return null;
+  return TONE[pct >= 80 ? 'green' : pct >= 60 ? 'amber' : 'red'];
+}
+
+/** A route row matches a search when its pickup or drop-off contains every typed word. */
+export function routeMatches(r: { from: string; to: string }, search: string): boolean {
+  const words = placeKey(search).split(' ').filter(Boolean);
+  if (!words.length) return true;
+  const hay = `${placeKey(r.from)} ${placeKey(r.to)}`;
+  return words.every((w) => hay.includes(w));
+}
+
+/** The colours for one actual time against its plan — same bands as the API (15 min grace, 1 h amber). */
+export function toneFor(actual: number | null, planned: number | null): { fg: string; bg: string } | null {
+  if (actual == null || planned == null) return null;
+  const over = actual - planned;
+  return TONE[over <= 15 ? 'green' : over <= 60 ? 'amber' : 'red'];
+}
