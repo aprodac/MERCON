@@ -11,6 +11,7 @@ NEW: TESTFLIGHT ROUND 4 (28 Oct)
 3. Route screen: "Given TT", "Set TT", "Reset" — also every truck size.
 4. Delete a Completed trip whose charges were reviewed: the warning says the photos / POD go with it; it deletes; the other operators get a notification "Completed trip TRP-… deleted". An invoiced or paid trip still can't be deleted.
 5. Check times: a stop already checked and saved shows its times in green with "✓ checked".
+6. Customers > a customer > Quotes: search box at the top (e.g. "khamis 12", "20 ton", "890").
 
 NEW: TRANSIT TIMES POLISH (28 Oct)
 1. Customers > customer > Transit times: customer name under the title; size chips and a 7 / 30 / 90 days switch. Changing a filter keeps the old list (faded) until the new one loads.
