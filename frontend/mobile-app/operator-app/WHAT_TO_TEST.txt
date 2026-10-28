@@ -5,6 +5,14 @@ FIX: CHECK TIMES "NEXT" (27 Oct)
 4. Opening Check times from a stop still starts on that stop's first screenshot.
 5. While a time is being edited the screenshot is shorter (tap it to enlarge) and the wheels show 3 rows, so about 150 px more of the time list stays visible.
 
+NEW: TRANSIT TIMES POLISH (28 Oct)
+1. Customers > customer > Transit times: customer name under the title; size chips and a 7 / 30 / 90 days switch. Changing a filter keeps the old list (faded) until the new one loads.
+2. Each route card: "Saved time" tag when a time was saved, "Way back" for the return leg, and +/- against the plan under Actual avg.
+3. More than 6 routes: a "Search a place" box filters by pickup or drop-off.
+4. Open a route: its own 7 / 30 / 90 switch, pull down to refresh. "New trips on this route": Use actual (3+ trips), Set time, Use estimate (only when a time is saved). Recent trips are coloured green / amber / red.
+5. New trip > When > "See transit times": opens on the trip's truck size. Save a time for that route, go back: the drop-off now follows the saved time (before, it kept the old one).
+6. Set the drop-off by hand: the "Planned with the saved ..." text goes away.
+
 NEW: TRANSIT TIMES (27 Oct)
 1. Customers > open a customer > "Transit times". Filter by size and 7 / 30 / 90 days. Shows routes, on-time % and average late.
 2. Each row: From > To (and "· return" for the way back), size, Planned, Actual avg (green up to 15 min over, amber up to 1 h, red more), trip count.

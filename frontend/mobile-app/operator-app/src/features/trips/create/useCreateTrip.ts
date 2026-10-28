@@ -4,6 +4,7 @@
  * @mercon/shared-types, the same code the web dashboard wizard runs.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   LINE_TYPE_LABELS,
   addDaysToDateStr,
@@ -350,13 +351,10 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
 
   // Planned times saved from Transit times ("Use actual as the planned time"): they win over the live estimate.
   // Kept with the customer they belong to, so another customer's times never apply.
-  const [savedFor, setSavedFor] = useState<{ customerId: string; list: SavedTransit[] }>({ customerId: '', list: [] });
-  useEffect(() => {
-    let alive = true;
-    if (customerId) operatorService.savedTransits(customerId).then((list) => alive && setSavedFor({ customerId, list }));
-    return () => { alive = false; };
-  }, [customerId]);
-  const savedTransits = useMemo(() => (savedFor.customerId === customerId ? savedFor.list : []), [savedFor, customerId]);
+  // A react-query key under ['transit', customerId] so a time saved from Transit times (opened from this form)
+  // refreshes it on the way back instead of the form planning with the old one.
+  const savedQuery = useQuery({ queryKey: ['transit', customerId, 'saved'], queryFn: () => operatorService.savedTransits(customerId), enabled: !!customerId });
+  const savedTransits = useMemo<SavedTransit[]>(() => (customerId ? savedQuery.data ?? [] : []), [customerId, savedQuery.data]);
   const savedOutbound = useMemo(
     () => savedTransitMinutes(savedTransits, 'out', rawSlot.origin, rawSlot.destination, vehicleType),
     [savedTransits, rawSlot.origin, rawSlot.destination, vehicleType],
