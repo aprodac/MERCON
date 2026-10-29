@@ -703,6 +703,21 @@ export interface OperatorQuotation {
 }
 
 /** Helper to extract origin and destination location labels from a quotation object. */
+/**
+ * The places a quotation's outbound leg passes between its two ends, in order
+ * ("Jeddah → At Ta'if → Makkah" gives ["At Ta'if"]) — TestFlight 29 Oct: two
+ * Jeddah quotations looked the same when only the ends were shown.
+ */
+export function getQuotationVia(q: { stops?: any[] | null }): string[] {
+  const out = (q.stops || [])
+    .filter((s: any) => (s?.leg_index ?? 0) === 0)
+    .sort((a: any, b: any) => (a?.sequence ?? a?.stop_sequence ?? 0) - (b?.sequence ?? b?.stop_sequence ?? 0));
+  return out
+    .slice(1, -1)
+    .map((s: any) => String(s?.location?.name || s?.source_label || s?.location_name || s?.name || s?.label || '').trim())
+    .filter(Boolean);
+}
+
 export function getQuotationRoute(q: Partial<OperatorQuotation> & { stops?: any[] }): { origin: string; dest: string } {
   if (!q) return { origin: 'Origin', dest: 'Destination' };
 
@@ -1193,7 +1208,9 @@ export const operatorService = {
   /** A customer's latest trips (light rows) — for recently used routes and quotations. */
   async customerRecentTrips(customerId: string): Promise<OperatorTrip[]> {
     try {
-      const { data } = await api.get('/trips', { params: { customer_id: customerId, per_page: 50, lite: true } });
+      // The last 30 days (TestFlight 29 Oct: "show last routes in 30 days").
+      const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const { data } = await api.get('/trips', { params: { customer_id: customerId, start_date: since, per_page: 300, lite: true } });
       return (data?.data ?? []) as OperatorTrip[];
     } catch {
       return [];

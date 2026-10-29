@@ -46,6 +46,7 @@ async function loadContext(tripId: string, driverId: string, baseUrl: string | n
       where: { id: tripId },
       select: {
         ref_id: true,
+        vehicle: { select: { plate_number: true } },
         stops: {
           where: { deletedAt: null },
           orderBy: { stop_sequence: 'asc' },
@@ -66,7 +67,7 @@ async function loadContext(tripId: string, driverId: string, baseUrl: string | n
   if (!trip) return null;
   const driverName = driverDisplayName(driver);
   return {
-    trip: tripName(trip.ref_id),
+    trip: tripName(trip.ref_id, trip.vehicle?.plate_number),
     driverName,
     stops: trip.stops,
     sender: driverSender(baseUrl, driver ?? { id: driverId }, driverName),

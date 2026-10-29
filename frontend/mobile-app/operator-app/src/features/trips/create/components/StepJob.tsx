@@ -1,14 +1,14 @@
 /** Step 1 — customer, their quotations, route and price. */
 import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, TextInput, StyleSheet, FlatList } from 'react-native';
-import { ArrowRight, Building2, CheckCircle2, Clock, FileText, MapPin, Pencil, Repeat, RotateCcw, Route, Search, X, Receipt, Plus, ChevronDown, type LucideIcon } from 'lucide-react-native';
+import { ArrowRight, Building2, CheckCircle2, Clock, FileText, MapPin, Pencil, Repeat, RotateCcw, Route, Search, X, Receipt, Plus, ChevronDown, ChevronUp, type LucideIcon } from 'lucide-react-native';
 import { Colors, Spacing, Radius } from '@mercon/mobile-shared/theme/tokens';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { TRUCK_CLASSES, lineTypeLabel, filterQuotationsBySearch, pricingFromQuotation } from '@mercon/shared-types';
 import { PriceHistory } from './PriceHistory';
 import { RecentTripPicker } from './RecentTripPicker';
 import { PinPickerSheet, type PickedPin } from '../../details/components/PinSheet';
-import { getQuotationRoute, type OperatorQuotation, type OperatorSurchargeRule } from '../../../../lib/operator';
+import { getQuotationRoute, getQuotationVia, type OperatorQuotation, type OperatorSurchargeRule } from '../../../../lib/operator';
 import { quotationBilling, quotationClass, quotationLineType, type CreateTripForm, type LocationPick } from '../useCreateTrip';
 import { Chip, CompanyAvatar, ErrorText, FieldButton, Label, LinkButton, PickerSheet, Section, SkeletonRows, TextField, fmtSar, niceName, tap, ui } from './ui';
 
@@ -32,7 +32,12 @@ type PinTarget =
 /** How well a pickup / drop-off is pinned: not at all, roughly (e.g. the city centre), or on the gate. */
 export type PinState = 'none' | 'approx' | 'exact';
 
-export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors: boolean }) {
+export function StepJob({ form, showErrors, onSetPayout }: {
+  form: CreateTripForm;
+  showErrors: boolean;
+  /** Opens the driver payout sheet (this trip, or saved on the quotation). */
+  onSetPayout?: () => void;
+}) {
   const [sheet, setSheet] = useState<Sheet>(null);
   const [locationTarget, setLocationTarget] = useState<LocationTarget | null>(null);
   const [pinTarget, setPinTarget] = useState<PinTarget | null>(null);
@@ -176,14 +181,23 @@ export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors
       action={{ label: 'Change', onPress: form.clearQuotation }}
     >
       <View style={styles.chipRow}>
-        <InfoChip label={lineTypeLabel(form.rateCategory)} />
-        {/* The truck type can still change with a quotation picked (TestFlight feedback); the price stays the quotation's. */}
+        {/* Trip type, truck type and billing can still change for this trip with a quotation picked
+            (TestFlight feedback, and 29 Oct for type / billing); the price stays the quotation's. */}
+        <SelectChip label={lineTypeLabel(form.rateCategory)} onPress={() => setSheet('lineType')} />
         <SelectChip label={form.vehicleType} onPress={() => setSheet('class')} />
-        <InfoChip label={form.isMonthly ? 'Monthly' : 'Extra'} />
+        <SelectChip label={form.isMonthly ? 'Monthly' : 'Extra'} onPress={() => setSheet('billing')} />
       </View>
-      {applied && quotationClass(applied) && quotationClass(applied) !== form.vehicleType ? (
-        <Text style={styles.note}>{`The quotation is for ${quotationClass(applied)}. Its price is kept — tap Edit price if the ${form.vehicleType} rate differs.`}</Text>
-      ) : null}
+      {(() => {
+        if (!applied) return null;
+        const differs = [
+          quotationClass(applied) && quotationClass(applied) !== form.vehicleType ? quotationClass(applied) : null,
+          quotationLineType(applied) !== form.rateCategory ? lineTypeLabel(quotationLineType(applied)) : null,
+          quotationBilling(applied) !== form.billingType ? quotationBilling(applied) : null,
+        ].filter(Boolean);
+        return differs.length ? (
+          <Text style={styles.note}>{`The quotation is for ${differs.join(' · ')}. Its price is kept for this trip — tap Edit price if it differs.`}</Text>
+        ) : null;
+      })()}
 
       {editingPrice ? (
         <>
@@ -216,7 +230,18 @@ export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors
               warn={form.payoutMissing}
             />
           </View>
-          {form.payoutMissing ? <Text style={styles.warnNote}>This quotation has no driver payout. Tap Edit price to add it.</Text> : null}
+          {/* TestFlight 29 Oct: after the payout was set and removed again there was no way back to set it. */}
+          {form.payoutMissing ? (
+            <>
+              <Text style={styles.warnNote}>No driver payout on this trip yet.</Text>
+              {onSetPayout ? (
+                <TouchableOpacity style={styles.setPayoutBtn} onPress={() => { tap(); onSetPayout(); }} activeOpacity={0.8}>
+                  <Plus size={14} color={Colors.white} strokeWidth={2.6} />
+                  <Text style={styles.setPayoutText}>Set driver payout</Text>
+                </TouchableOpacity>
+              ) : null}
+            </>
+          ) : null}
           <View style={styles.priceActions}>
             <TouchableOpacity
               style={styles.editBtn}
@@ -241,10 +266,21 @@ export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors
       {charges}
     </Section>
   ) : form.priceState === 'define' && form.customerId ? (
-    <Section icon={Receipt} tone="amber" title="Price" highlight="warning" badge={<Chip label="New quotation" tone="warning" />}>
-      <Text style={styles.sectionHint}>No quotation covers this route. Set the trip and price; it is saved for this customer when the trip is created.</Text>
+    <Section icon={Receipt} tone="amber" title="Price" highlight="warning" badge={<Chip label={form.saveQuotation ? "New quotation" : "This trip only"} tone="warning" />}>
+      <Text style={styles.sectionHint}>
+        {form.saveQuotation
+          ? 'No quotation covers this route. Set the trip and price; it is saved for this customer when the trip is created.'
+          : 'No quotation covers this route. This price is for this trip only — no quotation is saved.'}
+      </Text>
       {tripSelects}
       <PriceInputs form={form} err={err} />
+      {/* TestFlight 29 Oct: "option to set it only for this trip, not as quotation rate". */}
+      <TouchableOpacity style={styles.saveQuoteRow} onPress={() => { tap(); form.setSaveQuotation(!form.saveQuotation); }} activeOpacity={0.7} accessibilityRole="checkbox" accessibilityState={{ checked: form.saveQuotation }}>
+        <View style={[styles.saveQuoteBox, form.saveQuotation && styles.saveQuoteBoxOn]}>
+          {form.saveQuotation ? <CheckCircle2 size={14} color={Colors.white} /> : null}
+        </View>
+        <Text style={styles.saveQuoteText}>Save as a quotation for this customer</Text>
+      </TouchableOpacity>
       {charges}
     </Section>
   ) : (
@@ -269,6 +305,36 @@ export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors
         />
         <ErrorText>{err('customer')}</ErrorText>
       </Section>
+
+      {/* TestFlight 29 Oct: "show a section of recents .. show last routes in 30 days". */}
+      {!applied && form.customerId && form.recentRoutes.length > 0 ? (
+        <Section icon={RotateCcw} tone="blue" title="Recent routes" badge={<Chip label="Last 30 days" />}>
+          <View style={styles.chipRow}>
+            {form.recentRoutes.map((r) => {
+              const quote = r.quotationId ? form.quotations.find((q) => q.id === r.quotationId) : undefined;
+              return (
+                <TouchableOpacity
+                  key={r.key}
+                  onPress={() => {
+                    tap();
+                    // Start from the quotation those trips used (route, type, size and price), else the route alone.
+                    if (quote) form.applyQuotation(quote, { fillRoute: true });
+                    else form.applyRecentRoute(r);
+                  }}
+                  style={styles.recentChip}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.recentText} numberOfLines={1}>
+                    {[r.origin.name, ...r.stops.map((m) => m.name), r.destination.name].map(niceName).join(' → ')}
+                    {r.round ? ' · round' : ''}
+                  </Text>
+                  {r.count > 1 ? <Text style={styles.recentCount}>{r.count}×</Text> : null}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </Section>
+      ) : null}
 
       {applied ? (
         priceSection
@@ -300,33 +366,6 @@ export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors
       ) : null}
 
       <Section icon={Route} tone="coral" title="Route" action={{ label: '+ Stop', onPress: () => setLocationTarget({ kind: 'stop', leg: 0 }) }}>
-        {!applied && !form.slot.origin.trim() && !form.slot.destination.trim() && form.recentRoutes.length > 0 ? (
-          <View style={styles.recentWrap}>
-            <View style={styles.recentHead}>
-              <RotateCcw size={12} color={Colors.gray500} />
-              <Text style={styles.recentTitle}>Recent routes</Text>
-            </View>
-            <View style={styles.chipRow}>
-              {form.recentRoutes.map((r) => (
-                <TouchableOpacity
-                  key={r.key}
-                  onPress={() => {
-                    tap();
-                    form.applyRecentRoute(r);
-                  }}
-                  style={styles.recentChip}
-                  activeOpacity={0.75}
-                >
-                  <Text style={styles.recentText} numberOfLines={1}>
-                    {niceName(r.origin.name)} → {niceName(r.destination.name)}
-                    {r.stops.length ? ` · ${r.stops.length} stop${r.stops.length > 1 ? 's' : ''}` : ''}
-                  </Text>
-                  {r.count > 1 ? <Text style={styles.recentCount}>{r.count}×</Text> : null}
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        ) : null}
         <RouteTimeline form={form} err={err} onPick={setLocationTarget} onPin={endpointPin} onStopPin={stopPin} />
       </Section>
 
@@ -520,13 +559,16 @@ function RouteTimeline({
   const same = (a?: string | null, b?: string | null) => (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase();
   const returnStart = slot.returnOrigin?.trim() || slot.destination;
   const returnEnd = slot.returnDestination?.trim() || slot.origin;
+  // Reorder the stops in between (TestFlight 29 Oct: "drag option to change location"), shown with 2+ of them.
+  const moveFor = (leg: 0 | 1, i: number, n: number) =>
+    n < 2 ? undefined : { up: i > 0 ? () => (tap(), form.moveStop(leg, i, -1)) : undefined, down: i < n - 1 ? () => (tap(), form.moveStop(leg, i, 1)) : undefined };
 
   return (
     <View style={tl.wrap}>
       <View style={tl.rail} />
       <Stop dot="start" value={niceName(slot.origin)} placeholder="Pickup" onPress={() => onPick({ kind: 'origin' })} onPin={onPin('origin')} error={Boolean(err('origin'))} />
       {slot.intermediateLocations.map((name, i) => (
-        <Stop key={`o-${i}`} dot="stop" value={niceName(name)} onPin={onStopPin(0, i)} fee={fees[i] ?? ''} onFee={(v) => form.setStopFee(0, i, fee(v))} onRemove={() => form.removeStop(0, i)} />
+        <Stop key={`o-${i}`} dot="stop" value={niceName(name)} onPin={onStopPin(0, i)} fee={fees[i] ?? ''} onFee={(v) => form.setStopFee(0, i, fee(v))} onRemove={() => form.removeStop(0, i)} move={moveFor(0, i, slot.intermediateLocations.length)} />
       ))}
       <Stop dot="end" value={niceName(slot.destination)} placeholder="Drop-off" onPress={() => onPick({ kind: 'destination' })} onPin={onPin('destination')} error={Boolean(err('destination'))} />
 
@@ -543,7 +585,7 @@ function RouteTimeline({
             onRemove={same(returnStart, slot.destination) ? undefined : () => form.setReturnEndpoint('returnOrigin', null)}
           />
           {(slot.returnIntermediateLocations || []).map((name, i) => (
-            <Stop key={`r-${i}`} dot="stop" muted value={niceName(name)} onPin={onStopPin(1, i)} fee={returnFees[i] ?? ''} onFee={(v) => form.setStopFee(1, i, fee(v))} onRemove={() => form.removeStop(1, i)} />
+            <Stop key={`r-${i}`} dot="stop" muted value={niceName(name)} onPin={onStopPin(1, i)} fee={returnFees[i] ?? ''} onFee={(v) => form.setStopFee(1, i, fee(v))} onRemove={() => form.removeStop(1, i)} move={moveFor(1, i, (slot.returnIntermediateLocations || []).length)} />
           ))}
           <AddRow label="+ Add return stop" onPress={() => onPick({ kind: 'stop', leg: 1 })} />
           <Stop
@@ -574,6 +616,7 @@ function Stop({
   fee,
   onFee,
   onPin,
+  move,
 }: {
   dot: 'start' | 'stop' | 'end';
   value: string;
@@ -588,6 +631,8 @@ function Stop({
   onFee?: (v: string) => void;
   /** The stop's pin chip: "Set pin", "Set exact" or "Exact". */
   onPin?: EndpointPin;
+  /** Move this stop one place earlier / later; a side is missing at that end. */
+  move?: { up?: () => void; down?: () => void };
 }) {
   const color = dot === 'start' ? Colors.success : dot === 'end' ? Colors.primary : Colors.gray400;
   return (
@@ -622,6 +667,16 @@ function Stop({
               keyboardType="decimal-pad"
               style={tl.feeInput}
             />
+          </View>
+        ) : null}
+        {move ? (
+          <View style={tl.move}>
+            <TouchableOpacity onPress={move.up} disabled={!move.up} hitSlop={{ top: 6, bottom: 2, left: 6, right: 6 }} accessibilityLabel="Move stop earlier">
+              <ChevronUp size={15} color={move.up ? Colors.gray700 : Colors.gray300} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={move.down} disabled={!move.down} hitSlop={{ top: 2, bottom: 6, left: 6, right: 6 }} accessibilityLabel="Move stop later">
+              <ChevronDown size={15} color={move.down ? Colors.gray700 : Colors.gray300} />
+            </TouchableOpacity>
           </View>
         ) : null}
         {onRemove ? (
@@ -670,14 +725,6 @@ function AddRow({ label, onPress }: { label: string; onPress: () => void }) {
   );
 }
 
-function InfoChip({ label }: { label: string }) {
-  return (
-    <View style={styles.infoChip}>
-      <Text style={styles.infoChipText}>{label}</Text>
-    </View>
-  );
-}
-
 function SelectChip({ label, onPress }: { label: string; onPress: () => void }) {
   return (
     <TouchableOpacity onPress={onPress} style={styles.selectChip} activeOpacity={0.75}>
@@ -702,7 +749,7 @@ export function QuotationCard({ q, fits, first, used, onPress }: { q: OperatorQu
   const lineType = quotationLineType(q);
   const monthly = quotationBilling(q) === 'Monthly';
   const cls = quotationClass(q);
-  const stopsCount = Math.max(0, (q.stops || []).filter((s: any) => (s.leg_index ?? 0) === 0).length - 2);
+  const via = getQuotationVia(q);
   const rate = Number(q.rate) || 0;
   const { Icon, bg, fg } = typeLook(lineType);
   return (
@@ -711,15 +758,15 @@ export function QuotationCard({ q, fits, first, used, onPress }: { q: OperatorQu
         <Icon size={16} color={fg} strokeWidth={2.2} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={styles.quoteRoute} numberOfLines={1}>
-          {niceName(route.origin)} → {niceName(route.dest)}
+        <Text style={styles.quoteRoute} numberOfLines={2}>
+          {[route.origin, ...via, route.dest].map(niceName).join(' → ')}
         </Text>
         <View style={styles.quoteTags}>
           <View style={[styles.tag, monthly ? styles.tagMonthly : styles.tagExtra]}>
             <Text style={[styles.tagText, monthly ? styles.tagMonthlyText : styles.tagExtraText]}>{monthly ? 'Monthly' : 'Extra'}</Text>
           </View>
           <Text style={styles.quoteMeta} numberOfLines={1}>
-            {[lineTypeLabel(lineType), cls, stopsCount > 0 ? `${stopsCount} stop${stopsCount > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')}
+            {[lineTypeLabel(lineType), cls, via.length > 0 ? `${via.length} stop${via.length > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')}
           </Text>
         </View>
         {fits ? (
@@ -804,18 +851,26 @@ function QuotationSheet({
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [type, setType] = useState('ALL');
+  // Truck size (TestFlight 29 Oct: "vehicle ton type filter"): the sizes these quotations hold.
+  const [size, setSize] = useState('ALL');
+  const sizes = useMemo(
+    () => TRUCK_CLASSES.filter((c) => quotations.some((q) => quotationClass(q) === c)),
+    [quotations],
+  );
   const list = useMemo(() => {
     const byBilling = billing === 'ALL' ? quotations : quotations.filter((q) => quotationBilling(q) === billing);
-    const byType = type === 'ALL' ? byBilling : byBilling.filter((q) => quotationLineType(q) === type);
+    const bySize = size === 'ALL' ? byBilling : byBilling.filter((q) => quotationClass(q) === size);
+    const byType = type === 'ALL' ? bySize : bySize.filter((q) => quotationLineType(q) === type);
     const has = (place: string, typed: string) => !typed.trim() || place.toLowerCase().includes(typed.trim().toLowerCase());
     const byRoute = from.trim() || to.trim()
       ? byType.filter((q) => {
         const r = getQuotationRoute(q);
-        return has(r.origin, from) && has(r.dest, to);
+        // "To" also finds a place the route passes on the way (Jeddah → At Ta'if → Makkah for "Ta'if").
+        return has(r.origin, from) && [r.dest, ...getQuotationVia(q)].some((p) => has(p, to));
       })
       : byType;
     return search.trim() ? (filterQuotationsBySearch(byRoute as any[], search) as OperatorQuotation[]) : byRoute;
-  }, [quotations, billing, search, type, from, to]);
+  }, [quotations, billing, search, type, size, from, to]);
   return (
     <AppModal visible={visible} onClose={onClose} type="bottom-sheet" title="Quotations" maxHeight="90%">
       <View style={ui.searchBar}>
@@ -853,6 +908,18 @@ function QuotationSheet({
           );
         })}
       </View>
+      {sizes.length > 1 ? (
+        <View style={styles.typeRow}>
+          {['ALL', ...sizes].map((c) => {
+            const on = size === c;
+            return (
+              <TouchableOpacity key={c} onPress={() => setSize(c)} style={[styles.typeChip, on && styles.typeChipOn]}>
+                <Text style={[styles.typeChipText, on && { color: Colors.primaryDark }]}>{c === 'ALL' ? 'All sizes' : c}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ) : null}
       <Text style={styles.resultCount}>
         {list.length} of {quotations.length}
       </Text>
@@ -954,6 +1021,7 @@ function ChargeSheet({
 }
 
 const tl = StyleSheet.create({
+  move: { alignItems: 'center', justifyContent: 'center', marginLeft: 2, gap: 0 },
   wrap: { position: 'relative', paddingLeft: 22 },
   rail: { position: 'absolute', left: 6, top: 22, bottom: 22, borderLeftWidth: 1.5, borderColor: Colors.gray300, borderStyle: 'dashed' },
   row: { position: 'relative', justifyContent: 'center', marginTop: 6 },
@@ -991,8 +1059,6 @@ const styles = StyleSheet.create({
   rowStart: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
   cardTitle: { fontSize: 13, fontWeight: '700', flexShrink: 1 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: Spacing.sm },
-  infoChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.full, backgroundColor: Colors.white },
-  infoChipText: { fontSize: 12, fontWeight: '600', color: Colors.gray700 },
   selectChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1036,9 +1102,6 @@ const styles = StyleSheet.create({
   fitsRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   fitsText: { fontSize: 11, fontWeight: '700', color: Colors.success },
   usedText: { fontSize: 11, fontWeight: '600', color: Colors.gray500 },
-  recentWrap: { marginBottom: Spacing.sm },
-  recentHead: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  recentTitle: { fontSize: 11, fontWeight: '700', color: Colors.gray500 },
   recentChip: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '100%', paddingHorizontal: 11, paddingVertical: 7, borderRadius: 10, backgroundColor: Colors.gray100 },
   recentText: { fontSize: 12, fontWeight: '600', color: Colors.charcoal, flexShrink: 1 },
   recentCount: { fontSize: 11, fontWeight: '700', color: Colors.gray500 },
@@ -1073,6 +1136,12 @@ const styles = StyleSheet.create({
   priceActions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: Spacing.sm },
   editBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.gray200 },
   editText: { fontSize: 13, fontWeight: '700', color: Colors.charcoal },
+  saveQuoteRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 },
+  saveQuoteBox: { width: 20, height: 20, borderRadius: 6, borderWidth: 2, borderColor: Colors.gray300, alignItems: 'center', justifyContent: 'center' },
+  saveQuoteBoxOn: { backgroundColor: Colors.success, borderColor: Colors.success },
+  saveQuoteText: { fontSize: 14, fontWeight: '600', color: Colors.gray800 },
+  setPayoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 14, paddingVertical: 9, borderRadius: Radius.full, backgroundColor: Colors.warning },
+  setPayoutText: { fontSize: 13, fontWeight: '800', color: Colors.white },
   doneBtn: { marginTop: Spacing.md, alignSelf: 'flex-end', paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999, backgroundColor: Colors.charcoal },
   doneText: { fontSize: 13, fontWeight: '700', color: Colors.white },
   sectionHint: { fontSize: 12, color: Colors.gray600, lineHeight: 17, marginTop: 2 },
