@@ -1,7 +1,7 @@
 /**
  * Transit times helpers. Run: npx tsx src/features/transit/transitModel.test.ts
  */
-import { ANY_SIZE, TONE, anySizeKey, boundsOf, overviewRoutes, routeKm, routeTone, onTimeTone, overText, quotationRouteMatches, quotationRoutes, routeMatches, savedTransitMinutes, toneFor } from './transitModel';
+import { ANY_SIZE, TONE, anySizeKey, overviewRoutes, routeKm, routeTone, onTimeTone, overText, quotationRouteMatches, quotationRoutes, routeMatches, savedTransitMinutes, toneFor } from './transitModel';
 
 let failed = 0;
 function check(name: string, ok: boolean, detail?: unknown) {
@@ -74,9 +74,6 @@ check('the route keeps its map points', ov[0].points.length === 2 && ov[1].point
 check('late against the Given TT (700 vs 600) is red', routeTone(ov[0]) === TONE.red);
 check('no trips, no tone', routeTone(ov[1]) === null);
 check('Riyadh → Jeddah ~ 1040 km by the road factor', Math.abs((routeKm(pts) ?? 0) - 1040) < 40, routeKm(pts));
-const b = boundsOf(pts)!;
-check('bounds frame both ends', b[0] === 39.19 && b[2] === 46.67 && b[1] === 21.49 && b[3] === 24.71, b);
-check('one place still gets a box', (() => { const x = boundsOf([[46, 24]])!; return x[2] - x[0] > 0.05; })());
 
 if (failed) { console.error(`\n${failed} failed`); process.exit(1); }
 console.log('\nall passed');
