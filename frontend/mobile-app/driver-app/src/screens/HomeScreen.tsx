@@ -11,7 +11,7 @@ import {
   MapPin, Globe, Clock, ChevronRight, ChevronDown, Building2, Navigation,
   Play, CheckCircle2, Wallet, MoreVertical, ArrowRight, ArrowLeft, Route, House, Camera, Settings, RotateCcw, Check,
 } from 'lucide-react-native';
-import { tripEnds, tripLogEntries, usesTripLog, TRIP_LOG_STATE } from '@mercon/shared-types';
+import { dutyHours, isDutyCategory, tripEnds, tripLogEntries, usesTripLog, TRIP_LOG_STATE } from '@mercon/shared-types';
 import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
 import { Badge } from '@mercon/mobile-shared/components/Badge';
 import { DelayReportModal } from '../components/DelayReportModal';
@@ -98,6 +98,10 @@ function HeaderWaveBg({ width = SCREEN_WIDTH, height = 310 }: { width?: number; 
 }
 
 /** Badge colour by trip status. */
+/** The trip's duty line type ("10_HRS" / "12_HRS") if it is a 10 / 12 hours duty, else null. */
+const dutyCategoryOf = (t: MobileTrip): string | null =>
+  [t.rate_category, t.quotation_line_type, t.trip_type].find((c) => isDutyCategory(c)) ?? null;
+
 function statusVariant(s: TripStatus): 'warning' | 'success' | 'info' | 'neutral' {
   if (s === 'InTransit') return 'warning';
   if (s === 'Completed') return 'success';
@@ -249,6 +253,9 @@ const HomeScreen = () => {
     // Customer-app trips: Start, then the stop-by-stop screen (one screenshot per stop).
     if (usesTripLog(t)) {
       if (t.driver_workflow_state === TRIP_LOG_STATE) {
+        if (dutyCategoryOf(t)) {
+          return { badgeLabel: 'On duty', btnLabel: 'Send screenshot', urLabel: 'اسکرین شاٹ بھیجیں', onPress: () => router.push({ pathname: '/trip/external-app', params: { tripId: t.id } } as any) };
+        }
         return { badgeLabel: 'On the road', btnLabel: 'Next stop', urLabel: 'اگلا اسٹاپ', onPress: () => router.push({ pathname: '/trip/external-app', params: { tripId: t.id } } as any) };
       }
       return {
@@ -598,6 +605,32 @@ const HomeScreen = () => {
                     router.push('/trip/navigate');
                   }
                 };
+
+                // 10 / 12 hours duty: no stops, just how many screenshots so far.
+                const dutyCat = displayTrip.driver_workflow_state === TRIP_LOG_STATE ? dutyCategoryOf(displayTrip) : null;
+                if (dutyCat) {
+                  const sent = tripLogEntries(displayTrip.documents ?? []).length;
+                  const hours = dutyHours(dutyCat);
+                  return (
+                    <View style={styles.routeContainer}>
+                      <TouchableOpacity style={styles.nextStopBox} activeOpacity={0.85} onPress={() => router.push({ pathname: '/trip/external-app', params: { tripId: displayTrip.id } } as any)}>
+                        <View style={styles.nextStopHeader}>
+                          <Text style={styles.nextStopLabel}>{L(`${hours ?? ''} HOURS DUTY`.trim(), `${hours ?? ''} گھنٹے ڈیوٹی`.trim())}</Text>
+                          <Text style={styles.nextStopMeta}>{L(`${sent} sent`, `${sent} بھیجے گئے`)}</Text>
+                        </View>
+                        <View style={styles.nextStopRow}>
+                          <View style={styles.nextStopIcon}>
+                            <Camera size={20} color="#FFFFFF" strokeWidth={2.2} />
+                          </View>
+                          <View style={styles.routeTextCol}>
+                            <Text style={styles.nextStopType} numberOfLines={1}>{L('Send a screenshot each load / offload', 'ہر لوڈ / ان لوڈ پر اسکرین شاٹ بھیجیں')}</Text>
+                            <Text style={styles.routePlaceName} numberOfLines={1}>{plannedRouteText(displayTrip)}</Text>
+                          </View>
+                        </View>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                }
 
                 // Customer-app trip: the next stop without a screenshot yet, and how many are done.
                 if (displayTrip.driver_workflow_state === TRIP_LOG_STATE) {

@@ -220,6 +220,23 @@ export function isRoundTripCategory(category: string): boolean {
   return c.includes('round') || c === 'round trip' || c === 'trip/round trip';
 }
 
+/**
+ * A 10 / 12 hours duty ("10_HRS", "12 hours duty", "10 HRS"): the truck works
+ * the hours in one city (Riyadh to Riyadh), loading and offloading as often as
+ * the customer needs, so it has no fixed list of stops.
+ */
+export function isDutyCategory(category?: string | null): boolean {
+  if (!category) return false;
+  const c = String(category).toLowerCase().replace(/_/g, ' ');
+  return /\b1[02]\s*(h|hr|hrs|hours?)\b/.test(c) || /\bduty\b/.test(c);
+}
+
+/** Hours of a duty trip (10 or 12), else null. */
+export function dutyHours(category?: string | null): 10 | 12 | null {
+  if (!isDutyCategory(category)) return null;
+  return /\b12/.test(String(category)) ? 12 : /\b10/.test(String(category)) ? 10 : null;
+}
+
 export function isRoundTrip(trip?: Partial<TripLike> | null): boolean {
   if (!trip) return false;
 
