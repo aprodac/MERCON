@@ -144,16 +144,6 @@ export function overviewRoutes(customers: { customerId: string; name: string; qu
 export const routeTone = (r: { actualAvgMin: number | null; givenMin: number | null; trips: number }) =>
   r.trips ? toneFor(r.actualAvgMin, r.givenMin) : null;
 
-/** The bounding box of some [lng, lat] points, padded so a single place still frames: [w, s, e, n]. */
-export function boundsOf(points: [number, number][]): [number, number, number, number] | null {
-  if (!points.length) return null;
-  let [w, s, e, n] = [points[0][0], points[0][1], points[0][0], points[0][1]];
-  for (const [x, y] of points) { w = Math.min(w, x); e = Math.max(e, x); s = Math.min(s, y); n = Math.max(n, y); }
-  if (e - w < 0.02) { w -= 0.05; e += 0.05; }
-  if (n - s < 0.02) { s -= 0.05; n += 0.05; }
-  return [w, s, e, n];
-}
-
 /** Road-ish km between the stops (straight line × 1.22, as the API's fallback estimate). */
 export function routeKm(points: [number, number][]): number | null {
   if (points.length < 2) return null;
