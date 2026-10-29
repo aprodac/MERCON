@@ -7,15 +7,21 @@
  * (POST /mobile/trips/:id/log/:entry/stop), so the office sees the stop reached
  * and checks the time off the screenshot. Chosen by the owner on 22 Oct
  * (idea 1 of three) to replace the free-form trip log.
+ *
+ * A 10 / 12 hours duty (Riyadh to Riyadh) has no stop list: the driver loads
+ * and offloads as often as the customer needs. Its screen is one button —
+ * send a screenshot, as many times as needed — the sends so far, and Finish
+ * duty (owner, 29 Oct). The sends stay off the stops; the office sees each one
+ * with its time and place in the Driver's log. Billing stays the duty rate.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator, RefreshControl, Linking, Modal, TextInput,
+  View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator, RefreshControl, Linking, Modal, TextInput, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, Camera, Check, Flag, LocateFixed, MapPin, Navigation, Plus, RotateCcw, X } from 'lucide-react-native';
-import { tripLogEntries, TRIP_LOG_OPERATION } from '@mercon/shared-types';
+import { canUndoTripLogEntry, dutyHours, isDutyCategory, tripLogEntries, TRIP_LOG_OPERATION } from '@mercon/shared-types';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { tripService, stopLabel, type MobileTrip, type TripStop } from '@mercon/mobile-shared/lib/trips';
 import { getDeviceLocationTag, pickFromGallery, type CapturedPhoto, type LocationTag } from '@mercon/mobile-shared/lib/camera';
@@ -64,6 +70,11 @@ function useExternalTrip() {
   const [failed, setFailed] = useState<Failed | null>(null);
   const [finishing, setFinishing] = useState(false);
   const [arriving, setArriving] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
+
+  /** 10 / 12 hours duty: screenshots only, no stops (see the file comment). */
+  const dutyCat = [trip?.rate_category, trip?.quotation_line_type, trip?.trip_type].find((c) => isDutyCategory(c)) ?? null;
+  const duty = dutyCat ? { hours: dutyHours(dutyCat) } : null;
 
   const entries = useMemo(() => tripLogEntries<Doc>(trip?.documents ?? []), [trip?.documents]);
   const rows = useMemo<StopRow[]>(() => {
@@ -165,10 +176,61 @@ function useExternalTrip() {
     }
   };
 
+  /** Take back a duty screenshot sent by mistake (the server allows it for a short while). */
+  const remove = (entry: string) => {
+    if (!trip || removing) return;
+    Alert.alert(t('duty_remove_title', 'Remove this screenshot?'), t('duty_remove_body', 'Only if it was sent by mistake.'), [
+      { text: t('action_cancel', 'Cancel'), style: 'cancel' },
+      {
+        text: t('duty_remove', 'Remove'),
+        style: 'destructive',
+        onPress: async () => {
+          setRemoving(entry);
+          try {
+            await tripService.undoTripLogEntry(trip.id, entry);
+            await refetch();
+            showToast(t('duty_removed', 'Screenshot removed'), 'success');
+          } catch (e) {
+            showToast(getApiErrorMessage(e), 'error');
+          } finally {
+            setRemoving(null);
+          }
+        },
+      },
+    ]);
+  };
+
+  const complete = async () => {
+    if (!trip) return;
+    setFinishing(true);
+    try {
+      setTrip(await tripService.updateStatus(trip.id, 'Completed', 'COMPLETED', undefined, undefined, trip.id));
+      router.replace({ pathname: '/trip/completed', params: { tripId: trip.id } } as any);
+    } catch (err) {
+      showToast(getApiErrorMessage(err), 'error');
+    } finally {
+      setFinishing(false);
+    }
+  };
+
   const finish = () => {
     if (!trip) return;
     if (sending) return showToast(t('tlog_wait_uploads', 'Wait until all screenshots are sent.'), 'error');
-    if (entries.length === 0) return showToast(t('tlog_finish_empty', 'Send at least one screenshot before finishing.'), 'error');
+    if (failed) return showToast(t('tlog_failed', 'Not sent. Tap to try again'), 'error');
+    if (entries.length === 0) {
+      return showToast(duty ? t('duty_finish_first', 'Send at least one screenshot, then you can finish.') : t('tlog_finish_empty', 'Send at least one screenshot before finishing.'), 'error');
+    }
+    if (duty) {
+      Alert.alert(
+        `${t('duty_finish', 'Finish duty')} ${trip.ref_id ?? ''}`.trim(),
+        `${entries.length} ${t('duty_finish_confirm', 'screenshots sent. Finish this duty? You cannot send more after this.')}`,
+        [
+          { text: t('action_cancel', 'Cancel'), style: 'cancel' },
+          { text: t('duty_finish', 'Finish duty'), onPress: () => void complete() },
+        ],
+      );
+      return;
+    }
     const left = rows.filter((r) => !r.done).map((r) => r.name);
     const names = rows.map((r) => r.name);
     const which = [
@@ -183,25 +245,12 @@ function useExternalTrip() {
         : t('ext_finish_confirm', 'All stops have a screenshot. Finish this trip?'),
       [
         { text: t('action_cancel', 'Cancel'), style: 'cancel' },
-        {
-          text: t('tlog_finish', 'Finish trip'),
-          onPress: async () => {
-            setFinishing(true);
-            try {
-              setTrip(await tripService.updateStatus(trip.id, 'Completed', 'COMPLETED', undefined, undefined, trip.id));
-              router.replace({ pathname: '/trip/completed', params: { tripId: trip.id } } as any);
-            } catch (err) {
-              showToast(getApiErrorMessage(err), 'error');
-            } finally {
-              setFinishing(false);
-            }
-          },
-        },
+        { text: t('tlog_finish', 'Finish trip'), onPress: () => void complete() },
       ],
     );
   };
 
-  return { trip, refetch, rows, next, loose, sending, arriving, failed, finishing, arrive, sendTo, deliver, place, finish };
+  return { trip, refetch, duty, entries, rows, next, loose, sending, arriving, removing, failed, finishing, arrive, sendTo, deliver, place, remove, finish };
 }
 
 type Model = ReturnType<typeof useExternalTrip>;
@@ -213,6 +262,10 @@ export default function ExternalTripScreen() {
   const [delayOpen, setDelayOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [adding, setAdding] = useState(false);
+  // The stop picked in the Add-stop sheet, sent once the sheet has closed: iOS
+  // won't open the photo picker while a Modal is still sliding away, so sending
+  // straight from the sheet did nothing (TestFlight #5432).
+  const pendingStop = useRef<NewStop | null>(null);
 
   if (!m.trip) {
     return (
@@ -223,10 +276,19 @@ export default function ExternalTripScreen() {
   }
   const trip = m.trip;
   const doneCount = m.rows.filter((r) => r.done).length;
-  const addStop = (stop: NewStop) => {
-    setAdding(false);
-    void m.sendTo({ new_stop: stop }, stop.name ?? t('ext_new_stop_short', 'New stop'));
+  const sendPendingStop = () => {
+    const stop = pendingStop.current;
+    pendingStop.current = null;
+    if (stop) void m.sendTo({ new_stop: stop }, stop.name ?? t('ext_new_stop_short', 'New stop'));
   };
+  const addStop = (stop: NewStop) => {
+    pendingStop.current = stop;
+    setAdding(false);
+    // Android has no onDismiss and opens the picker fine right away.
+    if (Platform.OS !== 'ios') sendPendingStop();
+  };
+  const duty = m.duty;
+  const ready = duty ? m.entries.length > 0 && !m.sending : m.next < 0 && m.rows.length > 0;
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={[s.page, { backgroundColor: Colors.primary }]}>
@@ -239,11 +301,15 @@ export default function ExternalTripScreen() {
         </View>
         <Text style={s.title} numberOfLines={1}>{trip.customer?.name ?? t('tlog_title', 'Trip log')}</Text>
         <Text style={s.sub} numberOfLines={1}>
-          {[trip.ref_id, m.rows.length ? `${doneCount} ${t('ext_of', 'of')} ${m.rows.length} ${t('ext_stops_done', 'stops done')}` : null].filter(Boolean).join(' · ')}
+          {duty
+            ? [trip.ref_id, `${m.entries.length} ${t('duty_sent', 'screenshots sent')}`].filter(Boolean).join(' · ')
+            : [trip.ref_id, m.rows.length ? `${doneCount} ${t('ext_of', 'of')} ${m.rows.length} ${t('ext_stops_done', 'stops done')}` : null].filter(Boolean).join(' · ')}
         </Text>
-        <View style={s.bar}>
-          {m.rows.map((r, i) => <View key={r.stop.id} style={[s.barSeg, r.done && s.barDone, i === m.next && s.barNext]} />)}
-        </View>
+        {duty ? null : (
+          <View style={s.bar}>
+            {m.rows.map((r, i) => <View key={r.stop.id} style={[s.barSeg, r.done && s.barDone, i === m.next && s.barNext]} />)}
+          </View>
+        )}
       </View>
 
       <ScrollView
@@ -257,21 +323,29 @@ export default function ExternalTripScreen() {
             <Text style={s.failedText}>{t('tlog_failed', 'Not sent. Tap to try again')}</Text>
           </TouchableOpacity>
         ) : null}
-        <NextStopView m={m} onAdd={() => setAdding(true)} />
-        {m.loose.length ? <LooseSends m={m} /> : null}
+        {duty ? <DutyView m={m} /> : <NextStopView m={m} onAdd={() => setAdding(true)} />}
+        {!duty && m.loose.length ? <LooseSends m={m} /> : null}
       </ScrollView>
 
       <View style={s.footer}>
-        {m.next < 0 && m.rows.length > 0 ? (
+        {duty && m.entries.length === 0 ? (
+          <Text style={s.hint}>{t('duty_finish_first', 'Send at least one screenshot, then you can finish.')}</Text>
+        ) : null}
+        {!duty && m.next < 0 && m.rows.length > 0 ? (
           <Text style={s.hint}>{t('ext_all_done', 'Every stop has its screenshot. Finish the trip when you are done.')}</Text>
         ) : null}
-        <TouchableOpacity style={[s.finishBtn, m.next < 0 && m.rows.length > 0 && s.finishReady]} activeOpacity={0.85} onPress={m.finish} disabled={m.finishing}>
-          {m.finishing ? <ActivityIndicator color={Colors.gray900} /> : <Flag size={18} color={m.next < 0 ? '#fff' : Colors.gray900} />}
-          <Text style={[s.finishText, m.next < 0 && m.rows.length > 0 && { color: '#fff' }]}>{t('tlog_finish', 'Finish trip')}</Text>
+        <TouchableOpacity style={[s.finishBtn, ready && s.finishReady]} activeOpacity={0.85} onPress={m.finish} disabled={m.finishing}>
+          {m.finishing ? <ActivityIndicator color={Colors.gray900} /> : <Flag size={18} color={ready ? '#fff' : Colors.gray900} />}
+          <Text style={[s.finishText, ready && { color: '#fff' }]}>{duty ? t('duty_finish', 'Finish duty') : t('tlog_finish', 'Finish trip')}</Text>
         </TouchableOpacity>
       </View>
 
-      <AddStopSheet visible={adding} onClose={() => setAdding(false)} onAdd={addStop} />
+      <AddStopSheet
+        visible={adding}
+        onClose={() => { pendingStop.current = null; setAdding(false); }}
+        onAdd={addStop}
+        onDismiss={sendPendingStop}
+      />
       <DelayReportModal visible={delayOpen} tripId={trip.id} onClose={() => setDelayOpen(false)} onSuccess={() => setDelayOpen(false)} />
     </SafeAreaView>
   );
@@ -354,6 +428,59 @@ function NextStopView({ m, onAdd }: { m: Model; onAdd: () => void }) {
 
 
 
+/**
+ * A 10 / 12 hours duty: one big "Send screenshot" (as often as needed), then
+ * what was sent, newest on top. No stops to choose from — drivers found a list
+ * of options confusing.
+ */
+function DutyView({ m }: { m: Model }) {
+  const { t } = useLanguage();
+  const trip = m.trip!;
+  const stops = [...(trip.stops ?? [])].sort((a, b) => a.stop_sequence - b.stop_sequence);
+  const city = (stops[0] ? stopLabel(stops[0]) : null) ?? trip.origin ?? null;
+  const sent = [...m.entries].reverse();
+  const n = m.entries.length;
+  return (
+    <>
+      <View style={s.nextCard}>
+        <Text style={s.eyebrow} numberOfLines={1}>
+          {[m.duty?.hours ? `${m.duty.hours} ${t('duty_hours', 'hours duty')}` : t('duty_hours', 'hours duty'), city].filter(Boolean).join(' · ')}
+        </Text>
+        <Text style={s.dutyTitle}>{t('duty_title', 'Each time you load or offload, send a screenshot')}</Text>
+        <TouchableOpacity
+          style={[s.bigBtn, (!!m.sending || m.finishing) && s.bigOff]}
+          activeOpacity={0.85}
+          disabled={!!m.sending || m.finishing}
+          onPress={() => void m.sendTo(null, `#${n + 1}`)}
+        >
+          {m.sending ? <ActivityIndicator color="#fff" /> : <Camera size={22} color="#fff" strokeWidth={2.4} />}
+          <Text style={s.bigText}>{m.sending ? t('tlog_sending', 'Sending…') : t('duty_send', 'Send screenshot')}</Text>
+        </TouchableOpacity>
+        <Text style={s.oneShot}>{t('duty_hint', 'Send as many as you need. When the duty is over, tap Finish duty.')}</Text>
+      </View>
+
+      <View style={s.listCard}>
+        <Text style={[s.eyebrow, { paddingTop: 6 }]}>{`${t('duty_list', 'Sent on this duty')} · ${n}`}</Text>
+        {n === 0 ? <Text style={[s.miniSub, { paddingVertical: 10 }]}>{t('duty_none', 'Nothing sent yet')}</Text> : null}
+        {sent.map((e, i) => (
+          <View key={e.id} style={[s.miniRow, i > 0 && s.rowBorder]}>
+            <Bubble done next={false} n={n - i} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={s.miniName} numberOfLines={1}>{`#${n - i} · ${formatTime(e.at)}`}</Text>
+              {e.place ? <Text style={s.miniSub} numberOfLines={1}>{e.place}</Text> : null}
+            </View>
+            {canUndoTripLogEntry(e) && !m.finishing ? (
+              <TouchableOpacity onPress={() => m.remove(e.id)} disabled={!!m.removing} hitSlop={8}>
+                {m.removing === e.id ? <ActivityIndicator size="small" color={Colors.gray500} /> : <Text style={s.removeText}>{t('duty_remove', 'Remove')}</Text>}
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ))}
+      </View>
+    </>
+  );
+}
+
 /** Sends not on a stop yet — tap a stop to put them there. */
 function LooseSends({ m }: { m: Model }) {
   const { t } = useLanguage();
@@ -386,7 +513,7 @@ function LooseSends({ m }: { m: Model }) {
  * town the phone is in is used (TestFlight 22 Oct: "saving without typing a
  * name should be possible, using the current location").
  */
-function AddStopSheet({ visible, onClose, onAdd }: { visible: boolean; onClose: () => void; onAdd: (stop: NewStop) => void }) {
+function AddStopSheet({ visible, onClose, onAdd, onDismiss }: { visible: boolean; onClose: () => void; onAdd: (stop: NewStop) => void; onDismiss: () => void }) {
   const { t } = useLanguage();
   const [name, setName] = useState('');
   const [type, setType] = useState<'Pickup' | 'Dropoff'>('Dropoff');
@@ -407,7 +534,7 @@ function AddStopSheet({ visible, onClose, onAdd }: { visible: boolean; onClose: 
     ...(loc ? { lat: loc.latitude, lng: loc.longitude } : {}),
   });
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} onDismiss={onDismiss}>
       <View style={s.overlay}>
         <View style={s.sheet}>
           <View style={s.sheetHead}>
@@ -488,6 +615,8 @@ const s = StyleSheet.create({
   dirLinkText: { fontSize: 13, fontWeight: '700', color: Colors.gray500 },
   bigBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: Colors.primary, borderRadius: 18, paddingVertical: 16, paddingHorizontal: 12, marginTop: 10 },
   bigText: { color: '#fff', fontSize: 17, fontWeight: '800', flexShrink: 1, textAlign: 'center' },
+  dutyTitle: { fontSize: 22, fontWeight: '800', color: Colors.gray900, marginTop: 2 },
+  removeText: { fontSize: 13, fontWeight: '800', color: '#B42318' },
   oneShot: { fontSize: 12.5, color: Colors.gray500, textAlign: 'center', marginTop: 4 },
   addLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 6 },
   addLinkText: { fontSize: 15, fontWeight: '800', color: Colors.primary },

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canUndoTripLogEntry, tripLogEntries, usesTripLog } from '@mercon/shared-types';
+import { canUndoTripLogEntry, dutyHours, isDutyCategory, tripLogEntries, usesTripLog } from '@mercon/shared-types';
 import { buildDriverUpdates } from '../services/operatorInbox';
 
 const NOW = Date.parse('2026-10-17T10:00:00Z');
@@ -56,4 +56,12 @@ test('trip log', async (t) => {
     assert.equal(rows.find((u) => u.key === 'log:e1')!.items.length, 2);
     assert.equal(rows.find((u) => u.key === 'log:e2')!.place, 'Taif');
   });
+});
+
+test('10 / 12 hours duty runs as screenshots only', () => {
+  for (const c of ['10_HRS', '12_HRS', '10 hours duty', '12 Hours', '10 HRS']) assert.equal(isDutyCategory(c), true, c);
+  for (const c of ['ROUND_TRIP', 'SINGLE_TRIP', 'Round Trip', '10 TON', '', null, undefined]) assert.equal(isDutyCategory(c), false, String(c));
+  assert.equal(dutyHours('10_HRS'), 10);
+  assert.equal(dutyHours('12 hours duty'), 12);
+  assert.equal(dutyHours('ROUND_TRIP'), null);
 });

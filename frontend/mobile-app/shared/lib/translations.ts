@@ -692,4 +692,20 @@ export const TRANSLATIONS: Record<string, TranslationItem> = {
   ext_early_body: { en: 'This trip is planned for', ur: 'یہ ٹرپ اس وقت کے لیے طے ہے:' },
   ext_early_hint: { en: 'A screenshot from an earlier trip goes on that trip, not this one.', ur: 'پچھلے ٹرپ کا اسکرین شاٹ اسی ٹرپ میں بھیجیں، اس میں نہیں۔' },
   ext_early_send: { en: 'Send here', ur: 'یہیں بھیجیں' },
+
+  // 10 / 12 hours duty on a customer-app trip: screenshots only, then Finish (2026-10-29)
+  duty_hours: { en: 'hours duty', ur: 'گھنٹے ڈیوٹی' },
+  duty_title: { en: 'Each time you load or offload, send a screenshot', ur: 'ہر بار لوڈ یا ان لوڈ پر اسکرین شاٹ بھیجیں' },
+  duty_send: { en: 'Send screenshot', ur: 'اسکرین شاٹ بھیجیں' },
+  duty_hint: { en: 'Send as many as you need. When the duty is over, tap Finish duty.', ur: 'جتنے چاہیں بھیجیں۔ ڈیوٹی ختم ہو تو "ڈیوٹی ختم کریں" دبائیں۔' },
+  duty_sent: { en: 'screenshots sent', ur: 'اسکرین شاٹس بھیجے گئے' },
+  duty_list: { en: 'Sent on this duty', ur: 'اس ڈیوٹی پر بھیجے گئے' },
+  duty_none: { en: 'Nothing sent yet', ur: 'ابھی کچھ نہیں بھیجا' },
+  duty_finish: { en: 'Finish duty', ur: 'ڈیوٹی ختم کریں' },
+  duty_finish_first: { en: 'Send at least one screenshot, then you can finish.', ur: 'کم از کم ایک اسکرین شاٹ بھیجیں، پھر ختم کر سکتے ہیں۔' },
+  duty_finish_confirm: { en: 'screenshots sent. Finish this duty? You cannot send more after this.', ur: 'اسکرین شاٹس بھیجے گئے۔ یہ ڈیوٹی ختم کریں؟ اس کے بعد مزید نہیں بھیج سکیں گے۔' },
+  duty_remove: { en: 'Remove', ur: 'ہٹائیں' },
+  duty_remove_title: { en: 'Remove this screenshot?', ur: 'یہ اسکرین شاٹ ہٹائیں؟' },
+  duty_remove_body: { en: 'Only if it was sent by mistake.', ur: 'صرف اگر غلطی سے بھیجا ہو۔' },
+  duty_removed: { en: 'Screenshot removed', ur: 'اسکرین شاٹ ہٹا دیا گیا' },
 };
