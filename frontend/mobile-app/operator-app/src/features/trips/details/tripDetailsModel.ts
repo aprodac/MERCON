@@ -6,7 +6,7 @@
  */
 import { STAGE_TITLE } from '../../dashboard/actions/actionModel';
 import type { TripStatus } from '@mercon/mobile-shared/lib/trips';
-import { formatTripStatusMessage, haltActivityLabel, insertByTime, tripLogEntries, type StatusTrip, type TripLogEntry } from '@mercon/shared-types';
+import { formatTripStatusMessage, haltActivityLabel, insertByTime, stopDueAt, stopMinutesLate, tripLogEntries, type StatusTrip, type TripLogEntry } from '@mercon/shared-types';
 import { operatorService, type DriverUpdate, type OperatorTripDetail, type OperatorTripStop, type TripHalt, type TripPhase } from '../../../lib/operator';
 import { niceName } from '../create/components/ui';
 import { legLabel, liveLegOf, splitLegs } from '../tripLegs';
@@ -667,12 +667,20 @@ export function metersText(m: number): string {
 }
 
 /** Planned vs real at a stop: how late it arrived (negative = early) and how long the truck stood there. */
-export function stopTiming(st: Pick<Stop, 'planned_arrival' | 'actual_arrival' | 'actual_departure'>) {
-  const late = minutesLate(st.planned_arrival, st.actual_arrival);
+/**
+ * A stop's lateness against when it was due by the transit time (shared-types stopDue:
+ * the departure from the stop before + the planned time between, never earlier than
+ * booked — TestFlight 29 Oct), its time there, and that due time when it isn't the booked one.
+ */
+export function stopTiming(stops: Stop[], i: number) {
+  const st = stops[i];
+  const late = stopMinutesLate(stops, i, st.actual_arrival);
+  const due = stopDueAt(stops, i);
+  const movedDue = due && st.planned_arrival && Math.abs(due.getTime() - new Date(st.planned_arrival).getTime()) >= 60_000 ? due.toISOString() : null;
   const dwell = st.actual_arrival && st.actual_departure
     ? Math.max(0, Math.round((new Date(st.actual_departure).getTime() - new Date(st.actual_arrival).getTime()) / 60000))
     : null;
-  return { late, dwell };
+  return { late, dwell, movedDue };
 }
 
 /** "22 min", "1 h 05 min". */

@@ -6,7 +6,8 @@
  */
 import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
-import { Check, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { Check, ChevronLeft, ChevronRight, Pencil } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
 import { addDaysToDateStr } from '@mercon/shared-types';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
@@ -29,7 +30,15 @@ export function RepeatTripsSheet({ visible, trips, sourceDay, todayKey, f, onClo
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const router = useRouter();
   const list = useMemo(() => trips.filter((t) => t.status !== 'Cancelled' && t.planned_start), [trips]);
+  // TestFlight 29 Oct: "edit option in the selected trip" — start a new trip from this one in Create
+  // trip (customer, quotation / route, truck and driver copied) and change what differs before creating.
+  const editCopy = (t: OperatorTrip) => {
+    tap();
+    onClose();
+    router.push({ pathname: '/create-trip', params: { copyTripId: t.id } } as any);
+  };
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [target, setTarget] = useState(() => addDaysToDateStr(todayKey, 1));
   const [shift, setShift] = useState(0);
@@ -143,6 +152,10 @@ export function RepeatTripsSheet({ visible, trips, sourceDay, todayKey, f, onClo
                 <TouchableOpacity key={t.id} style={s.row} onPress={() => { tap(); setPicked((p) => toggle(p, t.id)); }} accessibilityRole="checkbox" accessibilityState={{ checked: on }}>
                   <Box on={on} />
                   <View style={{ flex: 1, gap: 2 }}><Text style={s.title}>{l.title}</Text><Text style={s.sub} numberOfLines={2}>{l.sub}</Text></View>
+                  <TouchableOpacity style={s.editBtn} onPress={() => editCopy(t)} hitSlop={6} accessibilityRole="button" accessibilityLabel={`Edit and create a copy of ${t.ref_id ?? 'this trip'}`}>
+                    <Pencil size={13} color={INK} />
+                    <Text style={s.editText}>Edit</Text>
+                  </TouchableOpacity>
                 </TouchableOpacity>
               );
             })}
@@ -186,6 +199,8 @@ function Stepper({ text, onMinus, onPlus }: { text: string; onMinus?: () => void
 }
 
 const s = StyleSheet.create({
+  editBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: '#F1F2F5' },
+  editText: { fontSize: 12, fontWeight: '700', color: INK },
   bulk: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 12, borderRadius: 14, backgroundColor: '#F6F6F7' },
   box: { width: 22, height: 22, borderRadius: 7, borderWidth: 2, borderColor: '#C9CAD1', alignItems: 'center', justifyContent: 'center', marginTop: 1, backgroundColor: Colors.white },

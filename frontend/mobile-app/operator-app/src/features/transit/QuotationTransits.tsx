@@ -95,7 +95,7 @@ export function QuotationTransits({ customerId }: { customerId: string }) {
             </View>
             <View style={s.nums}>
               <View style={[s.num, { flex: 1.3 }]}>
-                <Text style={s.numLabel}>Given TT</Text>
+                <Text style={s.numLabel}>{r.saved ? 'Given TT' : 'Estimate · not set'}</Text>
                 <Text style={[s.given, !r.saved && { color: INK }]}>{hm(r.givenMin)}</Text>
                 <Text style={s.numSub}>{r.saved ? 'set by you · every size' : r.source ? SOURCE[r.source] : 'place not located'}</Text>
               </View>

@@ -28,7 +28,7 @@ import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useLanguage, getLocalizedStatus, bilingual, translate } from '@mercon/mobile-shared/lib/language-context';
 import { parseTripRouteNodes, getIntermediateStops, getOutboundIntermediateStops, getReturnIntermediateStops, targetFromWorkflowState, type TimelineStop } from '../utils/routeParser';
 import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
-import { inCompanyZone } from '@mercon/mobile-shared/lib/dates';
+import { companyDayKey, inCompanyZone } from '@mercon/mobile-shared/lib/dates';
 import { useNotifications } from '../hooks/use-notifications';
 import { localizeNotification } from '../utils/notificationText';
 
@@ -123,6 +123,20 @@ function fmtTime(value?: Date | string | null): string | null {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return null;
   return d.toLocaleTimeString(undefined, inCompanyZone({ hour: '2-digit', minute: '2-digit', hour12: false }));
+}
+
+/**
+ * The day of a planned time when it isn't today (company zone): "Tomorrow" or
+ * "Fri 31 Oct" — else null, the time alone is enough.
+ */
+function plannedDay(value: Date | string | null | undefined, tomorrowWord: string): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  const day = companyDayKey(d);
+  if (day === companyDayKey(Date.now())) return null;
+  if (day === companyDayKey(Date.now() + 24 * 60 * 60 * 1000)) return tomorrowWord;
+  return d.toLocaleDateString('en-GB', inCompanyZone({ weekday: 'short', day: 'numeric', month: 'short' }));
 }
 
 /** Minutes the pickup is overdue (planned start passed, driver not there yet), else 0. */
@@ -691,7 +705,10 @@ const HomeScreen = () => {
                 const nextStop = timelineStops[currentIdx];
                 const atNextStop = !!nextStop.actualArrival;
                 const stopType = (st: TimelineStop) => (language === 'ur' ? st.typeUrdu : st.typeEn);
-                const plannedAt = fmtTime(nextStop.plannedArrival);
+                // TestFlight 29 Oct: "show the date .. it's scheduled for tomorrow and it's not visible".
+                const plannedTime = fmtTime(nextStop.plannedArrival);
+                const plannedOn = plannedDay(nextStop.plannedArrival, LS('Tomorrow', 'کل'));
+                const plannedAt = plannedTime && plannedOn ? `${plannedOn} · ${plannedTime}` : plannedTime;
                 const scrollStops = timelineStops.length > 4;
 
                 const stepItems = timelineStops.map((st, idx) => {

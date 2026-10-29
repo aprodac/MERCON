@@ -39,6 +39,7 @@ import {
 } from './tripListModel';
 
 import { RepeatTripsSheet } from './RepeatTripsSheet';
+import { CompanyFilterSheet } from './CompanyFilterSheet';
 
 const INK = '#3E3C3D';
 const MUTED = '#5F5F6E';
@@ -78,6 +79,7 @@ export default function TripsScreen() {
   // Schedule as a list of cards, or one row per truck across the day.
   const [actionsFor, setActionsFor] = useState<OperatorTrip | null>(null);
   const [repeatOpen, setRepeatOpen] = useState(false);
+  const [companyOpen, setCompanyOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const now = useNow();
@@ -255,7 +257,25 @@ export default function TripsScreen() {
             <X size={17} color={MUTED} />
           </TouchableOpacity>
         ) : null}
+        {/* One company's trips only (TestFlight 29 Oct: "filter company wise"). */}
+        <TouchableOpacity
+          onPress={() => { tap(); setCompanyOpen(true); }}
+          hitSlop={8}
+          style={[s.companyBtn, scope?.kind === 'customer' && s.companyBtnOn]}
+          accessibilityLabel="Filter by company"
+        >
+          <Building2 size={16} color={scope?.kind === 'customer' ? Colors.white : MUTED} />
+        </TouchableOpacity>
       </View>
+      <CompanyFilterSheet
+        visible={companyOpen}
+        onClose={() => setCompanyOpen(false)}
+        onPick={(c) => {
+          setCompanyOpen(false);
+          setScope({ kind: 'customer', filter: { customer_id: c.id }, label: c.name });
+          router.setParams({ vehicleId: undefined, plate: undefined, customerId: c.id, customerName: c.name });
+        }}
+      />
 
       {data.searching ? (
         <FlatList
@@ -612,6 +632,8 @@ function QuickActions({ trip, onClose, onOpen, onDelete }: { trip: OperatorTrip 
 
 const s = StyleSheet.create({
   truckChip: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: '#E6F1FB' },
+  companyBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ECEDF1' },
+  companyBtnOn: { backgroundColor: INK },
   truckChipText: { fontSize: 12, fontWeight: '700', color: '#0C447C' },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10, gap: 12 },
   h1: { fontSize: 24, fontWeight: '700', color: INK, letterSpacing: -0.4 },
