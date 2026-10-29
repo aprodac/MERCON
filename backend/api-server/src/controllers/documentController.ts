@@ -328,7 +328,7 @@ export const updateDocumentStatus = async (req: Request, res: Response) => {
 };
 
 /* ─── Delete documents → Recently deleted (restorable for 30 days) ──────── */
-async function trashDocuments(req: Request, ids: string[]): Promise<number> {
+export async function trashDocuments(req: Request, ids: string[]): Promise<number> {
   const userId = (req as any).user?.id;
   const live = await prisma.document.findMany({ where: { id: { in: ids }, deletedAt: null }, select: { id: true } });
   if (!live.length) return 0;

@@ -161,8 +161,10 @@ export async function checkTripsStartingSoon(now: Date = new Date()): Promise<nu
  *    operational start/arrival, transitions Trip.status to 'Delayed' in the database.
  * 3. Loading Trips: Once actual arrival is stamped, pickup-arrival deadline is satisfied.
  *    Will NOT immediately re-mark as Delayed based on pickup planned_arrival.
- * 4. InTransit Trips: Evaluates the first incomplete stop (actual_arrival == null) in sequence.
+ * 4. InTransit Trips: Evaluates the next stop after the furthest one reached (arrived or left).
  *    If >= DELAY_THRESHOLD_MINUTES past planned arrival, transitions Trip.status to 'Delayed'.
+ * 5. A Delayed trip on the road (InTransit / Loading stage) whose next stop is no longer late
+ *    goes back to that stage.
  */
 export async function checkTripsForDelay(now: Date = new Date()): Promise<number> {
   if (isChecking) {
@@ -278,9 +280,17 @@ export async function checkTripsForDelay(now: Date = new Date()): Promise<number
           }
         }
       } else if (stage === TripStatus.InTransit) {
-        // Evaluate the first unreached stop in sequence
-        const pendingStop = trip.stops.find((s) => s.actual_arrival === null);
-        const plannedTime = pendingStop?.planned_arrival || trip.planned_end;
+        // The stop after the furthest one reached — a stop the truck left counts as
+        // reached even without an arrival time (TestFlight 24 Oct: TRP-0013 loaded at
+        // Jeddah at 20:30 and left, but stayed "late · due 20:00 at Jeddah").
+        let reached = -1;
+        trip.stops.forEach((s, i) => { if (s.actual_arrival !== null || s.actual_departure !== null) reached = i; });
+        const pendingStop = trip.stops.slice(reached + 1).find((s) => s.actual_arrival === null);
+        // A way-back stop with no planned time has no deadline: the trip's planned end
+        // is the way out's, so it read "Delayed" the moment the truck turned back
+        // (TestFlight 25 Oct, TRP-0066: "leg 2 time not set, but it's showing delayed").
+        const unplannedReturn = !!pendingStop && !pendingStop.planned_arrival && (pendingStop.leg_index ?? 0) > 0;
+        const plannedTime = pendingStop?.planned_arrival || (unplannedReturn ? null : trip.planned_end);
 
         if (plannedTime) {
           const diffMs = now.getTime() - plannedTime.getTime();
@@ -291,6 +301,15 @@ export async function checkTripsForDelay(now: Date = new Date()): Promise<number
             targetStop = pendingStop || null;
           }
         }
+      }
+
+      // A Delayed trip on the road whose next stop isn't late any more (it left the
+      // late stop, or the plan was moved) is back on time: it returns to its stage.
+      // A trip that hasn't started stays Delayed until it does.
+      if (alreadyDelayed && !isDelayed && (stage === TripStatus.InTransit || stage === TripStatus.Loading)) {
+        await prisma.trip.update({ where: { id: trip.id }, data: { status: stage } });
+        logger.info({ tripId: trip.id, refId: trip.ref_id, status: stage }, '[TripDelayMonitor] Trip back on time');
+        continue;
       }
 
       // An already-Delayed trip only still owes its driver the prompt, and only

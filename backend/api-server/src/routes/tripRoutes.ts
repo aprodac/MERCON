@@ -8,12 +8,13 @@ import {
 import { exportTrips } from '../controllers/tripExportController';
 import { getTripTrackingLink, getTripTrackingLinks, trackingLinkBody, trackingLinksBody } from '../controllers/trackingController';
 import { idParam, logEntryToStopBody } from '../schemas';
-import { logEntryToStop } from '../controllers/tripLogController';
+import { deleteTripPhoto, logEntryToStop, moveTripPhoto } from '../controllers/tripLogController';
 import { getTripDriverTrail } from '../controllers/driverPhoneController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles, requireModuleEnabled } from '../middlewares/rbac';
 import { validate } from '../middlewares/validate';
 import { createTripBody, listQuery, logStopDelayBody, confirmEvidenceTimeBody, confirmTripTimesBody, bulkImportTripsBody, updateTripStopBody, updateTripStopsRouteBody, extraStopChargeBody, pinBody, reviewTripChargesBody, tripStepBackBody } from '../schemas';
+import { repeatTrips, repeatTripsBody } from '../controllers/tripRepeatController';
 import { getProgressSteps, restoreStepBackPhotosHandler, undoStepBackHandler, stepBack, stepForward } from '../controllers/tripStepBackController';
 
 import { getDriverRecommendations, getVehicleRecommendations } from '../controllers/fleetDispatchController';
@@ -35,6 +36,7 @@ router.post('/bulk-assign', bulkAssignTrips);
 router.post('/tracking-links', validate({ body: trackingLinksBody }), getTripTrackingLinks);
 // Create Trip: does the driver already have a trip that day?
 router.post('/same-day-check', sameDayCheck);
+router.post('/repeat', validate({ body: repeatTripsBody }), repeatTrips);
 router.post('/bulk-import', validate({ body: bulkImportTripsBody }), bulkImportTrips);
 
 
@@ -55,6 +57,10 @@ router.post('/:id/step-back/undo', validate({ params: idParam }), undoStepBackHa
 router.post('/:id/step-forward', validate({ params: idParam }), stepForward);
 // Trip log (customer-app trips): make a driver's log entry a stop, or add it to one.
 router.post('/:id/log/:entry/stop', validate({ body: logEntryToStopBody }), logEntryToStop);
+// A driver's photo / screenshot sent by mistake → Recently deleted.
+router.delete('/:id/photos/:docId', deleteTripPhoto);
+// …or sent at the wrong stop → move it to the right one.
+router.patch('/:id/photos/:docId', moveTripPhoto);
 router.patch('/:id/financials', updateTripFinancials);
 router.post('/:id/charge-review', validate({ body: reviewTripChargesBody }), reviewTripCharges);
 

@@ -28,13 +28,13 @@ export default function PastDateTripConfirmModal({
   isSubmitting = false,
 }: PastDateTripConfirmModalProps) {
   const isPastDate = Boolean(analysis?.hasPastTrips);
-  const [selectedOption, setSelectedOption] = useState<'Completed' | 'Incompleted'>(
-    isPastDate ? 'Completed' : 'Incompleted'
+  const [selectedOption, setSelectedOption] = useState<'Completed' | 'Incompleted' | null>(
+    isPastDate ? null : 'Incompleted'
   );
 
   React.useEffect(() => {
     if (open) {
-      setSelectedOption(isPastDate ? 'Completed' : 'Incompleted');
+      setSelectedOption(isPastDate ? null : 'Incompleted');
     }
   }, [open, isPastDate]);
 
@@ -45,7 +45,7 @@ export default function PastDateTripConfirmModal({
   const samplePastDate = analysis?.samplePastDate;
 
   const handleConfirm = () => {
-    onConfirm(selectedOption as any);
+    if (selectedOption) onConfirm(selectedOption as any);
   };
 
   return (
@@ -67,7 +67,7 @@ export default function PastDateTripConfirmModal({
               <DialogDescription className="text-xs text-amber-800/90 dark:text-amber-300/80 leading-relaxed">
                 {isPastDate ? (
                   <>
-                    You are creating {pastTripsCount === 1 ? '1 trip' : `${pastTripsCount} trip(s)`} for a previous date ({samplePastDate}). Please confirm the initial execution status.
+                    Warning: {pastTripsCount === 1 ? "this trip's start time has passed" : `${pastTripsCount} trips have already started`} ({samplePastDate}). Did it happen? Choose one — nothing is selected for you.
                   </>
                 ) : (
                   <>
@@ -106,7 +106,7 @@ export default function PastDateTripConfirmModal({
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                     <span className="text-sm font-bold text-slate-900 dark:text-slate-100">Completed</span>
                     {isPastDate ? (
-                      <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] py-0 font-bold">Recommended</Badge>
+                      null
                     ) : (
                       <Badge variant="outline" className="text-slate-500 border-slate-300 text-[10px] py-0 font-normal">Already Executed</Badge>
                     )}
@@ -164,10 +164,10 @@ export default function PastDateTripConfirmModal({
           <Button
             type="button"
             onClick={handleConfirm}
-            disabled={isSubmitting}
+            disabled={isSubmitting || !selectedOption}
             className="rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-500/20 px-4"
           >
-            {isSubmitting ? 'Creating Trips...' : 'Confirm Status & Create Trips'}
+            {isSubmitting ? 'Creating Trips...' : !selectedOption ? 'Choose one above' : selectedOption === 'Completed' ? 'Create as completed (driver not notified)' : 'Confirm Status & Create Trips'}
           </Button>
         </div>
       </DialogContent>

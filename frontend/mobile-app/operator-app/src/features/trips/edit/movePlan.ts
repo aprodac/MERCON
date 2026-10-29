@@ -103,6 +103,10 @@ export async function deleteTrips(ids: string[]): Promise<{ deleted: number; kep
   return { deleted: Number(d.deletedCount ?? 0), kept: (d.skippedTrips ?? []).map((t: { ref_id?: string | null }) => t.ref_id ?? 'a trip') };
 }
 
+/** The warning before deleting a delivered trip — the API then tells the other Admins / Operators. */
+export const COMPLETED_DELETE_WARNING =
+  'This trip was delivered: the driver\u2019s photos and proof of delivery, its times and charges go with it, and the other operators get a notification.';
+
 /** A trip can be deleted from the app: not running (cancel it instead) and not invoiced. */
 export const canDeleteTrip = (status: string) => ['Draft', 'Scheduled', 'Cancelled', 'Completed'].includes(status);
 
@@ -111,7 +115,7 @@ export const canDeleteTrip = (status: string) => ['Draft', 'Scheduled', 'Cancell
  * together with it (a month plan), offers to delete those too.
  */
 export async function askDeleteTrip(
-  trip: TripKey & { ref_id: string | null },
+  trip: TripKey & { ref_id: string | null; status?: string | null },
   hooks: { busy?: (on: boolean) => void; deleted: () => void },
 ): Promise<void> {
   const others = await tripsMadeWith(trip).catch(() => [] as OperatorTrip[]);
@@ -127,9 +131,11 @@ export async function askDeleteTrip(
       hooks.busy?.(false);
     }
   };
-  const what = 'It disappears from the trip lists, the driver app and the customer link. Admins can restore it from Trash.';
+  const what = trip.status === 'Completed'
+    ? `${COMPLETED_DELETE_WARNING} Admins can restore it from Trash.`
+    : 'It disappears from the trip lists, the driver app and the customer link. Admins can restore it from Trash.';
   Alert.alert(
-    `Delete ${trip.ref_id ?? 'this trip'}?`,
+    trip.status === 'Completed' ? `Delete completed trip ${trip.ref_id ?? ''}?`.replace(' ?', '?') : `Delete ${trip.ref_id ?? 'this trip'}?`,
     others.length
       ? `${what}\n\n${others.length} other not-started ${others.length === 1 ? 'trip was' : 'trips were'} created together with it (same customer and driver).`
       : what,

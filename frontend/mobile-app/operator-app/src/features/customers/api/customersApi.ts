@@ -38,6 +38,7 @@ export interface RawCustomerTrip {
   customerId: string;
   status: string;
   createdAt: string;
+  planned_start?: string | null;
 }
 
 export interface RawCustomerInvoice {
@@ -81,7 +82,7 @@ export const customersApi = {
   },
 
   async getTripsForAggregation(): Promise<RawCustomerTrip[]> {
-    const { data } = await api.get('/trips', { params: { per_page: AGGREGATE_PAGE_SIZE } });
+    const { data } = await api.get('/trips', { params: { per_page: AGGREGATE_PAGE_SIZE, lite: 'true' } });
     return (data.data ?? []) as RawCustomerTrip[];
   },
 

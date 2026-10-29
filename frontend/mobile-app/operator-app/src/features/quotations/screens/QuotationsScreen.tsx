@@ -26,7 +26,7 @@ import { FilterChips } from '@/components/FilterChips';
 import { ListSearch, listPage } from '@/components/ListSearch';
 import { niceName } from '@/features/trips/create/components/ui';
 import {
-  CompanyLogo, OPERATION_TONE, QuotationFilterSheet, QuotationRow, QuotationsHeader, RoutePriceCard, SORT_OPTIONS,
+  CompanyLogo, OPERATION_TONE, QuotationFilterSheet, QuotationRow, QuotationsHeader, RemovePayoutsSheet, RoutePriceCard, SORT_OPTIONS,
   groupByRoute, lineTypeIcon, truckOrder, type FilterOption,
 } from '../components';
 import { useCompanyShortcuts, useQuotations } from '../hooks';
@@ -92,6 +92,7 @@ export default function QuotationsScreen() {
   const [sort, setSort] = useState<QuotationSortOption>('route');
   const [view, setView] = useState<View_>('list');
   const [sheet, setSheet] = useState(false);
+  const [payoutSheet, setPayoutSheet] = useState(false);
   /** The company whose quotations are open; null = the list of companies. */
   const [customerId, setCustomerId] = useState<string | null>(null);
 
@@ -275,6 +276,9 @@ export default function QuotationsScreen() {
       countFor={(f) => searched.filter((q) => matchesStatus(q, status) && matchesFilters(q, f)).length}
     />
   );
+  const payoutSheetEl = (
+    <RemovePayoutsSheet visible={payoutSheet} onClose={() => setPayoutSheet(false)} quotations={quotations} customerId={customerId} onDone={() => refresh()} />
+  );
   const refreshControl = <RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={Colors.primary} />;
 
   if (error && quotations.length === 0) {
@@ -335,7 +339,7 @@ export default function QuotationsScreen() {
 
     return (
       <SafeAreaView style={listPage.page} edges={['top']}>
-        <QuotationsHeader onAddPress={() => router.push('/quotation-edit')} onFinderPress={() => router.push('/rate-finder')} />
+        <QuotationsHeader onAddPress={() => router.push('/quotation-edit')} onFinderPress={() => router.push('/rate-finder')} onRemovePayouts={() => setPayoutSheet(true)} />
         {view === 'route' ? (
           <FlatList
             key="routes"
@@ -373,6 +377,7 @@ export default function QuotationsScreen() {
           />
         )}
         {sheetEl}
+        {payoutSheetEl}
       </SafeAreaView>
     );
   }
@@ -381,7 +386,7 @@ export default function QuotationsScreen() {
   const nCompanies = companyItems.filter((i) => i.kind === 'company').length;
   return (
     <SafeAreaView style={listPage.page} edges={['top']}>
-      <QuotationsHeader onAddPress={() => router.push('/quotation-edit')} onFinderPress={() => router.push('/rate-finder')} />
+      <QuotationsHeader onAddPress={() => router.push('/quotation-edit')} onFinderPress={() => router.push('/rate-finder')} onRemovePayouts={() => setPayoutSheet(true)} />
       <FlatList
         key="companies"
         data={first ? [] : companyItems}
@@ -437,6 +442,7 @@ export default function QuotationsScreen() {
         }
       />
       {sheetEl}
+      {payoutSheetEl}
     </SafeAreaView>
   );
 }

@@ -5,13 +5,13 @@
  * a single list. Sharing is the web's live-tracking links.
  */
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, Linking, Image } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, Linking, Image, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { setStringAsync } from '../../../lib/clipboard';
 import {
-  ArrowLeft, ChevronRight, Copy, ExternalLink, MapPin, MessageCircle, Phone, ReceiptText, Share2, SquarePen, Tag, Users,
+  ArrowLeft, ChevronRight, Copy, ExternalLink, MapPin, MessageCircle, Phone, ReceiptText, Search, Share2, SquarePen, Tag, Timer, Users, X,
 } from 'lucide-react-native';
 import { EmptyHint, PageTitle, SectionLabel, TabIcon, Tile } from '@/components/pageCues';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
@@ -63,6 +63,7 @@ export default function CustomerDetailsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<Tab>('trips');
   const [toast, setToast] = useState<string | null>(null);
+  const [quoteSearch, setQuoteSearch] = useState('');
 
   // Tracking links are asked for only once the Sharing tab is opened.
   const liveIds = c.trips.live.map((t) => t.id);
@@ -291,11 +292,37 @@ export default function CustomerDetailsScreen() {
     }
 
     if (tab === 'quotes') {
+      // Search a long list (TestFlight 28 Oct: "Search option quote"): every word must appear in the
+      // quote's name / route, truck size, line type, price or number.
+      const words = quoteSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      const quotes = words.length
+        ? c.quotations.filter((q) => {
+          const hay = [q.name, q.vehicle_class, q.vehicle_type, q.line_type, String(Number(q.rate) || ''), (q as { quotation_number?: number | null }).quotation_number != null ? `#${(q as { quotation_number?: number | null }).quotation_number}` : '']
+            .filter(Boolean).join(' ').toLowerCase().replace(/_/g, ' ');
+          return words.every((w) => hay.includes(w));
+        })
+        : c.quotations;
       return (
         <Card style={s.listCard}>
+          {c.quotations.length > 5 ? (
+            <View style={s.search}>
+              <Search size={16} color={MUTED} />
+              <TextInput
+                value={quoteSearch}
+                onChangeText={setQuoteSearch}
+                placeholder={`Search ${c.quotations.length} quotes · place, size, 12 hours…`}
+                placeholderTextColor="#A0A0AA"
+                style={s.searchInput}
+                autoCorrect={false}
+                returnKeyType="search"
+              />
+              {quoteSearch ? <TouchableOpacity onPress={() => setQuoteSearch('')} hitSlop={8} accessibilityLabel="Clear search"><X size={16} color={MUTED} /></TouchableOpacity> : null}
+            </View>
+          ) : null}
           {c.quotationsLoading ? <EmptyHint>Loading…</EmptyHint>
             : c.quotations.length === 0 ? <EmptyHint>No active quotations.</EmptyHint>
-            : c.quotations.slice(0, 40).map((q, i) => (
+            : quotes.length === 0 ? <EmptyHint>{`No quote matches “${quoteSearch.trim()}”.`}</EmptyHint>
+            : quotes.slice(0, words.length ? 200 : 40).map((q, i) => (
               <TouchableOpacity key={q.id} style={[s.line, i > 0 && s.lineBorder]} activeOpacity={0.6} onPress={() => router.push({ pathname: '/quotation-details', params: { id: q.id } })}>
                 <Tile icon={Tag} />
                 <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
@@ -306,7 +333,7 @@ export default function CustomerDetailsScreen() {
                 <ChevronRight size={16} color="#C4C4CC" />
               </TouchableOpacity>
             ))}
-          {c.quotations.length > 40 ? <Text style={[s.sub, s.lineBorder, { paddingVertical: 12 }]}>Showing 40 of {c.quotations.length}. Open Quotations for the full list.</Text> : null}
+          {!words.length && c.quotations.length > 40 ? <Text style={[s.sub, s.lineBorder, { paddingVertical: 12 }]}>Showing 40 of {c.quotations.length}. Open Quotations for the full list.</Text> : null}
         </Card>
       );
     }
@@ -407,6 +434,20 @@ export default function CustomerDetailsScreen() {
                 <SquarePen size={16} color={INK} strokeWidth={2.2} />
               </TouchableOpacity>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.line, s.lineBorder]}
+              activeOpacity={0.6}
+              onPress={() => { tap(); router.push({ pathname: '/transit-times', params: { customerId: customer.id, customerName: name } }); }}
+              accessibilityRole="button"
+              accessibilityLabel="Transit times"
+            >
+              <Tile icon={Timer} />
+              <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+                <Text style={s.rowLabel}>Transit times</Text>
+                <Text style={s.rowTitle} numberOfLines={1}>Planned vs actual, per route</Text>
+              </View>
+              <ChevronRight size={18} color={MUTED} />
+            </TouchableOpacity>
           </Card>
         </View>
 
@@ -443,6 +484,8 @@ function Figure({ value, label, accent }: { value: string; label: string; accent
 }
 
 const s = StyleSheet.create({
+  search: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F6F6F7', borderRadius: 12, paddingHorizontal: 12, marginBottom: 6 },
+  searchInput: { flex: 1, paddingVertical: 9, fontSize: 14, color: INK },
   page: { flex: 1, backgroundColor: PAGE },
   bar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 8 },
   barBtn: { width: 40, height: 40, borderRadius: 13, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E9E9EC' },

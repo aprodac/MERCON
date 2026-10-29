@@ -33,8 +33,13 @@ export const PHASE_STYLE: Record<Phase, { label: string; bg: string; fg: string;
   cancelled: { label: 'Cancelled', bg: '#F1F1F3', fg: '#6E6E80', dot: '#B8BCC8' },
 };
 
-/** Delayed, but the driver never started: waiting to start, not on the road. */
-export const isLateToStart = (t: OperatorTrip) => isDelayedNotStarted(t);
+/**
+ * Delayed, but no stop reached yet: waiting to start, not on the road — also when
+ * the driver tapped Start but hasn't got to the first pickup (TestFlight 25 Oct:
+ * TRP-0066 "not started yet and it's showing arriving late instead of starting late").
+ */
+export const isLateToStart = (t: OperatorTrip) =>
+  isDelayedNotStarted(t) || (t.status === 'Delayed' && stopsOf(t).length > 0 && !stopsOf(t).some((x) => x.actual_arrival || x.actual_departure));
 
 export const statusText = (t: OperatorTrip) =>
   t.status === 'Loading' ? 'Loading'
@@ -90,7 +95,9 @@ export function routeOf(t: OperatorTrip): TripRoute {
     to: placeName(out[out.length - 1]),
     via: Math.max(0, out.length - 2) + Math.max(0, ret.length - 2),
     back: ret.length ? placeName(ret[ret.length - 1]) : placeName(out[0]),
-    leg: liveLegOf(legs, t.status),
+    // A trip the driver never started isn't on a leg yet (TestFlight 24 Oct: "starting late
+    // should show as delayed / to start, not on the road" — its card said "Leg 1 going").
+    leg: isLateToStart(t) ? null : liveLegOf(legs, t.status),
   };
 }
 
@@ -168,11 +175,16 @@ export function lateFor(min: number): string {
  */
 export function lateLineOf(t: OperatorTrip, now: number, time: (iso: string) => string): string | null {
   if (phaseOf(t.status) !== 'delayed') return null;
-  if (isDelayedNotStarted(t)) {
+  if (isLateToStart(t)) {
     const start = t.planned_start ? Date.parse(t.planned_start) : NaN;
     return Number.isFinite(start) && start < now ? `Not started · ${lateFor((now - start) / 60000)} past start` : 'Not started';
   }
-  const next = stopsOf(t).find((x) => !x.actual_arrival);
+  // The stop after the furthest one reached — one the truck left counts even without an
+  // arrival time (TestFlight 24 Oct: TRP-0013 left Jeddah 20:30, still "due 20:00 at Jeddah").
+  const st = stopsOf(t);
+  let reached = -1;
+  st.forEach((x, i) => { if (x.actual_arrival || x.actual_departure) reached = i; });
+  const next = st.slice(reached + 1).find((x) => !x.actual_arrival);
   const due = next?.planned_arrival ? Date.parse(next.planned_arrival) : NaN;
   if (next && Number.isFinite(due) && due < now) {
     const at = placeName(next);

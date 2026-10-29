@@ -637,13 +637,15 @@ export function groupTripMedia(stops: TripMediaStopRow[], docs: TripMediaDocRow[
       stop_id?: unknown; operation?: unknown; log_entry?: unknown; place?: unknown;
       gps?: { captured_at?: unknown; latitude?: unknown; longitude?: unknown };
       moved_by_step_back?: { at?: unknown };
+      moved_by_office?: { at?: unknown };
     };
     const captured = typeof meta.gps?.captured_at === 'string' ? meta.gps.captured_at : iso(d.createdAt)!;
     const stage = mediaStage(meta.operation, d.doc_type);
     const lat = Number(meta.gps?.latitude);
     const lng = Number(meta.gps?.longitude);
     const gps = Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0) ? { lat, lng } : null;
-    const movedAt = typeof meta.moved_by_step_back?.at === 'string' ? meta.moved_by_step_back.at : null;
+    const movedAt = typeof meta.moved_by_office?.at === 'string' ? meta.moved_by_office.at
+      : typeof meta.moved_by_step_back?.at === 'string' ? meta.moved_by_step_back.at : null;
     const item = (id: string, url: string, mime: string | null): LiveMediaItem => ({
       id, kind: mediaKind(d.doc_type, url, mime), stage, url, mime, captured_at: captured,
       uploaded_at: iso(d.createdAt)!, gps, moved_at: movedAt,

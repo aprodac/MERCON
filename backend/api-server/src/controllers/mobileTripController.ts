@@ -868,8 +868,12 @@ export const undoTripLogEntry = async (req: Request, res: Response) => {
   if (!driverId) return res.status(403).json({ success: false, error: { message: 'Driver not authenticated' } });
 
   try {
-    const trip = await prisma.trip.findFirst({ where: { id, driverId, deletedAt: null }, select: { id: true } });
+    const trip = await prisma.trip.findFirst({ where: { id, driverId, deletedAt: null }, select: { id: true, status: true } });
     if (!trip) return res.status(404).json({ success: false, error: { message: 'Trip not found or not assigned to you' } });
+    // A finished trip's screenshots are the office's record (and its bill): no taking back.
+    if (trip.status === TripStatus.Completed) {
+      return res.status(409).json({ success: false, error: { code: 'TRIP_FINISHED', message: 'This trip is finished. Call the office to change it.' } });
+    }
     const docs = await prisma.document.findMany({
       where: { entity_type: 'Trip', entity_id: id, deletedAt: null, ai_extracted_json: { path: ['log_entry'], equals: entry } },
       select: { id: true, file_url: true, createdAt: true, ai_extracted_json: true },

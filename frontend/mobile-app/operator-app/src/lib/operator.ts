@@ -808,6 +808,41 @@ export const ACTIVE_TRIP_STATUSES = ['Scheduled', 'Loading', 'InTransit', 'Delay
 
 let timezoneRequest: Promise<string> | null = null;
 
+export type TransitTone = 'green' | 'amber' | 'red';
+export interface TransitRow {
+  key: string; leg: 'out' | 'return'; from: string; to: string; size: string; trips: number;
+  plannedMin: number | null; plannedSaved: boolean; actualAvgMin: number | null; tone: TransitTone | null;
+}
+export interface TransitSummary {
+  days: number; size: string | null; sizes: string[];
+  kpis: { routes: number; onTimePct: number | null; avgLateMin: number | null };
+  routes: TransitRow[];
+  skipped: { missing: number; out_of_order: number; stamped: number; total: number };
+}
+export interface TransitRouteDetail extends TransitRow {
+  days: number; p90Min: number | null;
+  time: { loadingMin: number | null; roadMin: number | null; offloadMin: number | null; biggest: 'loading' | 'road' | 'offload' | null };
+  canUseActual: boolean; suggestedMin: number | null;
+  recent: Array<{ tripId: string; ref: string | null; departedAt: string; actualMin: number; plannedMin: number | null }>;
+}
+export interface QuotationTransitLeg {
+  key: string; leg: 'out' | 'return'; from: string; to: string; via: number; size: string;
+  estimatedMin: number | null; estimateSource: 'road' | 'approx' | 'duty' | null;
+  savedMin: number | null; actualAvgMin: number | null; trips: number;
+  /** The leg's located stops, in order, as [lng, lat] (older API: missing). */
+  points?: [number, number][];
+}
+export interface QuotationTransit { quotationId: string; number: number | null; name: string; lineType: string | null; size: string; legs: QuotationTransitLeg[] }
+/** One customer's quotation routes — the Transit times page (sidebar). */
+export interface CustomerRouteTransits { customerId: string; name: string; quotations: QuotationTransit[] }
+export interface SavedTransit { origin_key: string; destination_key: string; leg: string; truck_class: string; planned_minutes: number }
+
+export type RepeatResult =
+  | { trip_id: string; status: 'created'; new_trip_id: string; new_ref: string | null }
+  | { trip_id: string; status: 'clash'; clashes: Array<{ kind: 'double_booking' | 'rest' | 'same_day'; message: string }> }
+  | { trip_id: string; status: 'skipped'; reason: string };
+export interface RepeatOutcome { results: RepeatResult[]; summary: { created: number; skipped: number; clashes: number; text: string } }
+
 export const operatorService = {
   async summary(): Promise<DashboardSummary> {
     const { data } = await api.get('/reports/summary');
@@ -1104,6 +1139,57 @@ export const operatorService = {
     }
   },
 
+  /** Transit times: every route of a customer with planned vs actual (finished trips only). */
+  async transitTimes(customerId: string, params: { size?: string | null; days: number }): Promise<TransitSummary> {
+    const { data } = await api.get(`/customers/${customerId}/transit-times`, { params: { days: params.days, ...(params.size ? { size: params.size } : {}) } });
+    return data.data as TransitSummary;
+  },
+
+  async transitRoute(customerId: string, key: string, days: number): Promise<TransitRouteDetail> {
+    const { data } = await api.get(`/customers/${customerId}/transit-times/route`, { params: { key, days } });
+    return data.data as TransitRouteDetail;
+  },
+
+  /** The planned times saved for a customer — Create trip plans new trips with them. */
+  async savedTransits(customerId: string): Promise<SavedTransit[]> {
+    try {
+      const { data } = await api.get(`/customers/${customerId}/transit-times/saved`);
+      return (data?.data ?? []) as SavedTransit[];
+    } catch {
+      return [];
+    }
+  },
+
+  /** Each active quotation's legs: Create trip's estimate, the saved time and what trips took (last 90 days). */
+  async quotationTransits(customerId: string): Promise<QuotationTransit[]> {
+    const { data } = await api.get(`/customers/${customerId}/transit-times/quotations`);
+    return (data?.data ?? []) as QuotationTransit[];
+  },
+
+  /** Every customer's quotation routes with Given TT, actual average and map points. */
+  async transitOverview(): Promise<CustomerRouteTransits[]> {
+    const { data } = await api.get('/customers/transit-overview');
+    return (data?.data ?? []) as CustomerRouteTransits[];
+  },
+
+  /** Removes a saved planned time: new trips on that route go back to the estimate. */
+  async clearPlannedTransit(customerId: string, key: string): Promise<void> {
+    await api.delete(`/customers/${customerId}/transit-times/planned`, { params: { key } });
+  },
+
+  /** "Use actual as the planned time": new trips of this route and truck size plan with it; existing trips don't change. */
+  async setPlannedTransit(customerId: string, key: string, plannedMinutes: number): Promise<void> {
+    await api.put(`/customers/${customerId}/transit-times/planned`, { key, planned_minutes: plannedMinutes });
+  },
+
+  /** Repeat trips onto another day at the same times. Clashes come back for a decision; resend them in createAnywayIds. */
+  async repeatTrips(body: { tripIds: string[]; targetDate: string; shiftMinutes?: number; createAnywayIds?: string[] }): Promise<RepeatOutcome> {
+    const { data } = await api.post('/trips/repeat', {
+      trip_ids: body.tripIds, target_date: body.targetDate, shift_minutes: body.shiftMinutes ?? 0, create_anyway_ids: body.createAnywayIds ?? [],
+    });
+    return data.data as RepeatOutcome;
+  },
+
   /** A customer's latest trips (light rows) — for recently used routes and quotations. */
   async customerRecentTrips(customerId: string): Promise<OperatorTrip[]> {
     try {
@@ -1282,6 +1368,16 @@ export const operatorService = {
     return data.data;
   },
 
+  /** A driver's photo / screenshot sent by mistake → Recently deleted (restorable). */
+  async deleteTripPhoto(tripId: string, docId: string): Promise<void> {
+    await api.delete(`/trips/${tripId}/photos/${docId}`);
+  },
+
+  /** A driver's photo / screenshot sent at the wrong stop → onto the right one. */
+  async moveTripPhoto(tripId: string, docId: string, stopId: string): Promise<void> {
+    await api.patch(`/trips/${tripId}/photos/${docId}`, { stop_id: stopId });
+  },
+
   /** Mark the next step done — or every step up to `toIndex`. */
   async stepForwardTrip(id: string, toIndex?: number): Promise<{ to: { index: number; label: string; next: string } }> {
     const { data } = await api.post(`/trips/${id}/step-forward`, toIndex === undefined ? {} : { to_index: toIndex });
@@ -1413,9 +1509,11 @@ export const operatorService = {
    * Only changed times are sent; an empty list confirms the tapped times. */
   async confirmTripTimes(
     tripId: string,
-    stops: { stop_id: string; actual_arrival?: string; actual_departure?: string }[]
+    stops: { stop_id: string; actual_arrival?: string; actual_departure?: string }[],
+    /** Stops left out because their times still have a problem: their screenshots stay to check. */
+    keepPendingStopIds: string[] = [],
   ): Promise<{ stops_updated: number; screenshots_verified: number }> {
-    const { data } = await api.patch(`/trips/${tripId}/confirm-times`, { stops });
+    const { data } = await api.patch(`/trips/${tripId}/confirm-times`, { stops, ...(keepPendingStopIds.length ? { keep_pending_stop_ids: keepPendingStopIds } : {}) });
     return data.data;
   },
 

@@ -1,3 +1,77 @@
+FIX: CHECK TIMES "NEXT" (27 Oct)
+1. Trip with screenshots > Check times > tap a time > set it > "Next". The sheet scrolls so the next time (e.g. Najran Arrived) sits at the top of the list, in view.
+2. Look at screenshot #2 or #3, then press "Next" / "Back": the screenshot stays on the one you are on. Only your own swipe changes it.
+3. Swipe to another screenshot while editing: the time being edited moves to that screenshot's stop (as before).
+4. Opening Check times from a stop still starts on that stop's first screenshot.
+5. While a time is being edited the screenshot is shorter (tap it to enlarge) and the wheels show 3 rows, so about 150 px more of the time list stays visible.
+
+NEW: TRANSIT TIMES PAGE IN THE MENU (28 Oct)
+1. Menu (☰) > Fleet > Transit times. No big map (removed 29 Oct); numbers on top: routes, Given TT set, running late.
+2. Tap a route card: its buttons open below it (tap again to close).
+3. Each card: small route drawing, Given TT (blue when you set it), actual average coloured (green / amber / red), +/- against the TT, trips, ~km, quotation numbers.
+4. Search a place, customer or "#3"; customer chips; filters All / Given TT set / Not set / Running late.
+5. On the picked card: Set TT, Use actual (3+ trips), Reset, "Trips & detail" (opens that customer's Transit times).
+
+NEW: TESTFLIGHT ROUND 4 (28 Oct)
+1. Transit times > Quotations: each route shows once (even if it is on several quotations or truck sizes), with the quotation numbers under it. Search box at the top (a place or "#3").
+2. The big number is "Given TT" (no Estimate column). "Set TT" / "Use actual" / "Reset" — the time applies to every truck size. New trip on that route with a 5 TON and a 40 FEET: both plan the same Given TT.
+3. Route screen: "Given TT", "Set TT", "Reset" — also every truck size.
+4. Delete a Completed trip whose charges were reviewed: the warning says the photos / POD go with it; it deletes; the other operators get a notification "Completed trip TRP-… deleted". An invoiced or paid trip still can't be deleted.
+5. Check times: a stop already checked and saved shows its times in green with "✓ checked".
+6. Customers > a customer > Quotes: search box at the top (e.g. "khamis 12", "20 ton", "890").
+
+NEW: TRANSIT TIMES POLISH (28 Oct)
+1. Customers > customer > Transit times: customer name under the title; size chips and a 7 / 30 / 90 days switch. Changing a filter keeps the old list (faded) until the new one loads.
+2. Each route card: "Saved time" tag when a time was saved, "Way back" for the return leg, and +/- against the plan under Actual avg.
+3. More than 6 routes: a "Search a place" box filters by pickup or drop-off.
+4. Open a route: its own 7 / 30 / 90 switch, pull down to refresh. "New trips on this route": Use actual (3+ trips), Set time, Use estimate (only when a time is saved). Recent trips are coloured green / amber / red.
+5. New trip > When > "See transit times": opens on the trip's truck size. Save a time for that route, go back: the drop-off now follows the saved time (before, it kept the old one).
+6. Set the drop-off by hand: the "Planned with the saved ..." text goes away.
+
+NEW: TRANSIT TIMES (27 Oct)
+1. Customers > open a customer > "Transit times". Filter by size and 7 / 30 / 90 days. Shows routes, on-time % and average late.
+2. Each row: From > To (and "· return" for the way back), size, Planned, Actual avg (green up to 15 min over, amber up to 1 h, red more), trip count.
+3. Tap a route: Planned, Actual avg, Slowest 1 in 10, and "Where the time goes" (loading, on the road, waiting / offloading) with the biggest in red.
+4. Under the list: how many finished trips were left out (missing times, times out of order, created as completed).
+5. A route with 3+ trips more than 15 min off plan shows "Use 3h 35 as the planned time for new trips" (Admin / Operator). It asks first, then saves.
+7. Transit times > Quotations: each quotation's legs with Estimate (what Create trip works out: road route, or the duty length for 10 / 12 h lines), Planned (what new trips use) and Actual avg (last 90 days).
+8. "Set time" picks a time on the wheels and saves it for that route and truck size. "Use estimate" removes it. "Use actual" shows with 3+ trips (not on duty lines).
+6. New trip > When: a new trip on that route and truck size now plans the saved time. "See transit times" link under the transit time. Existing trips do not change.
+
+NEW: REPEAT A DAY'S TRIPS (27 Oct)
+1. Trips > Schedule or History > pick a day > "Repeat trips...".
+2. Tick the trips (All / None), choose the day to create them for and, if you want, a shift (+15 min steps). Cancelled trips are not listed.
+3. "Create 5 for Tomorrow": new Scheduled trips with the same customer, route, truck, driver, price, driver pay and extras. The drivers are notified.
+4. A trip that double-books a driver or truck, leaves under 6 h rest, or is a second trip that day for the driver is not created: it is listed with the reason. Tick it and tap "Create anyway".
+5. The result says e.g. "16 created, 2 skipped (The trip was cancelled)".
+
+FIX: CREATING A PAST TRIP (25 Oct)
+1. New trip with a start time that has passed > Review: an amber warning "This trip's start time has passed" with the planned times. Nothing is picked and "Create trip" is greyed ("Choose one above").
+2. A trip planned until later today (e.g. 04:00 > 20:00) says "It is planned to run until 20:00".
+3. Pick "Yes, it's already completed": the button reads "Create as completed (driver not notified)". The trip is in History on its day and counts in Done.
+4. Pick "No, it still has to run (send to driver)": the trip is in Now / Schedule and the driver is told.
+
+FROM YOUR FEEDBACK (24–25 Oct, round 2)
+1. Check times: over the wheels, "‹ Fri 23 Oct ›" changes the day of that time. "‹ Back" goes to the time before.
+2. Check times: arrived 18:22 / left 23:53 with late taps — now saves without "left before arrived".
+3. Check times: if one stop is red, the others still save ("Save 2 stops · 1 to fix later"). The red one stays to check.
+4. Driver's log: each send says "Time confirmed" or "Time to confirm".
+5. Now: a trip whose driver tapped Start but never reached the pickup says "Starting late", not "Late arriving".
+6. A truck that left a stop (loaded and departed) is no longer shown late for that stop; it goes back to On the road.
+7. Trip > Details: "Transit time" line.
+8. Photo sent at the wrong stop: tap it > Move > pick the stop. Then "Driver's steps" if the steps went too far.
+
+FROM YOUR FEEDBACK (24 Oct, build 134)
+1. New trip > Way back: tick "Same as leg 1" — the transit time back is the same as leg 1.
+2. Driver page > Trips: shows every trip, not only 5.
+3. Choosing a driver: "done on this lane" counts delivered trips only — booked ones are not counted.
+4. Schedule: if a day's trip was already run the day before, the day says so (green line, tap to open).
+5. Drivers: tap "Not installed" (or Ready / Check / Not ready) to see only those drivers. Tap again or the chip to see all.
+6. History > Ledger: newest trip on top; "Latest first / Oldest first".
+7. Now: a trip that is starting late no longer says "Leg 1 going".
+8. Tap a driver photo or screenshot > Delete > confirm. It goes to Recently deleted.
+9. Driver's log: "Edit time" beside the screenshots — set the arrived time, then make the stop.
+
 FIX: TRIPS NOT HIDDEN
 1. A trip in Emergency now shows in Now / Schedule lists instead of disappearing.
 

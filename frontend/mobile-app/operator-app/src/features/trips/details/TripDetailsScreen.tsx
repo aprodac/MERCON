@@ -69,6 +69,8 @@ export default function TripDetailsScreen() {
   const [checkingTimes, setCheckingTimes] = useState(false);
   const [timesStop, setTimesStop] = useState<string | null>(null);
   const [logEntry, setLogEntry] = useState<LogEntry | null>(null);
+  /** A photo being moved to another stop (the stop picker is open). */
+  const [moving, setMoving] = useState<{ docId: string; fromStopId: string | null } | null>(null);
   const [pinTarget, setPinTarget] = useState<{ stop: Stop; label: string; photoPins?: PhotoPin[]; preselect?: string | null } | null>(null);
   const [sheet, setSheet] = useState<'more' | 'upload' | 'activity' | 'charges' | 'stepback' | null>(null);
   const [fullMap, setFullMap] = useState(false);
@@ -335,6 +337,43 @@ export default function TripDetailsScreen() {
   const openPin = (st: Stop, preselect: string | null = null) =>
     setPinTarget({ stop: st, label: stopName(st, stops.indexOf(st)), photoPins: photoPinsForStop(updates, st.id), preselect });
 
+  // TestFlight 24 Oct: a photo the driver sent by mistake (a trial) can be deleted — after asking.
+  const deletePhoto = (docId: string) => {
+    Alert.alert('Delete this photo?', 'It is taken off the trip and goes to Recently deleted, where it can be restored. Stop times already saved stay as they are.', [
+      { text: 'Keep', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive', onPress: async () => {
+          try {
+            await operatorService.deleteTripPhoto(trip!.id, docId);
+            setViewer(null);
+            reload();
+          } catch (e) {
+            Alert.alert('Could not delete', getApiErrorMessage(e));
+          }
+        },
+      },
+    ]);
+  };
+
+  // TestFlight 25 Oct: a screenshot sent at the wrong stop ("Riyadh reached" sent as Al Bahah) can be moved.
+  const movePhoto = async (stopId: string) => {
+    const m = moving;
+    setMoving(null);
+    if (!m) return;
+    try {
+      await operatorService.moveTripPhoto(trip!.id, m.docId, stopId);
+      const st = stops.find((x) => x.id === stopId);
+      Alert.alert('Photo moved', `It is now on ${st ? stopName(st, stops.indexOf(st)) : 'that stop'}. If the driver's steps went too far, take them back with "Driver's steps", then check the times.`);
+      reload();
+    } catch (e) {
+      Alert.alert('Could not move', getApiErrorMessage(e));
+    }
+  };
+  const askMove = (docId: string, fromStopId: string | null) => { setViewer(null); setTimeout(() => setMoving({ docId, fromStopId }), 300); };
+
+  const externalApp = trip.driver_workflow === 'EXTERNAL_APP';
+  const openTimes = (stopId: string | null) => { setViewer(null); setTimeout(() => { setTimesStop(stopId); setCheckingTimes(true); }, 300); };
+
   const openPhotos = (u: DriverUpdate, index: number) => {
     const st = stops.find((x) => x.id === u.stop?.id);
     const name = st ? stopName(st, stops.indexOf(st)) : null;
@@ -358,10 +397,14 @@ export default function TripDetailsScreen() {
         sent: u.sent_ids.includes(m.id),
         geo: m.gps ? { lat: m.gps.lat, lng: m.gps.lng, captured_at: m.captured_at, place: name, address: st?.location?.city ?? null, customer: trip.customer?.name ?? null } : null,
         info: facts,
-        timeAction: st && st.actual_arrival ? {
-          label: `Edit ${name}'s time`,
-          onPress: () => { setViewer(null); setTimeout(() => { setTimesStop(st.id); setCheckingTimes(true); }, 300); },
-        } : null,
+        // Times are edited from the photo itself (TestFlight 25 Oct): a stop's own times,
+        // or — on a customer-app trip — Check times for the whole trip.
+        timeAction: st && (st.actual_arrival || externalApp) ? {
+          label: st.actual_arrival ? `Edit ${name}'s time` : `Set ${name}'s time`,
+          onPress: () => openTimes(st.id),
+        } : externalApp ? { label: 'Check times', onPress: () => openTimes(null) } : null,
+        deleteAction: { onPress: () => deletePhoto(m.id) },
+        moveAction: stops.length > 1 ? { onPress: () => askMove(m.id, st?.id ?? null) } : null,
         pinAction: canPin ? {
           label: needsPin(st!) ? `Use as ${name}'s pin` : `Move ${name}'s pin here`,
           onPress: () => { setViewer(null); setTimeout(() => openPin(st!, m.id), 300); },
@@ -508,7 +551,14 @@ export default function TripDetailsScreen() {
               onOpen={(e, index) => setViewer({
                 title: `Driver's log · ${f.smart(e.at)}`,
                 index,
-                items: e.docs.map((d) => ({ id: d.id, url: d.file_url, kind: 'photo' as const, caption: [f.smart(e.at), e.place ? `near ${e.place}` : null].filter(Boolean).join(' · ') })),
+                items: e.docs.map((d) => ({
+                  id: d.id, url: d.file_url, kind: 'photo' as const, caption: [f.smart(e.at), e.place ? `near ${e.place}` : null].filter(Boolean).join(' · '),
+                  deleteAction: { onPress: () => deletePhoto(d.id) },
+                  // On a stop: its times. Not on one yet: put it on a stop, with its times.
+                  timeAction: e.stop_id
+                    ? { label: 'Edit times', onPress: () => openTimes(e.stop_id) }
+                    : { label: 'Put on a stop · set times', onPress: () => { setViewer(null); setTimeout(() => setLogEntry(e), 300); } },
+                })),
               })}
               onPick={setLogEntry}
               onDone={reload}
@@ -607,7 +657,7 @@ export default function TripDetailsScreen() {
         onSend={viewer?.update ? () => { const u = viewer.update!; setViewer(null); setTimeout(() => setShare({ type: 'update', update: u }), 250); } : undefined}
       />
       <PinSheet target={pinTarget} tripId={trip.id} timeOf={f.time} onClose={() => setPinTarget(null)} onSaved={reload} />
-      <LogStopSheet trip={trip} entry={logEntry} f={f} onClose={() => setLogEntry(null)} onDone={reload} />
+      <LogStopSheet trip={trip} entry={logEntry} f={f} tz={tz} onClose={() => setLogEntry(null)} onDone={reload} />
       <TripTimesSheet visible={checkingTimes} trip={trip} tz={tz} stopId={timesStop} onClose={() => setCheckingTimes(false)} onDone={reload} />
       <MoreSheet
         visible={sheet === 'more'}
@@ -639,6 +689,19 @@ export default function TripDetailsScreen() {
         onClose={() => setPicker(null)}
         searchPlaceholder={picker?.kind === 'driver' ? 'Search drivers' : 'Search trucks'}
         emptyText={picker?.kind === 'driver' ? 'No drivers available right now' : 'No trucks available right now'}
+      />
+
+      <PickerSheet
+        visible={!!moving}
+        title="Move the photo to"
+        options={stops.filter((x) => x.id !== moving?.fromStopId).map((x) => ({
+          value: x.id,
+          label: `${stops.indexOf(x) + 1} · ${stopName(x, stops.indexOf(x))}`,
+          sub: [x.stop_type === 'Pickup' ? 'Loading' : 'Offloading', x.actual_arrival ? `arrived ${f.smart(x.actual_arrival)}` : null].filter(Boolean).join(' · '),
+        }))}
+        onSelect={(v) => { void movePhoto(v); }}
+        onClose={() => setMoving(null)}
+        searchPlaceholder="Search stops"
       />
 
       {/* Full-screen map */}

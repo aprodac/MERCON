@@ -14,6 +14,7 @@ import { resolveVehicleLocation, resolveVehicleLocationsForTrips } from '../serv
 import { parseOptionalFloat, getValidUuid } from '../utils/uuid';
 import { buildSearchAnd } from '../utils/search';
 import { getCompanyLegalName } from './settingsController';
+import { completedOnCreateTimes, stampCompletedStops } from '../utils/completedOnCreate';
 import { computeTripChargesTotal, calculateBackendTripFinancials, resolveDriverPayout, resolveInitialTripStatus, splitCoDriverPayout } from '../utils/tripFinancials';
 import { resolveMonth, toDayKey } from '../utils/tripBoard';
 import { validateTripDrivers, TripDriverInput, validateTripSchedule, validateTripStops } from '../services/tripValidationService';
@@ -27,6 +28,7 @@ import { pinTripStop, PinError } from '../services/locationPin';
 import { whatsappService } from '../services/whatsappService';
 import { getTripMediaPurge } from '../services/media/tripMediaRetention';
 import { findSameDayTrips } from '../services/sameDayTrips';
+import { blocksTripDelete, notifyCompletedTripsDeleted } from '../services/tripDeleteNotice';
 
 /** Fields the trip ledger search bar looks at. */
 const TRIP_SEARCH_FIELDS = [
@@ -817,7 +819,7 @@ export const createTrip = async (req: Request, res: Response) => {
     targetStatus = resolveInitialTripStatus(targetStatus, requestedStatus, parsedPlannedStart);
 
     // No double booking — the same rule as bulk import.
-    if (!is_third_party && !CLASH_IGNORED_STATUSES.includes(targetStatus)) {
+    if (!is_third_party && !(req as any).allowScheduleClash && !CLASH_IGNORED_STATUSES.includes(targetStatus)) {
       const clash = await findScheduleClash({
         tripId: null,
         start: parsedPlannedStart,
@@ -1016,6 +1018,7 @@ export const createTrip = async (req: Request, res: Response) => {
               planned_start: parsedPlannedStart,
               planned_end: parsedPlannedEnd,
               status: targetStatus,
+              ...(completedOnCreateTimes(targetStatus, parsedPlannedStart, parsedPlannedEnd) ?? {}),
               carrier_name: carrierName,
               ...(createdBy ? { created_by: createdBy } : {}),
               financials: {
@@ -1064,7 +1067,9 @@ export const createTrip = async (req: Request, res: Response) => {
               } : {}),
               ...(stopsToCreate.length > 0 ? {
                 stops: {
-                  create: stopsToCreate,
+                  create: completedOnCreateTimes(targetStatus, parsedPlannedStart, parsedPlannedEnd)
+                    ? stampCompletedStops(stopsToCreate, parsedPlannedStart!, parsedPlannedEnd)
+                    : stopsToCreate,
                 }
               } : {})
             } as any,
@@ -1341,6 +1346,11 @@ export const bulkImportTrips = async (req: Request, res: Response) => {
           rowCharges.push({ amount: Number(row.additional_charge), description: 'Additional Charge' });
         }
 
+        const completedTimes = completedOnCreateTimes(targetStatus, parsedPlannedStart, parsedPlannedEnd);
+        const tripStopsToWrite = completedTimes
+          ? stampCompletedStops(resolvedImportStops, completedTimes.actual_start, completedTimes.actual_end)
+          : resolvedImportStops;
+
         const rowAwb = (row as any).awb_number ? String((row as any).awb_number).trim() : '';
         const updateQuotationPayout = (row as any).update_quotation_driver_payout === true;
 
@@ -1403,6 +1413,7 @@ export const bulkImportTrips = async (req: Request, res: Response) => {
               planned_start: parsedPlannedStart,
               planned_end: parsedPlannedEnd,
               status: targetStatus,
+              ...(completedTimes ?? {}),
               financials: {
                 create: {
                   quotationId: appliedQuotation ? appliedQuotation.id : null,
@@ -1432,9 +1443,9 @@ export const bulkImportTrips = async (req: Request, res: Response) => {
                   })),
                 }
               } : {}),
-              ...(resolvedImportStops.length > 0 ? {
+              ...(tripStopsToWrite.length > 0 ? {
                 stops: {
-                  create: resolvedImportStops,
+                  create: tripStopsToWrite,
                 }
               } : {})
             } as any,
@@ -1990,6 +2001,25 @@ export const logStopDelay = async (req: Request, res: Response) => {
  * evidence is exactly the case that needs review *after* completion. Mirrors
  * logStopDelay, which edits TripStop post-completion for the same reason.
  */
+/**
+ * A trip starts when the truck leaves its first stop. The driver often taps
+ * Start well after that (and sends the screenshot later), so once the office
+ * confirms the first stop's departure the trip's start moves to it — the
+ * activity log read "Trip started 05:21" after "Left riyadh 04:32" (TestFlight 26 Oct).
+ */
+async function alignTripStartToFirstDeparture(db: Prisma.TransactionClient | typeof prisma, tripId: string) {
+  const first = await db.tripStop.findFirst({
+    where: { tripId, deletedAt: null },
+    orderBy: { stop_sequence: 'asc' },
+    select: { actual_departure: true },
+  });
+  if (!first?.actual_departure) return;
+  await db.trip.updateMany({
+    where: { id: tripId, OR: [{ actual_start: null }, { actual_start: { not: first.actual_departure } }] },
+    data: { actual_start: first.actual_departure },
+  });
+}
+
 export const confirmEvidenceTime = async (req: Request, res: Response) => {
   try {
     const { id: rawTripId, stopId } = req.params as { id: string; stopId: string };
@@ -2032,6 +2062,7 @@ export const confirmEvidenceTime = async (req: Request, res: Response) => {
         data: { status: DocStatus.Verified, verified_by: (req as any).user?.id ?? null },
       }),
     ]);
+    if (actual_departure) await alignTripStartToFirstDeparture(prisma, tripId);
 
     res.json({ success: true, data: updatedStop });
   } catch (error) {
@@ -2044,7 +2075,8 @@ export const confirmEvidenceTime = async (req: Request, res: Response) => {
  * Confirm a whole EXTERNAL_APP trip's stop times at once. The customer's app
  * shows every stop's arrive/departure time on one screen, so the operator
  * copies them all in one pass instead of one screenshot at a time. Saves the
- * times and marks every pending screenshot on the trip as checked.
+ * times and marks every pending screenshot on the trip as checked — except those
+ * on `keep_pending_stop_ids`, stops left out because their times still need fixing.
  *
  * Same post-completion rule as confirmEvidenceTime: no frozen-trip guard.
  */
@@ -2083,19 +2115,23 @@ export const confirmTripTimes = async (req: Request, res: Response) => {
       if (Object.keys(data).length) updates.push({ id: stop.id, data });
     }
 
+    // Stops the operator still has to fix were left out of the save: their screenshots stay to check.
+    const keepPending = new Set((req.body.keep_pending_stop_ids ?? []) as string[]);
     const verifiedBy = isUuid((req as any).user?.id) ? (req as any).user.id : null;
     const verified = await prisma.$transaction(async (tx) => {
       for (const u of updates) await tx.tripStop.update({ where: { id: u.id }, data: u.data });
-      return tx.document.updateMany({
-        where: {
-          entity_type: 'Trip',
-          entity_id: tripId,
-          deletedAt: null,
-          status: DocStatus.PendingReview,
-          ai_extracted_json: { path: ['source'], equals: 'external_app_screenshot' },
-        },
-        data: { status: DocStatus.Verified, verified_by: verifiedBy },
-      });
+      if (updates.some((u) => u.data.actual_departure)) await alignTripStartToFirstDeparture(tx, tripId);
+      const where = {
+        entity_type: 'Trip',
+        entity_id: tripId,
+        deletedAt: null,
+        status: DocStatus.PendingReview,
+        ai_extracted_json: { path: ['source'], equals: 'external_app_screenshot' },
+      };
+      if (!keepPending.size) return tx.document.updateMany({ where, data: { status: DocStatus.Verified, verified_by: verifiedBy } });
+      const pending = await tx.document.findMany({ where, select: { id: true, ai_extracted_json: true } });
+      const ids = pending.filter((d) => !keepPending.has((d.ai_extracted_json as any)?.stop_id)).map((d) => d.id);
+      return tx.document.updateMany({ where: { id: { in: ids } }, data: { status: DocStatus.Verified, verified_by: verifiedBy } });
     });
 
     res.json({ success: true, data: { stops_updated: updates.length, screenshots_verified: verified.count } });
@@ -2611,15 +2647,16 @@ export const bulkDeleteTrips = async (req: Request, res: Response) => {
       },
     });
 
-    const eligibleTrips = allTrips.filter((t) => !isFinanciallyProtectedTrip(t));
-    const blockedTrips = allTrips.filter((t) => isFinanciallyProtectedTrip(t));
+    // A reviewed (settled) Completed trip may be deleted; invoiced / paid ones are kept.
+    const eligibleTrips = allTrips.filter((t) => !blocksTripDelete(t));
+    const blockedTrips = allTrips.filter((t) => blocksTripDelete(t));
 
     if (eligibleTrips.length === 0) {
       return res.status(400).json({
         success: false,
         error: {
           code: 'PROTECTED_TRIP',
-          message: 'Selected trip(s) cannot be deleted because they are invoiced or financially settled.',
+          message: 'Selected trip(s) cannot be deleted because they are invoiced or paid.',
         },
         data: {
           deletedCount: 0,
@@ -2627,7 +2664,7 @@ export const bulkDeleteTrips = async (req: Request, res: Response) => {
           skippedTrips: blockedTrips.map((t) => ({
             id: t.id,
             ref_id: t.ref_id,
-            reason: 'Trip is invoiced or financially settled',
+            reason: 'Trip is invoiced or paid',
           })),
         },
       });
@@ -2681,10 +2718,12 @@ export const bulkDeleteTrips = async (req: Request, res: Response) => {
       await releaseVehiclesIfFree(tx, vehicleIds);
     });
 
+    void notifyCompletedTripsDeleted(eligibleTrips, getValidUuid(userId));
+
     const skippedReasons = blockedTrips.map((t) => ({
       id: t.id,
       ref_id: t.ref_id,
-      reason: 'Trip is invoiced or financially settled',
+      reason: 'Trip is invoiced or paid',
     }));
 
     res.json({
@@ -2695,7 +2734,7 @@ export const bulkDeleteTrips = async (req: Request, res: Response) => {
         skippedTrips: skippedReasons,
         message:
           blockedTrips.length > 0
-            ? `Soft-deleted ${eligibleTrips.length} trip(s). ${blockedTrips.length} trip(s) were protected from deletion (invoiced/settled).`
+            ? `Soft-deleted ${eligibleTrips.length} trip(s). ${blockedTrips.length} trip(s) were protected from deletion (invoiced/paid).`
             : `Successfully soft-deleted ${eligibleTrips.length} trip(s)`,
       },
     });

@@ -493,6 +493,8 @@ export const confirmTripTimesBody = z.object({
     actual_arrival: z.string().datetime({ offset: true }).optional(),
     actual_departure: z.string().datetime({ offset: true }).optional(),
   })).max(100),
+  /** Stops whose times still have a problem: their screenshots stay "to check". */
+  keep_pending_stop_ids: z.array(z.string().uuid()).max(100).optional(),
 });
 
 /** Settings → Assistant (shape: AssistantConfig in @mercon/shared-types). */

@@ -436,3 +436,93 @@ describe('tripDelayMonitor and Trip Lifecycle Regression Suite', () => {
     assert.equal(isTrackable('Cancelled', null), false);
   });
 });
+
+describe('tripDelayMonitor: a stop the truck left counts as reached (TestFlight 24 Oct, TRP-0013)', () => {
+  const now = new Date('2026-10-24T22:00:00Z');
+  const stop = (id: string, seq: number, type: StopType, planned: string, arr: string | null, dep: string | null) => ({
+    id, stop_sequence: seq, stop_type: type, planned_arrival: new Date(planned), actual_arrival: arr ? new Date(arr) : null,
+    planned_departure: null, actual_departure: dep ? new Date(dep) : null, location_name: id,
+  });
+  // Round trip Riyadh → Jeddah → back. Loaded at Jeddah (no arrival time, only the departure), heading to Riyadh due tomorrow.
+  const trip = (status: TripStatus) => ({
+    id: 'trip-13', ref_id: 'TRP-0013', status, driver_workflow_state: 'IN_TRANSIT_RETURN',
+    planned_start: new Date('2026-10-23T17:00:00Z'), planned_end: new Date('2026-10-25T07:00:00Z'), actual_start: new Date('2026-10-23T17:10:00Z'),
+    stops: [
+      stop('riyadh', 1, StopType.Pickup, '2026-10-23T17:00:00Z', '2026-10-23T17:05:00Z', '2026-10-23T18:00:00Z'),
+      stop('jeddah-drop', 2, StopType.Dropoff, '2026-10-24T07:00:00Z', '2026-10-24T07:30:00Z', '2026-10-24T08:00:00Z'),
+      stop('jeddah-load', 3, StopType.Pickup, '2026-10-24T17:00:00Z', null, '2026-10-24T17:40:00Z'),
+      stop('riyadh-back', 4, StopType.Dropoff, '2026-10-25T07:00:00Z', null, null),
+    ],
+  });
+
+  const run = async (t: any) => {
+    const orig = { findMany: prisma.trip.findMany, update: prisma.trip.update, notif: prisma.notification.findFirst, users: prisma.user.findMany };
+    const updates: any[] = [];
+    prisma.trip.findMany = (async () => [t]) as any;
+    prisma.trip.update = (async ({ where, data }: any) => { updates.push(data); return { id: where.id, ...data }; }) as any;
+    prisma.notification.findFirst = (async () => null) as any;
+    prisma.user.findMany = (async () => []) as any;
+    try {
+      const count = await checkTripsForDelay(now);
+      return { count, updates };
+    } finally {
+      prisma.trip.findMany = orig.findMany; prisma.trip.update = orig.update; prisma.notification.findFirst = orig.notif; prisma.user.findMany = orig.users;
+    }
+  };
+
+  it('an on-the-road trip is not marked late for the stop it already left', async () => {
+    const { count, updates } = await run(trip(TripStatus.InTransit));
+    assert.equal(count, 0);
+    assert.deepEqual(updates, []);
+  });
+
+  it('a Delayed trip whose next stop is on time goes back on the road', async () => {
+    const { updates } = await run(trip(TripStatus.Delayed));
+    assert.deepEqual(updates, [{ status: TripStatus.InTransit }]);
+  });
+});
+
+describe('tripDelayMonitor: a way-back stop with no planned time is not late (TestFlight 25 Oct, TRP-0066)', () => {
+  const now = new Date('2026-10-25T16:43:00Z');
+  const stop = (id: string, seq: number, leg: number, type: StopType, planned: string | null, arr: string | null, dep: string | null) => ({
+    id, stop_sequence: seq, leg_index: leg, stop_type: type, planned_arrival: planned ? new Date(planned) : null, actual_arrival: arr ? new Date(arr) : null,
+    planned_departure: null, actual_departure: dep ? new Date(dep) : null, location_name: id,
+  });
+  // Riyadh → Al Bahah → back to Riyadh. Loaded 03:49 (due 04:00), offloaded early, left Al Bahah 19:42 Riyadh time.
+  // The trip's planned end is the way out's arrival; leg 2 has no times.
+  const trip = (status: TripStatus) => ({
+    id: 'trip-66', ref_id: 'TRP-0066', status, driver_workflow_state: 'IN_TRANSIT_RETURN',
+    planned_start: new Date('2026-10-25T01:00:00Z'), planned_end: new Date('2026-10-25T13:00:00Z'), actual_start: new Date('2026-10-25T01:32:00Z'),
+    stops: [
+      stop('riyadh', 1, 0, StopType.Pickup, '2026-10-25T01:00:00Z', '2026-10-25T00:49:00Z', '2026-10-25T01:32:00Z'),
+      stop('bahah-drop', 2, 0, StopType.Dropoff, '2026-10-25T17:00:00Z', '2026-10-25T15:33:00Z', '2026-10-25T15:33:00Z'),
+      stop('bahah-load', 3, 1, StopType.Pickup, null, '2026-10-25T15:33:00Z', '2026-10-25T16:42:00Z'),
+      stop('riyadh-back', 4, 1, StopType.Dropoff, null, null, null),
+    ],
+  });
+
+  const run = async (t: any) => {
+    const orig = { findMany: prisma.trip.findMany, update: prisma.trip.update, notif: prisma.notification.findFirst, users: prisma.user.findMany };
+    const updates: any[] = [];
+    prisma.trip.findMany = (async () => [t]) as any;
+    prisma.trip.update = (async ({ where, data }: any) => { updates.push(data); return { id: where.id, ...data }; }) as any;
+    prisma.notification.findFirst = (async () => null) as any;
+    prisma.user.findMany = (async () => []) as any;
+    try {
+      return { count: await checkTripsForDelay(now), updates };
+    } finally {
+      prisma.trip.findMany = orig.findMany; prisma.trip.update = orig.update; prisma.notification.findFirst = orig.notif; prisma.user.findMany = orig.users;
+    }
+  };
+
+  it('is not marked Delayed on the way back', async () => {
+    const { count, updates } = await run(trip(TripStatus.InTransit));
+    assert.equal(count, 0);
+    assert.deepEqual(updates, []);
+  });
+
+  it('an already Delayed one goes back on the road', async () => {
+    const { updates } = await run(trip(TripStatus.Delayed));
+    assert.deepEqual(updates, [{ status: TripStatus.InTransit }]);
+  });
+});

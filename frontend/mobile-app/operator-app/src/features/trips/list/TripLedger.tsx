@@ -15,7 +15,7 @@ import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import type { OperatorTrip } from '../../../lib/operator';
 import { PHASE_STYLE, phaseOf, plateOf, routeOf, statusText, type TimeFmt } from './tripListModel';
-import { canDeleteTrip, deleteTrips } from '../edit/movePlan';
+import { COMPLETED_DELETE_WARNING, canDeleteTrip, deleteTrips } from '../edit/movePlan';
 
 const INK = '#3E3C3D';
 const MUTED = '#6E6E80';
@@ -65,8 +65,8 @@ export function TripLedger({ f, todayKey, scope, onOpen }: {
 }) {
   /** 0 = this month, 1 = last month …; null = all time. */
   const [back, setBack] = useState<number | null>(0);
-  /** Trip number order: lowest first (a register), or newest first. */
-  const [order, setOrder] = useState<'asc' | 'desc'>('asc');
+  /** Trip number order: newest first by default (TestFlight 24 Oct: "show latest on top, keep a filter latest / oldest"). */
+  const [order, setOrder] = useState<'asc' | 'desc'>('desc');
   const queryClient = useQueryClient();
   /** Select mode: the trip ids picked for deleting. null = not selecting. */
   const [picked, setPicked] = useState<Set<string> | null>(null);
@@ -184,9 +184,10 @@ export function TripLedger({ f, todayKey, scope, onOpen }: {
     if (!picked?.size) return;
     const ids = [...picked];
     const refs = rows.filter((r) => picked.has(r.key)).map((r) => r.ref);
+    const done = rows.filter((r) => picked.has(r.key) && r.trip?.status === 'Completed').length;
     Alert.alert(
       `Delete ${ids.length} trip${ids.length === 1 ? '' : 's'}?`,
-      `${refs.slice(0, 8).join(', ')}${refs.length > 8 ? ` +${refs.length - 8} more` : ''}\n\nThey disappear from the trip lists, the driver app and the customer link. Admins can restore them from the Recycle bin.`,
+      `${refs.slice(0, 8).join(', ')}${refs.length > 8 ? ` +${refs.length - 8} more` : ''}\n\nThey disappear from the trip lists, the driver app and the customer link. Admins can restore them from the Recycle bin.${done ? `\n\n${done} ${done === 1 ? 'is' : 'are'} delivered: ${COMPLETED_DELETE_WARNING.replace('This trip was delivered: ', '')}` : ''}`,
       [
         { text: 'Keep', style: 'cancel' },
         {
@@ -254,6 +255,16 @@ export function TripLedger({ f, todayKey, scope, onOpen }: {
           <Text style={s.selAllText}>{allPicked ? 'Clear selection' : `Select all that can be deleted (${selectable.length})`}</Text>
         </TouchableOpacity>
       ) : null}
+      <View style={s.orderRow}>
+        {([['desc', 'Latest first'], ['asc', 'Oldest first']] as const).map(([k, label]) => {
+          const on = order === k;
+          return (
+            <TouchableOpacity key={k} style={[s.orderBtn, on && s.allOn]} onPress={() => setOrder(k)} accessibilityRole="button" accessibilityState={{ selected: on }}>
+              <Text style={[s.allText, on && { color: '#fff' }]}>{label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
       <View style={s.headRow}>
         {picked ? <View style={{ width: 22 }} /> : null}
         <TouchableOpacity style={[s.cNo, s.sortBtn]} onPress={() => setOrder((o) => (o === 'asc' ? 'desc' : 'asc'))} accessibilityRole="button" accessibilityLabel={order === 'asc' ? 'Trip number, lowest first. Tap for highest first' : 'Trip number, highest first. Tap for lowest first'} hitSlop={8}>
@@ -349,6 +360,8 @@ const s = StyleSheet.create({
   h: { fontSize: 11, fontWeight: '800', color: MUTED, letterSpacing: 0.4, textTransform: 'uppercase' },
   cNo: { width: 74 },
   sortBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  orderRow: { flexDirection: 'row', gap: 6 },
+  orderBtn: { paddingHorizontal: 14, height: 32, borderRadius: 16, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E4E6EB', justifyContent: 'center' },
   cAmt: { width: 64, textAlign: 'right' },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: '#fff', paddingHorizontal: 12, paddingVertical: 10 },
   rowAlt: { backgroundColor: '#FAFAFB' },
