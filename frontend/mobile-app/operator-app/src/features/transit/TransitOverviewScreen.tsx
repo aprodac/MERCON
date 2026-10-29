@@ -1,13 +1,12 @@
 /**
  * Route: /transit — Transit times (side menu). Every customer's quotation
- * routes on one page: a map of the routes place to place (the picked one
- * bold, A → B), then each route once with its Given TT — what Create trip
+ * routes on one page, each route once (with a small drawing of it) and its Given TT — what Create trip
  * plans for new trips, in every truck size — the actual average of the last
  * 90 days and how it compares. Admin / Operator set the Given TT, use the
  * actual average or reset it right here; a customer's own Transit times page
  * keeps the per-trip detail.
  */
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -23,7 +22,6 @@ import { Card, INK, MUTED, PAGE, tap } from '../trips/details/components/parts';
 import { niceName } from '../trips/create/components/ui';
 import { TransitSheet } from '../trips/create/components/TransitSheet';
 import { RouteSketch } from './RouteSketch';
-import { RoutesMap } from './RoutesMap';
 import { TONE, hm, overText, overviewRoutes, quotationRouteMatches, routeKm, routeTone, type OverviewRoute } from './transitModel';
 
 type Filter = 'all' | 'set' | 'unset' | 'late';
@@ -44,7 +42,6 @@ export default function TransitOverviewScreen() {
   const [editing, setEditing] = useState<OverviewRoute | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
-  const scroll = useRef<ScrollView>(null);
 
   const late = (r: OverviewRoute) => { const t = routeTone(r); return t === TONE.amber || t === TONE.red; };
   const routes = useMemo(() => all.filter((r) =>
@@ -78,15 +75,12 @@ export default function TransitOverviewScreen() {
   const pick = (r: OverviewRoute) => {
     tap();
     setPickedId(pickedId === r.uid ? null : r.uid);
-    // Back up to the map so the route just picked is in view.
-    if (pickedId !== r.uid) scroll.current?.scrollTo({ y: 0, animated: true });
   };
 
   return (
     <SafeAreaView style={s.page} edges={['top']}>
       <AppTopBar title="Transit times" />
       <ScrollView
-        ref={scroll}
         contentContainerStyle={s.body}
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => q.refetch()} />}
@@ -97,8 +91,7 @@ export default function TransitOverviewScreen() {
           <Kpi value={q.data ? String(kpi.late) : '—'} label="Running late" tone={kpi.late ? TONE.red.fg : undefined} />
         </View>
 
-        {q.isLoading ? <SkeletonBlock height={250} radius={18} /> : <RoutesMap routes={routes} picked={picked} />}
-        <Text style={s.hint}>{picked ? 'Tap the route again to see every route.' : 'Tap a route to see it on the map.'}</Text>
+        <Text style={s.hint}>Tap a route to set its Given TT.</Text>
 
         <View style={s.search}>
           <Search size={16} color={MUTED} />
@@ -260,7 +253,7 @@ const s = StyleSheet.create({
   kpi: { flex: 1, backgroundColor: Colors.white, borderRadius: 16, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: '#ECECEF' },
   kpiValue: { fontSize: 22, fontWeight: '800', color: INK },
   kpiLabel: { fontSize: 12, fontWeight: '600', color: MUTED, marginTop: 2 },
-  hint: { fontSize: 12, color: MUTED, marginTop: -4 },
+  hint: { fontSize: 12, color: MUTED, marginTop: -2 },
   search: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Colors.white, borderRadius: 12, paddingHorizontal: 12, borderWidth: 1, borderColor: '#E4E4E8' },
   searchInput: { flex: 1, paddingVertical: 10, fontSize: 14, color: INK },
   chips: { flexDirection: 'row', gap: 8 },
