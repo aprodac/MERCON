@@ -180,11 +180,14 @@ export function RouteCard({ r, onPress }: { r: TransitRow; onPress: () => void }
           </View>
           <ChevronRight size={18} color={MUTED} />
         </View>
+        {!r.plannedSaved && r.trips > 0 ? <Text style={s.none}>No Given TT set — tap to set one.</Text> : null}
         {r.trips === 0 ? (
           <Text style={s.none}>{`No trips in this period · new trips plan ${hm(r.plannedMin)}`}</Text>
         ) : (
           <View style={s.nums}>
-            <View style={s.num}><Text style={s.numLabel}>Given TT</Text><Text style={s.numValue}>{hm(r.plannedMin)}</Text></View>
+            {/* Only a time someone saved is a "Given TT"; else it's what the trips were booked at
+                (TestFlight 29 Oct: "none of these TTs are ones I gave"). */}
+            <View style={s.num}><Text style={s.numLabel}>{r.plannedSaved ? 'Given TT' : 'As booked'}</Text><Text style={s.numValue}>{hm(r.plannedMin)}</Text></View>
             <View style={s.num}>
               <Text style={s.numLabel}>Actual avg</Text>
               <View style={[s.actual, tone && { backgroundColor: tone.bg }]}><Text style={[s.numValue, tone && { color: tone.fg }]}>{hm(r.actualAvgMin)}</Text></View>

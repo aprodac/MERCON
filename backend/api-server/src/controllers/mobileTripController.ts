@@ -816,11 +816,15 @@ export const startTripLog = async (req: Request, res: Response) => {
     if (!usesTripLog(trip)) {
       return res.status(409).json({ success: false, error: { code: 'NOT_TRIP_LOG', message: 'This trip uses the step-by-step screens' } });
     }
-    const startable: TripStatus[] = [TripStatus.Draft, TripStatus.Scheduled, TripStatus.Delayed];
-    if (!startable.includes(trip.status)) {
+    const finished: TripStatus[] = [TripStatus.Completed, TripStatus.Invoiced, TripStatus.Cancelled];
+    if (finished.includes(trip.status)) {
       return res.status(409).json({ success: false, error: { message: `This trip is already ${trip.status === TripStatus.Cancelled ? 'cancelled' : 'finished'}` } });
     }
-    const ahead = await findTripAhead(trip, driverId);
+    // Already on the road (the office marked the arrival or loading first — TRP-0092, 29 Oct:
+    // "Loading" was refused as "already finished"): it just switches to the trip log, keeping
+    // the stop times the office set. Only a trip not started yet waits for an earlier one.
+    const notStarted: TripStatus[] = [TripStatus.Draft, TripStatus.Scheduled];
+    const ahead = notStarted.includes(trip.status) ? await findTripAhead(trip, driverId) : null;
     if (ahead) {
       return res.status(409).json({
         success: false,

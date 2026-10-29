@@ -17,7 +17,7 @@ import { StepSchedule } from './components/StepSchedule';
 import { StepAssign } from './components/StepAssign';
 import { ReviewSheet } from './components/ReviewSheet';
 import { PayoutMissingSheet } from './components/PayoutMissingSheet';
-import { getQuotationRoute, type OperatorQuotation } from '../../../lib/operator';
+import { getQuotationRoute, operatorService, type OperatorQuotation, type OperatorTrip } from '../../../lib/operator';
 import { SkeletonRows, fmtSar } from './components/ui';
 import { WA } from '../details/components/parts';
 
@@ -32,6 +32,8 @@ export default function CreateTripScreen() {
   const params = useLocalSearchParams<{
     customerId?: string; billingType?: string; assignment?: string; vehicleId?: string; quotationId?: string;
     from?: string; fromLat?: string; fromLng?: string; to?: string; toLat?: string; toLng?: string;
+    /** Start from this trip (Repeat trips › Edit): customer, quotation or route, truck and driver. */
+    copyTripId?: string;
   }>();
   const form = useCreateTrip({
     customerId: params.customerId, billingType: params.billingType, assignment: params.assignment, vehicleId: params.vehicleId, quotationId: params.quotationId,
@@ -52,6 +54,17 @@ export default function CreateTripScreen() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   // After creating: offer the assignment message to the customer's group before leaving.
   const [created, setCreated] = useState<{ tripIds: string[]; message: string } | null>(null);
+  const copiedFrom = useRef<string | null>(null);
+  const { copyTrip } = form;
+  useEffect(() => {
+    const id = params.copyTripId ? String(params.copyTripId) : null;
+    if (!id || copiedFrom.current === id) return;
+    copiedFrom.current = id;
+    operatorService
+      .tripById(id)
+      .then((t) => copyTrip(t as unknown as OperatorTrip))
+      .catch(() => setToast({ message: 'Couldn’t load that trip to copy', type: 'error' }));
+  }, [params.copyTripId, copyTrip]);
 
   // Driver payout missing: ask once as soon as a quotation without one is picked,
   // and again whenever the user tries to move on to Review.
@@ -201,7 +214,7 @@ export default function CreateTripScreen() {
             {/* No Reanimated entering/layout animations here: on iOS they could leave the
                 step parked off-screen, so the form opened blank (iPhone 14 Pro). */}
             <View key={form.step}>
-              {form.step === 1 ? <StepJob form={form} showErrors={showErrors[1]} /> : null}
+              {form.step === 1 ? <StepJob form={form} showErrors={showErrors[1]} onSetPayout={() => setPayoutOpen(true)} /> : null}
               {form.step === 2 ? <StepSchedule form={form} showErrors={showErrors[2]} /> : null}
               {form.step === 3 ? (
                 form.fleetLoading ? <SkeletonRows rows={3} height={96} /> : <StepAssign form={form} showErrors={showErrors[3]} />

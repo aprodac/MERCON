@@ -123,4 +123,10 @@ describe('names', () => {
     assert.equal(driverDisplayName({ first_name: ' ', last_name: null }), 'The driver');
     assert.equal(describeTripAcknowledged(oneWay).title, 'Trip acknowledged');
   });
+
+  it('names the truck after the trip when its plate is known', () => {
+    assert.equal(tripName('TRP-0042', 'DRA-6484'), 'Trip TRP-0042 · DRA-6484');
+    assert.equal(tripName('TRP-0042', '  '), 'Trip TRP-0042');
+    assert.equal(tripName(null, 'DRA-6484'), 'A trip · DRA-6484');
+  });
 });

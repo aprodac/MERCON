@@ -112,7 +112,7 @@ export default function TransitRouteScreen() {
             </View>
 
             <Card style={s.stats}>
-              <Stat label="Given TT" value={hm(d.plannedMin)} sub={d.plannedSaved ? 'set by you' : 'as booked'} />
+              <Stat label={d.plannedSaved ? 'Given TT' : 'As booked'} value={hm(d.plannedMin)} sub={d.plannedSaved ? 'set by you' : 'not set yet'} />
               <Stat label="Actual avg" value={hm(d.actualAvgMin)} color={tone?.fg} bg={tone?.bg} sub={overText(d.actualAvgMin, d.plannedMin) || (d.trips ? '' : 'no trips')} />
               <Stat label="Slowest 1 in 10" value={hm(d.p90Min)} />
             </Card>

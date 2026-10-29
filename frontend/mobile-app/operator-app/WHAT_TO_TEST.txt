@@ -1,3 +1,15 @@
+NEW: TESTFLIGHT ROUND 5 (29 Oct)
+1. Create trip > pick a customer: "Recent routes · Last 30 days" above Quotations. Tap one: its quotation (or route) is filled in.
+2. Quotations: cards show every place on the way (Jeddah → At Ta'if → Makkah); "To Ta'if" finds it. New size chips: All sizes / 3-4 TON / 5 TON …
+3. With a quotation picked, trip type and Extra/Monthly can be changed for this trip (price kept, a note says so). 2+ stops in between: ▲▼ move a stop.
+4. New price (no quotation): untick "Save as a quotation for this customer" = this trip only. Quotation without driver payout: "Set driver payout" button.
+5. Schedule: "Same as leg 1" is ticked from the start. Transit time sheet: tick "Save as Given TT for …" → saved for new trips (green line under the tile).
+6. Review trip: "Transit time 14 h · back 14 h".
+7. Trips: building icon in the search bar → pick a company → only its trips (tap the chip to clear).
+8. Repeat trips…: "Edit" on a trip opens Create trip copied from it.
+9. Trip page: a drop-off after a late loading is judged by the transit time ("due 10:26 by transit time", On time).
+10. Delay / not-started notifications name the driver and the truck. Transit times: a time you never set shows "As booked" / "Estimate · not set".
+
 FIX: CHECK TIMES "NEXT" (27 Oct)
 1. Trip with screenshots > Check times > tap a time > set it > "Next". The sheet scrolls so the next time (e.g. Najran Arrived) sits at the top of the list, in view.
 2. Look at screenshot #2 or #3, then press "Next" / "Back": the screenshot stays on the one you are on. Only your own swipe changes it.

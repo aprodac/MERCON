@@ -13,6 +13,7 @@ import { receiptBase } from '../services/pushReceipts';
 import { loadPushLog, type PushLogFilter } from '../services/pushLog';
 import { publicBaseUrl } from './operatorInboxController';
 import { isUuid } from '../utils/uuid';
+import { driverDisplayName } from '../services/staffAlerts/messages';
 
 const getIO = () => {
   try {
@@ -263,7 +264,13 @@ export const notifyOperatorsOfDelay = async (detection: DelayDetection) => {
     if (staff.length === 0) return;
 
     const where = detection.locationName ?? (detection.stopType === 'Pickup' ? 'pickup' : 'delivery');
-    const trip = detection.tripRefId ?? 'A trip';
+    // Which driver and which truck (TestFlight 29 Oct): "TRP-0099 (Imtiaz Ahmed · DRA-6484)".
+    const crew = await prisma.trip.findUnique({
+      where: { id: detection.tripId },
+      select: { driver: { select: { first_name: true, last_name: true } }, vehicle: { select: { plate_number: true } } },
+    });
+    const who = [crew?.driver ? driverDisplayName(crew.driver) : null, crew?.vehicle?.plate_number?.trim() || null].filter(Boolean).join(' · ');
+    const trip = `${detection.tripRefId ?? 'A trip'}${who ? ` (${who})` : ''}`;
 
     const videoDoc = await prisma.document.findFirst({
       where: {

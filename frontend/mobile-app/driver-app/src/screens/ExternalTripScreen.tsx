@@ -43,6 +43,8 @@ interface StopRow {
   name: string;
   /** "Load" / "Offload", "· return" on a round trip's way back. */
   kind: string;
+  /** An offload stop (else a load): picks the colour of its kind label. */
+  drop: boolean;
   /** Screenshot sent for this stop — the stop is ticked. */
   done: boolean;
   /** "Arrived" tapped (or the office set it); from the server so it survives a restart. */
@@ -55,6 +57,10 @@ interface StopRow {
 
 /** A send that didn't go through: kept so one tap retries it. */
 interface Failed { photo: CapturedPhoto; target: Target | null; entry: string; uploaded: boolean }
+
+/** Load stops green, offload stops blue — the same on the big card and in the list. */
+const KIND_LOAD = '#15803D';
+const KIND_DROP = '#1D4ED8';
 
 /** A trip planned to start more than this far ahead asks before its first screenshot. */
 const EARLY_SEND_MS = 3 * 60 * 60 * 1000;
@@ -87,6 +93,7 @@ function useExternalTrip() {
         stop: st,
         name: stopLabel(st) ?? t('label_stop', 'Stop'),
         kind: `${drop ? t('ext_dropoff', 'Offload') : t('ext_loading', 'Load')}${(st.leg_index ?? 0) === 1 ? ` · ${t('ext_return', 'return')}` : ''}`,
+        drop,
         done: mine.length > 0,
         arrivedAt: st.actual_arrival ?? null,
         doneAt: st.actual_arrival ?? mine[0]?.at ?? null,
@@ -359,7 +366,13 @@ function NextStopView({ m, onAdd }: { m: Model; onAdd: () => void }) {
     <>
       {r ? (
         <View style={s.nextCard}>
-          <Text style={s.eyebrow}>{`${t('ext_stop', 'Stop')} ${m.next + 1} ${t('ext_of', 'of')} ${m.rows.length} · ${r.kind}`}</Text>
+          {/* TestFlight 29 Oct: "make the load and offload highlighted". */}
+          <View style={s.eyebrowRow}>
+            <Text style={s.eyebrow}>{`${t('ext_stop', 'Stop')} ${m.next + 1} ${t('ext_of', 'of')} ${m.rows.length}`}</Text>
+            <View style={[s.kindPill, r.drop ? s.kindPillDrop : s.kindPillLoad]}>
+              <Text style={s.kindPillText}>{r.kind}</Text>
+            </View>
+          </View>
           <Text style={s.nextName} numberOfLines={2}>{r.name}</Text>
           <TouchableOpacity
             style={[s.arriveBtn, r.arrivedAt && s.bigOff]}
@@ -414,7 +427,10 @@ function NextStopView({ m, onAdd }: { m: Model; onAdd: () => void }) {
             <Bubble done={row.done} next={i === m.next} n={i + 1} />
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={[s.miniName, i === m.next && { fontWeight: '800' }]} numberOfLines={1}>{row.name}</Text>
-              <Text style={s.miniSub} numberOfLines={1}>{row.kind}{row.added ? ` · ${t('ext_added_by_you', 'added by you')}` : ''}</Text>
+              <Text style={s.miniSub} numberOfLines={1}>
+                <Text style={[s.miniKind, { color: row.drop ? KIND_DROP : KIND_LOAD }]}>{row.kind}</Text>
+                {row.added ? ` · ${t('ext_added_by_you', 'added by you')}` : ''}
+              </Text>
             </View>
             <Text style={[s.miniTime, row.done && { color: '#15803D' }]}>
               {row.done && row.doneAt ? formatTime(row.doneAt) : i === m.next ? t('tlog_next', 'Next') : ''}
@@ -606,6 +622,11 @@ const s = StyleSheet.create({
   failedText: { fontSize: 14, fontWeight: '700', color: '#B42318' },
   nextCard: { backgroundColor: '#fff', borderRadius: 20, padding: 18, gap: 6 },
   eyebrow: { fontSize: 12, fontWeight: '800', letterSpacing: 0.5, color: Colors.gray500, textTransform: 'uppercase' },
+  eyebrowRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  kindPill: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 4 },
+  kindPillLoad: { backgroundColor: KIND_LOAD },
+  kindPillDrop: { backgroundColor: KIND_DROP },
+  kindPillText: { fontSize: 13, fontWeight: '800', letterSpacing: 0.5, color: '#fff', textTransform: 'uppercase' },
   nextName: { fontSize: 28, fontWeight: '800', color: Colors.gray900 },
   nextWhen: { fontSize: 14, color: Colors.gray500, fontWeight: '600' },
   arriveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: '#16A34A', borderRadius: 18, paddingVertical: 18, paddingHorizontal: 12, marginTop: 10 },
@@ -625,6 +646,7 @@ const s = StyleSheet.create({
   rowBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Colors.gray200 },
   miniName: { fontSize: 15, fontWeight: '700', color: Colors.gray900 },
   miniSub: { fontSize: 12.5, color: Colors.gray500, marginTop: 1 },
+  miniKind: { fontWeight: '800' },
   miniTime: { fontSize: 13, fontWeight: '700', color: Colors.primary },
   bubble: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: Colors.gray300, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   bubbleDone: { backgroundColor: '#16A34A', borderColor: '#16A34A' },
