@@ -8,7 +8,7 @@
  */
 import React, { useEffect, useRef } from 'react';
 import { View, TouchableOpacity, StyleSheet, Animated } from 'react-native';
-import { useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import { BookOpen, House, Truck, User, Plus, type LucideIcon } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Shadows } from '@mercon/mobile-shared/theme/tokens';
 
@@ -30,7 +30,6 @@ const INACTIVE = 'rgba(238, 241, 246, 0.65)'; // Light Cool Gray (#EEF1F6) match
 export function OperatorBottomNav({ activeTab: explicitActive, onTabPress, onFabPress }: OperatorBottomNavProps = {}) {
   const router = useRouter();
   const pathname = usePathname();
-  const { view } = useGlobalSearchParams<{ view?: string }>();
 
   // Capsule settles in when the active tab changes. Start fully visible (1) so the
   // first paint doesn't flash or hide the capsule before the entrance animation.
@@ -46,12 +45,9 @@ export function OperatorBottomNav({ activeTab: explicitActive, onTabPress, onFab
   };
 
   const renderTab = ({ label, Icon }: { label: OperatorTab; Icon: LucideIcon }) => {
-    const route = label === 'Home' ? '/' : label === 'Trips' ? '/trips' : label === 'Ledger' ? '/trips?view=ledger' : '/profile';
-    const onLedger = pathname.startsWith('/trips') && view === 'ledger';
+    const route = label === 'Home' ? '/' : label === 'Trips' ? '/trips' : label === 'Ledger' ? '/ledger' : '/profile';
     const active = explicitActive
       ? explicitActive === label
-      : label === 'Ledger' ? onLedger
-      : label === 'Trips' ? pathname.startsWith('/trips') && !onLedger
       : route === '/' ? pathname === '/' : pathname.startsWith(route);
 
     const handlePress = () => {

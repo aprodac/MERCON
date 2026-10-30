@@ -21,7 +21,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  BookOpen, Building2, CalendarDays, CircleCheckBig, Copy, History, MessageCircle, Phone, Plus, Radio, Search, Send, Trash2, Truck, UserRound, X, ArrowUpRight, type LucideIcon,
+  BookOpen, Building2, CalendarDays, ChevronRight, CircleCheckBig, Copy, History, MessageCircle, Phone, Plus, Radio, Search, Send, Trash2, Truck, UserRound, X, ArrowUpRight, type LucideIcon,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
@@ -31,7 +31,6 @@ import type { OperatorTrip } from '../../../lib/operator';
 import { TripCard } from './TripCard';
 import { AppTopBar } from '@/components/AppTopBar';
 import { FilterChips } from '@/components/FilterChips';
-import { TripLedger } from './TripLedger';
 import { useNow, useTripList, HISTORY_DAYS, SCHEDULE_AFTER, type View as ListView } from './useTripList';
 import { askDeleteTrip, canDeleteTrip } from '../edit/movePlan';
 import {
@@ -62,27 +61,8 @@ export default function TripsScreen() {
   const [view, setView] = useState<ListView>(
     params.vehicleId || params.customerId ? 'history'
       : params.view === 'schedule' || params.view === 'history' ? params.view
-      // The ledger is History's second view, not a tab of its own (owner, 23 Oct).
-      : params.view === 'ledger' ? 'history'
       : 'now',
   );
-  const [historyMode, setHistoryModeRaw] = useState<'day' | 'ledger'>(params.view === 'ledger' ? 'ledger' : 'day');
-  // The ledger has its own button in the bottom bar (TestFlight 30 Oct: "make this the trip ledger
-  // instead of drivers"): the route's ?view=ledger opens it, and the screen keeps that in step.
-  const setHistoryMode = (m: 'day' | 'ledger') => {
-    setHistoryModeRaw(m);
-    router.setParams({ view: m === 'ledger' ? 'ledger' : undefined });
-  };
-  const [viewParam, setViewParam] = useState(params.view);
-  if (params.view !== viewParam) {
-    setViewParam(params.view);
-    if (params.view === 'ledger') {
-      setView('history');
-      setHistoryModeRaw('ledger');
-    } else if (viewParam === 'ledger' && !params.view) {
-      setHistoryModeRaw('day');
-    }
-  }
   // Delayed is a filter inside Now, not a tab of its own (owner, 23 Oct: "too many tabs").
   // Links that still ask for the delayed view open Now on it.
   const [nowFilter, setNowFilter] = useState<NowFilter>(params.view === 'delayed' ? 'delayed' : 'all');
@@ -316,7 +296,7 @@ export default function TripsScreen() {
             {views.map((v) => {
               const on = v.id === view;
               return (
-                <TouchableOpacity key={v.id} style={[s.segItem, on && s.segOn]} onPress={() => { if (!on) tap(); setView(v.id); if (v.id !== 'history' && params.view === 'ledger') router.setParams({ view: undefined }); }} activeOpacity={0.8} accessibilityRole="tab" accessibilityState={{ selected: on }}>
+                <TouchableOpacity key={v.id} style={[s.segItem, on && s.segOn]} onPress={() => { if (!on) tap(); setView(v.id); }} activeOpacity={0.8} accessibilityRole="tab" accessibilityState={{ selected: on }}>
                   <Text style={[s.segText, on && s.segTextOn]}>{v.label}</Text>
                   {v.badge ? <View style={s.badge}><Text style={s.badgeText}>{v.badge}</Text></View> : null}
                 </TouchableOpacity>
@@ -345,19 +325,6 @@ export default function TripsScreen() {
               // A failed load says so — it used to read "Nothing on the road" while trips were out.
               ListEmptyComponent={data.openLoading ? <Loading /> : data.error ? <ErrorState message="Couldn't load trips." onRetry={refresh} /> : <Empty icon={CircleCheckBig} title="Nothing on the road" text="Trips show here once they start. Upcoming trips are in Schedule." good />}
             />
-          ) : view === 'history' && historyMode === 'ledger' ? (
-            <View style={{ flex: 1 }}>
-              <HistoryMode value={historyMode} onChange={setHistoryMode} />
-              <TripLedger
-                f={f}
-                todayKey={todayKey}
-                scope={scope?.filter}
-                customer={scope?.kind === 'customer' ? scope.label : null}
-                onPickCustomer={() => { tap(); setCompanyOpen(true); }}
-                onClearCustomer={() => { tap(); setScope(null); router.setParams({ vehicleId: undefined, plate: undefined, customerId: undefined, customerName: undefined }); }}
-                onOpen={open}
-              />
-            </View>
           ) : view === 'schedule' ? (
             <FlatList
               data={dayTrips}
@@ -414,7 +381,12 @@ export default function TripsScreen() {
               ItemSeparatorComponent={Gap}
               ListHeaderComponent={(
                 <View style={{ gap: 12, marginBottom: 12 }}>
-                  <HistoryMode value={historyMode} onChange={setHistoryMode} inList />
+                  {/* The ledger is its own page now (owner 30 Oct: "split the ledger page completely"). */}
+                  <TouchableOpacity style={s.ledgerLink} onPress={() => { tap(); router.push('/ledger' as any); }} accessibilityRole="link">
+                    <BookOpen size={14} color={INK} strokeWidth={2.3} />
+                    <Text style={s.ledgerLinkText}>Trip ledger · every trip by number</Text>
+                    <ChevronRight size={15} color={MUTED} />
+                  </TouchableOpacity>
                   <DateStrip days={historyDays} selected={historySelected} today={todayKey} counts={historyPerDay} onSelect={(k) => { tap(); setHistoryDay(k); }} f={f} />
                   <View style={s.dayHead}>
                     <Text style={s.dayTitle}>{dayLabel(historySelected, todayKey, f)}</Text>
@@ -545,22 +517,6 @@ function Empty({ icon: Icon, title, text, good, action }: {
 }
 
 /** History: by day (the date strip) or the ledger (every trip by number). */
-function HistoryMode({ value, onChange, inList }: { value: 'day' | 'ledger'; onChange: (v: 'day' | 'ledger') => void; inList?: boolean }) {
-  return (
-    <View style={[s.modeRow, !inList && { marginHorizontal: 16, marginTop: 12 }]}>
-      {(['day', 'ledger'] as const).map((m) => {
-        const on = m === value;
-        return (
-          <TouchableOpacity key={m} style={[s.modeBtn, on && s.modeOn]} onPress={() => { if (!on) tap(); onChange(m); }} accessibilityRole="tab" accessibilityState={{ selected: on }}>
-            {m === 'ledger' ? <BookOpen size={13} color={on ? INK : MUTED} strokeWidth={2.3} /> : <CalendarDays size={13} color={on ? INK : MUTED} strokeWidth={2.3} />}
-            <Text style={[s.modeText, on && { color: INK }]}>{m === 'day' ? 'By day' : 'Ledger'}</Text>
-          </TouchableOpacity>
-        );
-      })}
-    </View>
-  );
-}
-
 type NowFilter = 'all' | 'delayed' | 'lateStart' | 'attention' | 'road';
 
 function FilterChip({ label, count, tone, on, onPress }: { label: string; count: number; tone?: string; on: boolean; onPress: () => void }) {
@@ -679,10 +635,8 @@ const s = StyleSheet.create({
   badgeText: { color: Colors.white, fontSize: 11, fontWeight: '800' },
   list: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 120, flexGrow: 1 },
   resultsHead: { fontSize: 13, fontWeight: '700', color: MUTED, marginBottom: 10 },
-  modeRow: { flexDirection: 'row', alignSelf: 'flex-start', gap: 4, backgroundColor: '#ECEDF1', borderRadius: 10, padding: 3 },
-  modeBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, height: 30, paddingHorizontal: 12, borderRadius: 8 },
-  modeOn: { backgroundColor: Colors.white, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
-  modeText: { fontSize: 13, fontWeight: '700', color: MUTED },
+  ledgerLink: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'stretch', height: 40, paddingHorizontal: 12, borderRadius: 12, backgroundColor: Colors.white, borderWidth: 1, borderColor: '#E9EAEE' },
+  ledgerLinkText: { flex: 1, fontSize: 13.5, fontWeight: '700', color: INK },
   // Bleed to the screen edges so the chips scroll under the page padding.
   filterBleed: { marginHorizontal: -16, marginBottom: 12, flexGrow: 0 },
   filters: { gap: 6, paddingHorizontal: 16 },
