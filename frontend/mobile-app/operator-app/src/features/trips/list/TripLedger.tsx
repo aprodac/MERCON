@@ -8,14 +8,14 @@
  * a row), with the app's usual rule: not running, not invoiced (canDeleteTrip).
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl, ActivityIndicator, Alert, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl, ActivityIndicator, Alert, ScrollView, TextInput } from 'react-native';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, Check, ChevronDown, Trash2, X } from 'lucide-react-native';
+import { ArrowDown, ArrowDownUp, ArrowUp, Building2, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, Search, Trash2, X, type LucideIcon } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import type { OperatorTrip } from '../../../lib/operator';
-import { PHASE_STYLE, phaseOf, plateOf, routeOf, statusText, type TimeFmt } from './tripListModel';
+import { PHASE_STYLE, driverNameOf, phaseOf, plateOf, routeOf, statusText, type TimeFmt } from './tripListModel';
 import { COMPLETED_DELETE_WARNING, canDeleteTrip, deleteTrips } from '../edit/movePlan';
 
 const INK = '#3E3C3D';
@@ -38,6 +38,7 @@ interface Row {
   customer: string;
   route: string;
   plate: string | null;
+  driver: string | null;
   status: string;
   tone: { bg: string; fg: string };
   amount: number | null;
@@ -76,7 +77,9 @@ export function TripLedger({ f, todayKey, scope, customer, onPickCustomer, onCle
   const queryClient = useQueryClient();
   /** One status only ("Delivered", "On the road" …); null = every status. */
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
-  const [sheet, setSheet] = useState<'month' | 'status' | 'order' | null>(null);
+  const [sheet, setSheet] = useState<'month' | 'status' | null>(null);
+  /** Search within the month shown (TestFlight 30 Oct: "keep the search bar also"). */
+  const [query, setQuery] = useState('');
   /** Select mode: the trip ids picked for deleting. null = not selecting. */
   const [picked, setPicked] = useState<Set<string> | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -119,6 +122,7 @@ export function TripLedger({ f, todayKey, scope, customer, onPickCustomer, onCle
         customer: t.customer?.name ?? '—',
         route: r.from === '—' ? '—' : `${r.from} → ${r.to}${r.back ? ' · round' : ''}`,
         plate: plateOf(t),
+        driver: driverNameOf(t),
         status: statusText(t),
         tone: t.status === 'Invoiced' ? { bg: '#E7EEFC', fg: '#2449A8' } : { bg: ph.bg, fg: ph.fg },
         amount: t.billing_amount != null ? Number(t.billing_amount) : null,
@@ -142,6 +146,7 @@ export function TripLedger({ f, todayKey, scope, customer, onPickCustomer, onCle
         customer: d.trip?.customer ?? '—',
         route: d.trip?.from || d.trip?.to ? `${d.trip?.from ?? '?'} → ${d.trip?.to ?? '?'}${d.trip?.round ? ' · round' : ''}` : '—',
         plate: d.trip?.plate ?? null,
+        driver: null,
         status: 'Deleted',
         tone: DELETED_TONE,
         amount: null,
@@ -166,8 +171,10 @@ export function TripLedger({ f, todayKey, scope, customer, onPickCustomer, onCle
     }
     return [...c.entries()].sort((a, b) => b[1].n - a[1].n);
   }, [rows]);
-  /** The rows the list shows: all, or one status. The summary counts stay for the whole month. */
-  const shown = statusFilter ? rows.filter((r) => statusKey(r) === statusFilter) : rows;
+  /** The rows the list shows: the search and status filters applied. The summary counts stay for the whole month. */
+  const term = query.trim().toLowerCase();
+  const shown = rows.filter((r) => (!statusFilter || statusKey(r) === statusFilter)
+    && (!term || [r.ref, r.customer, r.route, r.plate, r.driver].some((v) => v?.toLowerCase().includes(term))));
   const live = rows.filter((r) => !r.deleted);
   const billed = live.filter((r) => r.trip?.status !== 'Cancelled').reduce((n, r) => n + (r.amount ?? 0), 0);
   const nums = rows.map((r) => r.no).filter((n): n is number => n != null);
@@ -222,20 +229,57 @@ export function TripLedger({ f, todayKey, scope, customer, onPickCustomer, onCle
   };
 
   const monthName = (n: number) => new Date(Date.UTC(y, m - 1 - n, 1)).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const monthCount = 12;
   const header = (
     <View style={s.head}>
-      {/* Four dropdowns, two by two (owner 30 Oct: "chips and all as drop-down, better spaced"). */}
-      <View style={s.filters}>
-        <Dropdown label="Month" value={back === null ? 'All time' : monthName(back)} onPress={() => setSheet('month')} />
-        <Dropdown
-          label="Customer"
-          value={customer ?? 'All customers'}
-          on={!!customer}
-          onPress={() => onPickCustomer?.()}
-          onClear={customer ? onClearCustomer : undefined}
+      {/* Search, then the month, then two filters (owner 30 Oct: "keep the search bar", "drop-downs, better spaced"). */}
+      <View style={s.searchBar}>
+        <Search size={17} color={MUTED} />
+        <TextInput
+          style={s.searchInput}
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Trip no., customer, driver, truck, place"
+          placeholderTextColor="#9A9AA6"
+          autoCorrect={false}
+          autoCapitalize="none"
+          returnKeyType="search"
         />
-        <Dropdown label="Status" value={statusFilter ?? 'All statuses'} on={!!statusFilter} onPress={() => setSheet('status')} onClear={statusFilter ? () => setStatusFilter(null) : undefined} />
-        <Dropdown label="Order" value={order === 'desc' ? 'Newest first' : 'Oldest first'} onPress={() => setSheet('order')} />
+        {query ? (
+          <TouchableOpacity onPress={() => setQuery('')} hitSlop={8} accessibilityLabel="Clear search">
+            <X size={16} color={MUTED} />
+          </TouchableOpacity>
+        ) : null}
+      </View>
+
+      <View style={s.month}>
+        <TouchableOpacity
+          style={[s.monthStep, (back === null || back >= monthCount - 1) && s.stepOff]}
+          disabled={back === null || back >= monthCount - 1}
+          onPress={() => setBack((b) => (b ?? 0) + 1)}
+          accessibilityLabel="Previous month"
+          hitSlop={6}
+        >
+          <ChevronLeft size={20} color={INK} />
+        </TouchableOpacity>
+        <TouchableOpacity style={s.monthMid} onPress={() => setSheet('month')} accessibilityRole="button" accessibilityLabel={`Month: ${back === null ? 'All time' : monthName(back)}. Change`}>
+          <Text style={s.monthText}>{back === null ? 'All time' : monthName(back)}</Text>
+          <ChevronDown size={16} color={MUTED} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[s.monthStep, (back === null || back === 0) && s.stepOff]}
+          disabled={back === null || back === 0}
+          onPress={() => setBack((b) => Math.max(0, (b ?? 0) - 1))}
+          accessibilityLabel="Next month"
+          hitSlop={6}
+        >
+          <ChevronRight size={20} color={INK} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={s.filters}>
+        <Pill icon={Building2} value={customer ?? 'All customers'} on={!!customer} onPress={() => onPickCustomer?.()} onClear={customer ? onClearCustomer : undefined} label="Customer" />
+        <Pill icon={CircleDot} value={statusFilter ?? 'All statuses'} on={!!statusFilter} onPress={() => setSheet('status')} onClear={statusFilter ? () => setStatusFilter(null) : undefined} label="Status" />
       </View>
 
       <View style={s.summary}>
@@ -251,20 +295,34 @@ export function TripLedger({ f, todayKey, scope, customer, onPickCustomer, onCle
           </View>
         </View>
         {counts.length ? (
-          <Text style={s.breakdown}>
-            {counts.map(([label, c], k) => (
-              <Text key={label}>
-                {k ? <Text style={s.sep}>{'  ·  '}</Text> : null}
-                <Text style={{ color: c.tone.fg, fontWeight: '700' }}>{c.n}</Text>
-                <Text>{` ${label.toLowerCase()}`}</Text>
-              </Text>
-            ))}
-          </Text>
+          <>
+            {/* Share of each status; the legend below doubles as a status filter. */}
+            <View style={s.bar100}>
+              {counts.map(([label, c]) => <View key={label} style={{ flex: c.n, backgroundColor: c.tone.fg, opacity: statusFilter && statusFilter !== label ? 0.25 : 1 }} />)}
+            </View>
+            <View style={s.legend}>
+              {counts.map(([label, c]) => {
+                const on = statusFilter === label;
+                return (
+                  <TouchableOpacity key={label} style={[s.leg, on && { backgroundColor: c.tone.bg, borderColor: c.tone.fg }]} onPress={() => setStatusFilter(on ? null : label)} accessibilityRole="button" accessibilityState={{ selected: on }}>
+                    <View style={[s.legDot, { backgroundColor: c.tone.fg }]} />
+                    <Text style={s.legText}><Text style={{ fontWeight: '800', color: INK }}>{c.n}</Text>{` ${label.toLowerCase()}`}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
         ) : null}
       </View>
 
       <View style={s.listBar}>
-        <Text style={s.listCount}>{statusFilter ? `${shown.length} ${statusFilter.toLowerCase()}` : `${shown.length} row${shown.length === 1 ? '' : 's'}`}</Text>
+        <Text style={s.listCount} numberOfLines={1}>
+          {term ? `${shown.length} match${shown.length === 1 ? '' : 'es'}` : statusFilter ? `${shown.length} ${statusFilter.toLowerCase()}` : `${shown.length} row${shown.length === 1 ? '' : 's'}`}
+        </Text>
+        <TouchableOpacity style={s.orderBtn} onPress={() => setOrder((o) => (o === 'asc' ? 'desc' : 'asc'))} accessibilityRole="button" accessibilityLabel={order === 'desc' ? 'Newest first. Tap for oldest first' : 'Oldest first. Tap for newest first'}>
+          <ArrowDownUp size={14} color={INK} />
+          <Text style={s.orderText}>{order === 'desc' ? 'Newest first' : 'Oldest first'}</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={[s.selectBtn, picked && s.selectOn]} onPress={() => setPicked((p) => (p ? null : new Set()))} accessibilityRole="button">
           <Text style={[s.selectText, picked && { color: '#fff' }]}>{picked ? 'Done' : 'Select'}</Text>
         </TouchableOpacity>
@@ -292,6 +350,8 @@ export function TripLedger({ f, todayKey, scope, customer, onPickCustomer, onCle
       data={shown}
       keyExtractor={(r) => r.key}
       contentContainerStyle={s.list}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
       ListHeaderComponent={header}
       refreshControl={<RefreshControl refreshing={trips.isRefetching} onRefresh={() => { void trips.refetch(); void deleted.refetch(); }} tintColor={Colors.primary} />}
       renderItem={({ item: r, index }) => (
@@ -321,7 +381,16 @@ export function TripLedger({ f, todayKey, scope, customer, onPickCustomer, onCle
           </Text>
         </TouchableOpacity>
       )}
-      ListEmptyComponent={trips.isLoading ? <ActivityIndicator color={Colors.primary} style={{ marginTop: 30 }} /> : <Text style={s.empty}>No trips in {title.toLowerCase() === 'all time' ? 'any month' : title}.</Text>}
+      ListEmptyComponent={trips.isLoading ? <ActivityIndicator color={Colors.primary} style={{ marginTop: 30 }} /> : term ? (
+        <View style={{ alignItems: 'center', gap: 10, marginTop: 24 }}>
+          <Text style={s.emptyText}>{`Nothing matches “${query.trim()}” in ${back === null ? 'any month' : title}.`}</Text>
+          {back !== null ? (
+            <TouchableOpacity style={s.selectBtn} onPress={() => setBack(null)} accessibilityRole="button">
+              <Text style={s.selectText}>Search all time</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : <Text style={s.empty}>No trips in {back === null ? 'any month' : title}.</Text>}
     />
     <OptionSheet
       visible={sheet === 'month'}
@@ -337,14 +406,6 @@ export function TripLedger({ f, todayKey, scope, customer, onPickCustomer, onCle
       value={statusFilter ?? 'all'}
       options={[{ value: 'all', label: 'All statuses', sub: `${rows.length} rows` }, ...counts.map(([label, c]) => ({ value: label, label, sub: `${c.n}`, dot: c.tone.fg }))]}
       onPick={(v) => { setStatusFilter(v === 'all' ? null : v); setSheet(null); }}
-      onClose={() => setSheet(null)}
-    />
-    <OptionSheet
-      visible={sheet === 'order'}
-      title="Order"
-      value={order}
-      options={[{ value: 'desc', label: 'Newest number first', sub: 'TRP-0107, 0106 …' }, { value: 'asc', label: 'Oldest number first', sub: 'TRP-0001, 0002 …' }]}
-      onPick={(v) => { setOrder(v as 'asc' | 'desc'); setSheet(null); }}
       onClose={() => setSheet(null)}
     />
     {picked ? (
@@ -363,21 +424,19 @@ export function TripLedger({ f, todayKey, scope, customer, onPickCustomer, onCle
   );
 }
 
-/** A labelled dropdown field: caption on top, the choice and a chevron (✕ to clear a filter). */
-function Dropdown({ label, value, on, onPress, onClear }: { label: string; value: string; on?: boolean; onPress: () => void; onClear?: () => void }) {
+/** A filter that opens a list: icon, the choice and a chevron; dark when set, with ✕ to clear. */
+function Pill({ icon: Icon, label, value, on, onPress, onClear }: { icon: LucideIcon; label: string; value: string; on?: boolean; onPress: () => void; onClear?: () => void }) {
   return (
-    <TouchableOpacity style={[s.dd, on && s.ddOn]} onPress={onPress} activeOpacity={0.75} accessibilityRole="button" accessibilityLabel={`${label}: ${value}`}>
-      <Text style={s.ddLabel}>{label}</Text>
-      <View style={s.ddRow}>
-        <Text style={[s.ddValue, on && { color: Colors.primaryDark }]} numberOfLines={1}>{value}</Text>
-        {onClear ? (
-          <TouchableOpacity onPress={onClear} hitSlop={10} accessibilityLabel={`Clear ${label}`}>
-            <X size={15} color={Colors.primaryDark} strokeWidth={2.4} />
-          </TouchableOpacity>
-        ) : (
-          <ChevronDown size={16} color={MUTED} />
-        )}
-      </View>
+    <TouchableOpacity style={[s.pill, on && s.pillOn]} onPress={onPress} activeOpacity={0.75} accessibilityRole="button" accessibilityLabel={`${label}: ${value}`}>
+      <Icon size={15} color={on ? '#fff' : MUTED} />
+      <Text style={[s.pillText, on && { color: '#fff' }]} numberOfLines={1}>{value}</Text>
+      {onClear ? (
+        <TouchableOpacity onPress={onClear} hitSlop={10} accessibilityLabel={`Clear ${label}`}>
+          <X size={15} color="#fff" strokeWidth={2.6} />
+        </TouchableOpacity>
+      ) : (
+        <ChevronDown size={15} color={MUTED} />
+      )}
     </TouchableOpacity>
   );
 }
@@ -420,17 +479,27 @@ function Box({ on, off }: { on: boolean; off?: boolean }) {
 
 const s = StyleSheet.create({
   list: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 200 },
-  head: { gap: 14, marginBottom: 10 },
-  filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  dd: { flexGrow: 1, flexBasis: '45%', minWidth: 140, backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#E4E6EB', paddingHorizontal: 12, paddingVertical: 9, gap: 2 },
-  ddOn: { borderColor: Colors.primary, backgroundColor: '#FFF6F3' },
-  ddLabel: { fontSize: 11, fontWeight: '700', color: MUTED, letterSpacing: 0.4, textTransform: 'uppercase' },
-  ddRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  ddValue: { flex: 1, fontSize: 15, fontWeight: '700', color: INK },
-  breakdown: { fontSize: 13, color: MUTED, lineHeight: 20 },
-  sep: { color: '#C4C6CE' },
-  listBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 },
-  listCount: { fontSize: 13, fontWeight: '700', color: MUTED },
+  head: { gap: 12, marginBottom: 10 },
+  searchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 46, borderRadius: 14, backgroundColor: '#fff', paddingHorizontal: 13, borderWidth: 1, borderColor: '#E9EAEE' },
+  searchInput: { flex: 1, fontSize: 15, color: INK, paddingVertical: 0 },
+  month: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#E9EAEE', height: 46, paddingHorizontal: 4 },
+  monthStep: { width: 40, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  stepOff: { opacity: 0.25 },
+  monthMid: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38 },
+  monthText: { fontSize: 16, fontWeight: '800', color: INK },
+  filters: { flexDirection: 'row', gap: 8 },
+  pill: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 7, height: 40, borderRadius: 20, paddingHorizontal: 13, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E4E6EB' },
+  pillOn: { backgroundColor: INK, borderColor: INK },
+  pillText: { flex: 1, fontSize: 14, fontWeight: '700', color: INK },
+  bar100: { flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', gap: 2 },
+  legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  leg: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 9, height: 28, borderRadius: 14, borderWidth: 1, borderColor: 'transparent', backgroundColor: '#F6F6F8' },
+  legDot: { width: 8, height: 8, borderRadius: 4 },
+  legText: { fontSize: 12.5, color: MUTED },
+  listBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  listCount: { flex: 1, fontSize: 13, fontWeight: '700', color: MUTED },
+  orderBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, height: 34, borderRadius: 17 },
+  orderText: { fontSize: 13, fontWeight: '700', color: INK },
   selectBtn: { paddingHorizontal: 16, height: 34, borderRadius: 17, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E4E6EB', justifyContent: 'center' },
   selectOn: { backgroundColor: INK, borderColor: INK },
   selectText: { fontSize: 13, fontWeight: '700', color: INK },
@@ -472,4 +541,5 @@ const s = StyleSheet.create({
   barDelete: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#D92D20', borderRadius: 12, paddingHorizontal: 16, height: 40 },
   barDeleteText: { color: '#fff', fontSize: 15, fontWeight: '800' },
   empty: { textAlign: 'center', color: MUTED, marginTop: 30, fontSize: 14 },
+  emptyText: { textAlign: 'center', color: MUTED, fontSize: 14, paddingHorizontal: 20 },
 });
