@@ -103,12 +103,13 @@ export function useTripList(view: View, search: string, now: number, scope?: Rec
     enabled: view === 'history',
   });
 
-  // Deleted trips (the Recycle Bin's list) for History's "Deleted" filter.
+  // Deleted trips (the Recycle Bin's list): History's "Deleted" filter, and on every tab so a trip
+  // deleted since a list was loaded no longer shows as an overlap.
   const deleted = useQuery({
     queryKey: ['trips', 'deleted'],
     queryFn: async () => ((await api.get('/trash')).data?.data ?? [])
       .filter((it: { type: string }) => it.type === 'Trip') as DeletedTrip[],
-    enabled: view === 'history',
+    refetchInterval: view === 'now' || view === 'delayed' ? 60_000 : false,
   });
 
   const term = search.trim();

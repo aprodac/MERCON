@@ -22,7 +22,7 @@ import { OperatorPushManager } from '@/components/OperatorPushManager';
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const TAB_ROUTES = [
-  '/', '/trips', '/drivers', '/vehicles', '/invoices',
+  '/', '/trips', '/ledger', '/drivers', '/vehicles', '/invoices',
   '/more', '/profile', '/customers',
   '/quotations', '/third-party', '/maintenance',
   '/expenses', '/documents', '/notifications', '/user-management', '/push-log', '/links',

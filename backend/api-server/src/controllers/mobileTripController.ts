@@ -801,6 +801,9 @@ export const recordDriverLocation = async (req: Request, res: Response) => {
  * then only sends screenshots, as often as the trip needs. No stop is stamped
  * here — the stops aren't known yet; the office builds them from the log.
  */
+/** A trip-log trip planned further ahead than this asks the driver to confirm before it starts. */
+const EARLY_START_MS = 3 * 60 * 60 * 1000;
+
 export const startTripLog = async (req: Request, res: Response) => {
   const driverId = (req as any).user?.driver_id;
   const id = req.params.id as string;
@@ -819,6 +822,19 @@ export const startTripLog = async (req: Request, res: Response) => {
     const finished: TripStatus[] = [TripStatus.Completed, TripStatus.Invoiced, TripStatus.Cancelled];
     if (finished.includes(trip.status)) {
       return res.status(409).json({ success: false, error: { message: `This trip is already ${trip.status === TripStatus.Cancelled ? 'cancelled' : 'finished'}` } });
+    }
+    // Not started yet and planned more than 3 h ahead: only when the driver confirms (TestFlight 30 Oct,
+    // TRP-0095: a 14:00 trip showed "on the road" in the morning — Start had no check). Older app builds
+    // don't send the confirmation, so they get the message instead of starting the trip early.
+    const plannedStart = trip.planned_start?.getTime();
+    if (
+      (trip.status === TripStatus.Draft || trip.status === TripStatus.Scheduled) &&
+      plannedStart && plannedStart - Date.now() > EARLY_START_MS && req.body?.confirm_early !== true
+    ) {
+      return res.status(409).json({
+        success: false,
+        error: { code: 'TRIP_EARLY', message: 'This trip is planned for later. Start it closer to its time — or confirm to start it now.', planned_start: trip.planned_start },
+      });
     }
     // Already on the road (the office marked the arrival or loading first — TRP-0092, 29 Oct:
     // "Loading" was refused as "already finished"): it just switches to the trip log, keeping

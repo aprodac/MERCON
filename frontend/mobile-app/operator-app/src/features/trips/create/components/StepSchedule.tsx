@@ -67,12 +67,15 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
       .setPlannedTransit(form.customerId, `${leg}|${placeKey(from)}|${placeKey(to)}|${ANY_SIZE}`, min)
       .then(() => {
         queryClient.invalidateQueries({ queryKey: ['transit', form.customerId] });
-        setSavedNote((n) => ({ ...n, [leg]: `✓ Saved ${transitText(min)} as Given TT for ${niceName(from)} → ${niceName(to)}` }));
+        setSavedNote((n) => ({ ...n, [leg]: `✓ Saved ${transitText(min)} as ${company}'s Given TT for ${niceName(from)} → ${niceName(to)}` }));
       })
       .catch(() => Alert.alert('Couldn’t save the transit time', 'It is still set on this trip. Try again from the transit time.'));
   };
+  // Saved TTs belong to one customer (TestFlight 30 Oct: "TT added for iMile should only reflect to them").
+  const company = niceName(form.selectedCustomer?.name) || 'this customer';
   const saveLabelFor = (from: string, to: string) =>
-    form.customerId && from.trim() && to.trim() ? `Save as Given TT for ${niceName(from)} → ${niceName(to)}` : undefined;
+    form.customerId && from.trim() && to.trim() ? `Save as ${company}'s Given TT for ${niceName(from)} → ${niceName(to)}` : undefined;
+  const saveSub = `Only ${company}'s new trips on this route start with it (every truck size). Other companies keep their own times.`;
   /** Minutes after pickup of a planned time, for the route timing. */
   const afterPickup = (v: WhenValue | null) => (slot.pickupTime && v?.time ? (v.day ?? 0) * 1440 + toMin(v.time) - toMin(slot.pickupTime) : null);
   // Transit time (TestFlight: "transit time option"): pickup + chosen length → planned drop-off.
@@ -176,27 +179,41 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
             style={{ flex: 1 }}
           />
         </View>
-        <ValueTile
-          caption="Transit time back"
-          value={returnTransitMin != null && returnTransitMin > 0 ? transitText(returnTransitMin) : ''}
-          placeholder={returnLoad ? 'Choose' : 'Set return loading first'}
-          onPress={() => {
-            if (!returnLoad) return;
-            setSameBack(false);
-            setTransitOpen('back');
-          }}
-          style={{ marginTop: 8 }}
-        />
+        {/* TestFlight 30 Oct: the tick sits on the "Transit time back" box itself — ticked (the default) the box
+            shows leg 1's time and can't be edited; untick to set the way back's own time. */}
+        <View style={[styles.backBox, sameBack && styles.backBoxOn]}>
+          <View style={styles.backHead}>
+            <Text style={styles.backCaption}>Transit time back</Text>
+            <TouchableOpacity style={styles.backSame} onPress={toggleSameBack} activeOpacity={0.7} hitSlop={8} accessibilityRole="checkbox" accessibilityState={{ checked: sameBack }}>
+              <View style={[styles.box, sameBack && styles.boxOn]}>{sameBack ? <Check size={13} color={Colors.white} strokeWidth={3} /> : null}</View>
+              <Text style={styles.sameText}>Same as leg 1</Text>
+            </TouchableOpacity>
+          </View>
+          {sameBack ? (
+            <>
+              <Text style={[styles.backValue, outTransit == null && styles.backPlaceholder]}>
+                {outTransit != null ? transitText(outTransit) : 'Set leg 1’s transit time first'}
+              </Text>
+              <Text style={styles.backHint}>
+                {outTransit == null ? 'The way back takes the same time.' : returnLoad ? 'Arrival home follows it. Untick to set a different time.' : 'Set the return loading — arrival home follows it.'}
+              </Text>
+            </>
+          ) : (
+            <TouchableOpacity
+              onPress={() => returnLoad && setTransitOpen('back')}
+              activeOpacity={0.7}
+              disabled={!returnLoad}
+              accessibilityRole="button"
+              accessibilityLabel="Choose the transit time back"
+            >
+              <Text style={[styles.backValue, !(returnTransitMin != null && returnTransitMin > 0) && styles.backPlaceholder]}>
+                {returnTransitMin != null && returnTransitMin > 0 ? transitText(returnTransitMin) : returnLoad ? 'Choose' : 'Set return loading first'}
+              </Text>
+              {returnLoad ? <Text style={styles.backHint}>Tap to change.</Text> : null}
+            </TouchableOpacity>
+          )}
+        </View>
         {savedLine('return')}
-        {outTransit != null ? (
-          <TouchableOpacity style={styles.sameRow} onPress={toggleSameBack} activeOpacity={0.7} hitSlop={6}>
-            <View style={[styles.box, sameBackOn && styles.boxOn]}>{sameBackOn ? <Check size={13} color={Colors.white} strokeWidth={3} /> : null}</View>
-            <Text style={styles.sameText}>
-              Same as leg 1 · {transitText(outTransit)}
-              {sameBackOn && !returnLoad ? ' — set the return loading' : ''}
-            </Text>
-          </TouchableOpacity>
-        ) : null}
         <ErrorText>{err('returnPickup') || err('returnDropoff')}</ErrorText>
         {runMinutes && runMinutes > 0 ? (
           <Text style={[styles.hint, runMinutes >= 1440 && form.isMonthly && { color: Colors.danger, fontWeight: '600' }]}>
@@ -313,6 +330,7 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
         value={transitMin}
         arrivalText={(m) => { const { time, days } = transitAt(m); return `Drop-off ${time}${plusDays(days)}`; }}
         saveLabel={saveLabelFor(slot.origin, slot.destination)}
+        saveSub={saveSub}
         onDone={(m, save) => { setTransit(m); setTransitOpen(null); if (save) saveGivenTT('out', slot.origin, slot.destination, m); }}
         onClose={() => setTransitOpen(null)}
       />
@@ -322,6 +340,7 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
         value={returnTransitMin}
         arrivalText={(m) => { const { time, days } = later(returnLoad?.time ?? '00:00', m); return `Arrival home ${time}${plusDays(days)}`; }}
         saveLabel={saveLabelFor(returnFrom, returnTo)}
+        saveSub={saveSub}
         onDone={(m, save) => { setReturnTransit(m); setTransitOpen(null); if (save) saveGivenTT('return', returnFrom, returnTo, m); }}
         onClose={() => setTransitOpen(null)}
       />
@@ -491,7 +510,14 @@ const styles = StyleSheet.create({
   legLine: { fontSize: 13, fontWeight: '600', color: Colors.gray700, marginBottom: 8 },
   wayBackFoot: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
   clear: { fontSize: 12, fontWeight: '700', color: Colors.danger },
-  sameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },
+  backBox: { marginTop: 8, padding: 12, borderRadius: 12, backgroundColor: Colors.gray50, borderWidth: 1, borderColor: Colors.gray200, gap: 2 },
+  backBoxOn: { backgroundColor: '#FFF4F1', borderColor: '#F8C9BC' },
+  backHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  backCaption: { fontSize: 12, fontWeight: '600', color: Colors.gray500 },
+  backSame: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  backValue: { fontSize: 17, fontWeight: '700', color: Colors.gray900, marginTop: 2 },
+  backPlaceholder: { color: Colors.gray400, fontWeight: '600', fontSize: 15 },
+  backHint: { fontSize: 12, color: Colors.gray500 },
   box: { width: 20, height: 20, borderRadius: 6, borderWidth: 1.5, borderColor: Colors.gray300, alignItems: 'center', justifyContent: 'center' },
   boxOn: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   sameText: { fontSize: 13, fontWeight: '600', color: Colors.gray700, flex: 1 },

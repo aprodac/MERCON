@@ -25,7 +25,7 @@ export const transitText = (min: number) => {
   return h && m ? `${h} h ${m} m` : h ? `${h} h` : `${m} m`;
 };
 
-export function TransitSheet({ visible, title = 'Transit time', value, arrivalText, saveLabel, onDone, onClose }: {
+export function TransitSheet({ visible, title = 'Transit time', value, arrivalText, saveLabel, saveSub, onDone, onClose }: {
   visible: boolean;
   title?: string;
   /** Current transit time in minutes, if any. */
@@ -37,6 +37,8 @@ export function TransitSheet({ visible, title = 'Transit time', value, arrivalTe
    * gets `save` true (TestFlight 29 Oct: "option to save as default transit time").
    */
   saveLabel?: string;
+  /** The line under it, e.g. which company's trips use the saved time. */
+  saveSub?: string;
   onDone: (min: number, save: boolean) => void;
   onClose: () => void;
 }) {
@@ -77,7 +79,7 @@ export function TransitSheet({ visible, title = 'Transit time', value, arrivalTe
           <View style={[own.box, save && own.boxOn]}>{save ? <Check size={13} color={Colors.white} strokeWidth={3} /> : null}</View>
           <View style={{ flex: 1 }}>
             <Text style={own.saveText}>{saveLabel}</Text>
-            <Text style={own.saveSub}>New trips on this route start with it, every truck size.</Text>
+            <Text style={own.saveSub}>{saveSub ?? 'New trips on this route start with it, every truck size.'}</Text>
           </View>
         </TouchableOpacity>
       ) : null}

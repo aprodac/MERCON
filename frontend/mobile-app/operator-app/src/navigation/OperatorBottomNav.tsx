@@ -1,16 +1,18 @@
 /**
  * Operator App Bottom Navigation
  * Dark floating pill, 4 items + centre FAB (white circle, orange plus, orange border)
- * Items: Home | Trips | [FAB] | Drivers | Profile
+ * Items: Home | Trips | [FAB] | Ledger | Profile
+ * (Ledger replaced Drivers on 30 Oct — TestFlight: "make this the trip ledger instead of drivers";
+ * Drivers stays in the side menu.)
  * The active item is marked by an orange capsule behind its icon.
  */
 import React, { useEffect, useRef } from 'react';
 import { View, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
-import { House, Truck, User, Users, Plus, type LucideIcon } from 'lucide-react-native';
+import { BookOpen, House, Truck, User, Plus, type LucideIcon } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Shadows } from '@mercon/mobile-shared/theme/tokens';
 
-export type OperatorTab = 'Home' | 'Trips' | 'Drivers' | 'Profile';
+export type OperatorTab = 'Home' | 'Trips' | 'Ledger' | 'Profile';
 
 interface OperatorBottomNavProps {
   activeTab?: OperatorTab | string;
@@ -21,7 +23,7 @@ interface OperatorBottomNavProps {
 const DEFAULT_FAB_ROUTE = '/create-trip';
 
 const LEFT_TABS:  { label: 'Home' | 'Trips'; Icon: LucideIcon }[]   = [{ label: 'Home', Icon: House }, { label: 'Trips', Icon: Truck }];
-const RIGHT_TABS: { label: 'Drivers' | 'Profile'; Icon: LucideIcon }[] = [{ label: 'Drivers', Icon: Users }, { label: 'Profile', Icon: User }];
+const RIGHT_TABS: { label: 'Ledger' | 'Profile'; Icon: LucideIcon }[] = [{ label: 'Ledger', Icon: BookOpen }, { label: 'Profile', Icon: User }];
 
 const INACTIVE = 'rgba(238, 241, 246, 0.65)'; // Light Cool Gray (#EEF1F6) matching web dashboard sidebar text
 
@@ -43,7 +45,7 @@ export function OperatorBottomNav({ activeTab: explicitActive, onTabPress, onFab
   };
 
   const renderTab = ({ label, Icon }: { label: OperatorTab; Icon: LucideIcon }) => {
-    const route = label === 'Home' ? '/' : label === 'Trips' ? '/trips' : label === 'Drivers' ? '/drivers' : '/profile';
+    const route = label === 'Home' ? '/' : label === 'Trips' ? '/trips' : label === 'Ledger' ? '/ledger' : '/profile';
     const active = explicitActive
       ? explicitActive === label
       : route === '/' ? pathname === '/' : pathname.startsWith(route);
