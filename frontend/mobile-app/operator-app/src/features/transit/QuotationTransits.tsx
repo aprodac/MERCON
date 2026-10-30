@@ -20,8 +20,6 @@ import { niceName } from '../trips/create/components/ui';
 import { TransitSheet } from '../trips/create/components/TransitSheet';
 import { hm, quotationRouteMatches, quotationRoutes, type QuotationRoute } from './transitModel';
 
-const SOURCE = { road: 'from the road route', approx: 'from the distance', duty: 'the duty length' } as const;
-
 export function QuotationTransits({ customerId }: { customerId: string }) {
   const { role } = useAuth();
   const canSet = role === 'Admin' || role === 'Operator';
@@ -95,9 +93,9 @@ export function QuotationTransits({ customerId }: { customerId: string }) {
             </View>
             <View style={s.nums}>
               <View style={[s.num, { flex: 1.3 }]}>
-                <Text style={s.numLabel}>{r.saved ? 'Given TT' : 'Estimate · not set'}</Text>
-                <Text style={[s.given, !r.saved && { color: INK }]}>{hm(r.givenMin)}</Text>
-                <Text style={s.numSub}>{r.saved ? 'set by you · every size' : r.source ? SOURCE[r.source] : 'place not located'}</Text>
+                <Text style={s.numLabel}>Given TT</Text>
+                <Text style={[s.given, !r.saved && { color: MUTED, fontSize: 15 }]}>{r.saved ? hm(r.givenMin) : 'No TT set'}</Text>
+                {r.saved ? <Text style={s.numSub}>set by you · every size</Text> : null}
               </View>
               <View style={s.num}>
                 <Text style={s.numLabel}>Actual avg</Text>

@@ -1,16 +1,17 @@
 /** Step 1 — customer, their quotations, route and price. */
 import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, TextInput, StyleSheet, FlatList } from 'react-native';
-import { ArrowRight, Building2, CheckCircle2, Clock, FileText, MapPin, Pencil, Repeat, RotateCcw, Route, Search, X, Receipt, Plus, ChevronDown, ChevronUp, type LucideIcon } from 'lucide-react-native';
+import { ArrowRight, Building2, CheckCircle2, Clock, FileText, MapPin, Pencil, Repeat, RotateCcw, Route, Search, X, Receipt, Plus, ChevronDown, ChevronUp, Timer, type LucideIcon } from 'lucide-react-native';
 import { Colors, Spacing, Radius } from '@mercon/mobile-shared/theme/tokens';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
-import { TRUCK_CLASSES, lineTypeLabel, filterQuotationsBySearch, pricingFromQuotation } from '@mercon/shared-types';
+import { TRUCK_CLASSES, lineTypeLabel, filterQuotationsBySearch, normalizeLineTypeToken, pricingFromQuotation } from '@mercon/shared-types';
 import { PriceHistory } from './PriceHistory';
 import { RecentTripPicker } from './RecentTripPicker';
 import { PinPickerSheet, type PickedPin } from '../../details/components/PinSheet';
 import { getQuotationRoute, getQuotationVia, type OperatorQuotation, type OperatorSurchargeRule } from '../../../../lib/operator';
-import { quotationBilling, quotationClass, quotationLineType, type CreateTripForm, type LocationPick } from '../useCreateTrip';
+import { quotationBilling, quotationClass, quotationLineType, type CreateTripForm, type LocationPick, type RecentRoute } from '../useCreateTrip';
 import { Chip, CompanyAvatar, ErrorText, FieldButton, Label, LinkButton, PickerSheet, Section, SkeletonRows, TextField, fmtSar, niceName, tap, ui } from './ui';
+import { transitText } from './TransitSheet';
 
 const CHARGE_PRESETS = ['Waiting', 'Loading / unloading', 'Toll', 'Night stay', 'Extra stop'];
 
@@ -54,19 +55,50 @@ export function StepJob({ form, showErrors, onSetPayout }: {
     quoted && (Number(form.slot.billingAmount) !== Number(quoted.billingAmount) || Number(form.slot.driverPayout || 0) !== Number(quoted.driverPayout || 0)),
   );
 
-  const [billingFilter, setBillingFilter] = useState<BillingFilter>(form.isMonthly ? 'Monthly' : 'ALL');
+  // One list for recent routes and quotations (TestFlight 30 Oct: "combine recent routes and quotations").
+  // A recent route that used a quotation is shown on that quotation's card; one without a quotation gets
+  // its own route card. "Recent" (the last 30 days) is the first filter when there is any.
+  const [showAll, setShowAll] = useState(false);
+  const [pickedFilter, setPickedFilter] = useState<ListFilter | null>(null);
+  const recentOfQuote = useMemo(() => {
+    const m = new Map<string, RecentRoute>();
+    form.recentRoutes.forEach((r) => {
+      if (r.quotationId && (!m.has(r.quotationId) || m.get(r.quotationId)!.count < r.count)) m.set(r.quotationId, r);
+    });
+    return m;
+  }, [form.recentRoutes]);
+  const routeOnly = useMemo(
+    () => form.recentRoutes.filter((r) => !r.quotationId || !form.quotations.some((q) => q.id === r.quotationId)),
+    [form.recentRoutes, form.quotations],
+  );
+  const recentCount = form.quotations.filter((q) => recentOfQuote.has(q.id)).length + routeOnly.length;
+  const listFilter: ListFilter = pickedFilter ?? (recentCount ? 'RECENT' : form.isMonthly ? 'Monthly' : 'ALL');
+  const billingFilter: BillingFilter = listFilter === 'RECENT' ? 'ALL' : listFilter;
+  const setBillingFilter = (v: ListFilter) => { setPickedFilter(v); setShowAll(false); };
   const filtered = useMemo(
     () => (billingFilter === 'ALL' ? form.quotations : form.quotations.filter((q) => quotationBilling(q) === billingFilter)),
     [form.quotations, billingFilter],
   );
-  // The three most useful quotations: those fitting the route entered, then the ones this
-  // customer used most on recent trips, then the rest.
-  const preview = useMemo(() => {
-    const used = (q: OperatorQuotation) => form.quotationUse.get(q.id) || 0;
+  type ListItem = { kind: 'quote'; q: OperatorQuotation; recent?: RecentRoute } | { kind: 'route'; r: RecentRoute };
+  const items = useMemo<ListItem[]>(() => {
+    const score = (i: ListItem) => {
+      const r = i.kind === 'quote' ? i.recent : i.r;
+      return r ? r.count * 1e13 + r.lastUsed : 0;
+    };
+    const recentItems: ListItem[] = [
+      ...filtered.filter((q) => recentOfQuote.has(q.id)).map((q) => ({ kind: 'quote' as const, q, recent: recentOfQuote.get(q.id) })),
+      ...routeOnly.filter((r) => billingFilter === 'ALL' || r.billingType === billingFilter).map((r) => ({ kind: 'route' as const, r })),
+    ].sort((a, b) => score(b) - score(a));
+    if (listFilter === 'RECENT') return recentItems;
+    // Fitting the route entered first, then the recent ones, then the rest by use.
     const fitting = form.routeMatches.filter((q) => filtered.includes(q));
-    const rest = filtered.filter((q) => !fitting.includes(q)).sort((a, b) => used(b) - used(a));
-    return [...fitting, ...rest].slice(0, 3);
-  }, [form.routeMatches, filtered, form.quotationUse]);
+    const fitItems: ListItem[] = fitting.map((q) => ({ kind: 'quote', q, recent: recentOfQuote.get(q.id) }));
+    const rest = filtered
+      .filter((q) => !fitting.includes(q) && !recentOfQuote.has(q.id))
+      .map((q): ListItem => ({ kind: 'quote', q }));
+    return [...fitItems, ...recentItems.filter((i) => i.kind === 'route' || !fitting.includes(i.q)), ...rest];
+  }, [filtered, recentOfQuote, routeOnly, billingFilter, listFilter, form.routeMatches]);
+  const preview = showAll && listFilter === 'RECENT' ? items : items.slice(0, 3);
 
   const placeTo = (t: LocationTarget, loc: LocationPick) => {
     if (t.kind === 'origin' || t.kind === 'destination') form.setEndpoint(t.kind, loc);
@@ -142,6 +174,11 @@ export function StepJob({ form, showErrors, onSetPayout }: {
     return pinChip(name, own ?? {}, locationId, (start) => setPinTarget({ kind: 'stop', leg, index, name, start }));
   };
 
+  /** The route's saved Given TT for a quotation's way out (TestFlight 30 Oct: "show TT of the route if added"). */
+  const ttOf = (q: OperatorQuotation) => {
+    const r = getQuotationRoute(q);
+    return form.givenTT(r.origin, r.dest, quotationClass(q));
+  };
   const applyCard = (q: OperatorQuotation) => {
     tap();
     form.applyQuotation(q, { fillRoute: true });
@@ -194,8 +231,11 @@ export function StepJob({ form, showErrors, onSetPayout }: {
           quotationLineType(applied) !== form.rateCategory ? lineTypeLabel(quotationLineType(applied)) : null,
           quotationBilling(applied) !== form.billingType ? quotationBilling(applied) : null,
         ].filter(Boolean);
-        return differs.length ? (
-          <Text style={styles.note}>{`The quotation is for ${differs.join(' · ')}. Its price is kept for this trip — tap Edit price if it differs.`}</Text>
+        if (differs.length) {
+          return <Text style={styles.note}>{`The quotation is for ${differs.join(' · ')}. Its price is kept for this trip — tap Edit price if it differs.`}</Text>;
+        }
+        return form.quotationKept ? (
+          <Text style={styles.note}>Trip changed for this trip only (stops). The quotation and its price are kept — tap Edit price if it differs.</Text>
         ) : null;
       })()}
 
@@ -306,59 +346,43 @@ export function StepJob({ form, showErrors, onSetPayout }: {
         <ErrorText>{err('customer')}</ErrorText>
       </Section>
 
-      {/* TestFlight 29 Oct: "show a section of recents .. show last routes in 30 days". */}
-      {!applied && form.customerId && form.recentRoutes.length > 0 ? (
-        <Section icon={RotateCcw} tone="blue" title="Recent routes" badge={<Chip label="Last 30 days" />}>
-          <View style={styles.chipRow}>
-            {form.recentRoutes.map((r) => {
-              const quote = r.quotationId ? form.quotations.find((q) => q.id === r.quotationId) : undefined;
-              return (
-                <TouchableOpacity
-                  key={r.key}
-                  onPress={() => {
-                    tap();
-                    // Start from the quotation those trips used (route, type, size and price), else the route alone.
-                    if (quote) form.applyQuotation(quote, { fillRoute: true });
-                    else form.applyRecentRoute(r);
-                  }}
-                  style={styles.recentChip}
-                  activeOpacity={0.75}
-                >
-                  <Text style={styles.recentText} numberOfLines={1}>
-                    {[r.origin.name, ...r.stops.map((m) => m.name), r.destination.name].map(niceName).join(' → ')}
-                    {r.round ? ' · round' : ''}
-                  </Text>
-                  {r.count > 1 ? <Text style={styles.recentCount}>{r.count}×</Text> : null}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </Section>
-      ) : null}
-
       {applied ? (
         priceSection
       ) : form.customerId ? (
         <Section
           icon={FileText}
           tone="violet"
-          title="Quotations"
-          badge={form.quotations.length ? <Chip label={String(form.quotations.length)} /> : undefined}
-          action={filtered.length > 3 ? { label: `See all ${filtered.length}`, onPress: () => setSheet('quotes') } : undefined}
+          title="Routes & quotations"
+          action={
+            listFilter === 'RECENT'
+              ? items.length > 3 ? { label: showAll ? 'Show less' : `See all ${items.length}`, onPress: () => setShowAll((v) => !v) } : undefined
+              : filtered.length > 3 ? { label: `See all ${filtered.length}`, onPress: () => setSheet('quotes') } : undefined
+          }
         >
           {form.quotationsLoading ? (
             <SkeletonRows rows={3} />
-          ) : form.quotations.length === 0 ? (
-            <Text style={styles.sectionHint}>No quotations for this customer yet. Enter the route below.</Text>
+          ) : form.quotations.length === 0 && routeOnly.length === 0 ? (
+            <Text style={styles.sectionHint}>No quotations or recent trips for this customer yet. Enter the route below.</Text>
           ) : (
             <>
-              <BillingFilterChips quotations={form.quotations} value={billingFilter} onChange={setBillingFilter} />
+              <BillingFilterChips quotations={form.quotations} recentCount={recentCount} value={listFilter} onChange={setBillingFilter} />
+              {listFilter === 'RECENT' ? <Text style={styles.sectionHint}>Routes this customer ran in the last 30 days, most used first.</Text> : null}
               {preview.length === 0 ? (
                 <Text style={styles.sectionHint}>No {billingFilter === 'Monthly' ? 'monthly' : 'extra'} quotations for this customer.</Text>
               ) : (
-                preview.map((q, i) => (
-                  <QuotationCard key={q.id} q={q} first={i === 0} fits={form.routeMatches.includes(q)} used={form.quotationUse.get(q.id)} onPress={() => applyCard(q)} />
-                ))
+                preview.map((it, i) =>
+                  it.kind === 'quote' ? (
+                    <QuotationCard key={it.q.id} q={it.q} first={i === 0} fits={form.routeMatches.includes(it.q)} recent={it.recent} used={form.quotationUse.get(it.q.id)} tt={ttOf(it.q)} onPress={() => applyCard(it.q)} />
+                  ) : (
+                    <RecentRouteCard
+                      key={it.r.key}
+                      r={it.r}
+                      first={i === 0}
+                      tt={form.givenTT(it.r.origin.name, it.r.destination.name, it.r.size)}
+                      onPress={() => { tap(); form.applyRecentRoute(it.r); }}
+                    />
+                  ),
+                )
               )}
             </>
           )}
@@ -387,6 +411,7 @@ export function StepJob({ form, showErrors, onSetPayout }: {
         searchPlaceholder="Search customers"
       />
       <QuotationSheet
+        ttOf={ttOf}
         visible={sheet === 'quotes'}
         quotations={form.quotations}
         lineTypes={form.lineTypeOptions}
@@ -735,6 +760,8 @@ function SelectChip({ label, onPress }: { label: string; onPress: () => void }) 
 }
 
 type BillingFilter = 'ALL' | 'Extra' | 'Monthly';
+/** The list's filter: recent routes (last 30 days) or quotations by billing. */
+type ListFilter = BillingFilter | 'RECENT';
 
 /** Trip type → icon and colour, so a card's shape reads at a glance. */
 function typeLook(lineType: string): { Icon: LucideIcon; bg: string; fg: string } {
@@ -744,7 +771,16 @@ function typeLook(lineType: string): { Icon: LucideIcon; bg: string; fg: string 
 }
 
 /** One quotation as a card — also used on the customer details screen. */
-export function QuotationCard({ q, fits, first, used, onPress }: { q: OperatorQuotation; fits?: boolean; first?: boolean; used?: number; onPress?: () => void }) {
+export function QuotationCard({ q, fits, first, used, recent, tt, onPress }: {
+  q: OperatorQuotation;
+  fits?: boolean;
+  first?: boolean;
+  used?: number;
+  /** This quotation's route run in the last 30 days: "6 trips · latest today". */
+  recent?: RecentRoute;
+  tt?: number | null;
+  onPress?: () => void;
+}) {
   const route = getQuotationRoute(q);
   const lineType = quotationLineType(q);
   const monthly = quotationBilling(q) === 'Monthly';
@@ -774,12 +810,19 @@ export function QuotationCard({ q, fits, first, used, onPress }: { q: OperatorQu
             <CheckCircle2 size={12} color={Colors.success} />
             <Text style={styles.fitsText}>Fits this route</Text>
           </View>
-        ) : used ? (
+        ) : null}
+        {recent ? (
+          <View style={styles.fitsRow}>
+            <RotateCcw size={11} color={Colors.gray500} />
+            <Text style={styles.usedText}>{recent.count} trip{recent.count > 1 ? 's' : ''} · latest {ago(recent.lastUsed)}</Text>
+          </View>
+        ) : used && !fits ? (
           <View style={styles.fitsRow}>
             <RotateCcw size={11} color={Colors.gray500} />
             <Text style={styles.usedText}>Used on {used} recent trip{used > 1 ? 's' : ''}</Text>
           </View>
         ) : null}
+        <TTLine tt={tt} />
       </View>
       <View style={{ alignItems: 'flex-end' }}>
         <Text style={styles.quoteRate}>
@@ -795,10 +838,87 @@ export function QuotationCard({ q, fits, first, used, onPress }: { q: OperatorQu
   );
 }
 
+/** "Given TT 13 h" under a card, when the route has a saved transit time. */
+function TTLine({ tt }: { tt?: number | null }) {
+  if (!tt) return null;
+  return (
+    <View style={styles.fitsRow}>
+      <Timer size={11} color={Colors.info} />
+      <Text style={styles.ttText}>Given TT {transitText(tt)}</Text>
+    </View>
+  );
+}
+
+const ago = (ms: number) => {
+  const days = Math.floor((Date.now() - ms) / 86_400_000);
+  return days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
+};
+
+/** A route this customer ran in the last 30 days, laid out like a quotation card: the latest trip's type, size and money. */
+function RecentRouteCard({ r, quote, first, tt, onPress }: { r: RecentRoute; quote?: OperatorQuotation; first?: boolean; tt: number | null; onPress: () => void }) {
+  const lineType = normalizeLineTypeToken(r.category) || (r.round ? 'ROUND_TRIP' : 'SINGLE_TRIP');
+  const { Icon, bg, fg } = typeLook(lineType);
+  const monthly = r.billingType === 'Monthly';
+  return (
+    <TouchableOpacity activeOpacity={0.7} onPress={onPress} style={[styles.quote, first && { marginTop: 0 }]}>
+      <View style={[styles.quoteIcon, { backgroundColor: bg }]}>
+        <Icon size={16} color={fg} strokeWidth={2.2} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={styles.quoteRoute} numberOfLines={2}>
+          {[r.origin.name, ...r.stops.map((m) => m.name), r.destination.name].map(niceName).join(' → ')}
+        </Text>
+        <View style={styles.quoteTags}>
+          {r.billingType ? (
+            <View style={[styles.tag, monthly ? styles.tagMonthly : styles.tagExtra]}>
+              <Text style={[styles.tagText, monthly ? styles.tagMonthlyText : styles.tagExtraText]}>{r.billingType}</Text>
+            </View>
+          ) : null}
+          <Text style={styles.quoteMeta} numberOfLines={1}>
+            {[lineTypeLabel(lineType), r.size, r.stops.length ? `${r.stops.length} stop${r.stops.length > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')}
+          </Text>
+        </View>
+        <View style={styles.fitsRow}>
+          <RotateCcw size={11} color={Colors.gray500} />
+          <Text style={styles.usedText}>{r.count} trip{r.count > 1 ? 's' : ''} · latest {ago(r.lastUsed)}</Text>
+        </View>
+        <TTLine tt={tt} />
+      </View>
+      <View style={{ alignItems: 'flex-end' }}>
+        {r.billing != null ? (
+          <Text style={styles.quoteRate}>
+            {fmtSar(r.billing)}
+            <Text style={styles.quoteRateUnit}> SAR</Text>
+          </Text>
+        ) : quote && Number(quote.rate) > 0 ? (
+          // A monthly trip carries no amount of its own: show its quotation's rate.
+          <Text style={styles.quoteRate}>
+            {fmtSar(Number(quote.rate))}
+            <Text style={styles.quoteRateUnit}>{quotationBilling(quote) === 'Monthly' ? ' /mo' : ' SAR'}</Text>
+          </Text>
+        ) : (
+          <Text style={styles.quoteSub}>No billing</Text>
+        )}
+        <Text style={[styles.quoteSub, r.payout == null && { color: Colors.warning }]}>
+          {r.payout != null ? `Driver ${fmtSar(r.payout)}` : 'No driver payout'}
+        </Text>
+        <Text style={styles.quoteSub}>last trip</Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 /** All / Extra / Monthly with how many quotations each holds. */
-function BillingFilterChips({ quotations, value, onChange }: { quotations: OperatorQuotation[]; value: BillingFilter; onChange: (v: BillingFilter) => void }) {
+function BillingFilterChips({ quotations, recentCount, value, onChange }: {
+  quotations: OperatorQuotation[];
+  /** With a count, a "Recent" chip comes first. */
+  recentCount?: number;
+  value: ListFilter;
+  onChange: (v: ListFilter) => void;
+}) {
   const monthly = quotations.filter((q) => quotationBilling(q) === 'Monthly').length;
-  const options: { value: BillingFilter; label: string; count: number }[] = [
+  const options: { value: ListFilter; label: string; count: number }[] = [
+    ...(recentCount ? [{ value: 'RECENT' as const, label: 'Recent', count: recentCount }] : []),
     { value: 'ALL', label: 'All', count: quotations.length },
     { value: 'Extra', label: 'Extra', count: quotations.length - monthly },
     { value: 'Monthly', label: 'Monthly', count: monthly },
@@ -829,6 +949,7 @@ function BillingFilterChips({ quotations, value, onChange }: { quotations: Opera
 }
 
 function QuotationSheet({
+  ttOf,
   visible,
   quotations,
   lineTypes,
@@ -841,9 +962,10 @@ function QuotationSheet({
   quotations: OperatorQuotation[];
   lineTypes: string[];
   billing: BillingFilter;
-  onBillingChange: (v: BillingFilter) => void;
+  onBillingChange: (v: ListFilter) => void;
   onPick: (q: OperatorQuotation) => void;
   onClose: () => void;
+  ttOf: (q: OperatorQuotation) => number | null;
 }) {
   const [search, setSearch] = useState('');
   // From / To match the route's two ends separately — one search box couldn't
@@ -928,7 +1050,7 @@ function QuotationSheet({
         keyExtractor={(q) => q.id}
         style={{ maxHeight: 440 }}
         keyboardShouldPersistTaps="handled"
-        renderItem={({ item, index }) => <QuotationCard q={item} first={index === 0} onPress={() => onPick(item)} />}
+        renderItem={({ item, index }) => <QuotationCard q={item} first={index === 0} tt={ttOf(item)} onPress={() => onPick(item)} />}
         ListEmptyComponent={<Text style={[styles.muted, { textAlign: 'center', paddingVertical: Spacing.lg }]}>No quotation matches these filters.</Text>}
       />
     </AppModal>
@@ -1102,9 +1224,7 @@ const styles = StyleSheet.create({
   fitsRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   fitsText: { fontSize: 11, fontWeight: '700', color: Colors.success },
   usedText: { fontSize: 11, fontWeight: '600', color: Colors.gray500 },
-  recentChip: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '100%', paddingHorizontal: 11, paddingVertical: 7, borderRadius: 10, backgroundColor: Colors.gray100 },
-  recentText: { fontSize: 12, fontWeight: '600', color: Colors.charcoal, flexShrink: 1 },
-  recentCount: { fontSize: 11, fontWeight: '700', color: Colors.gray500 },
+  ttText: { fontSize: 11.5, fontWeight: '700', color: Colors.info },
   standing: {
     flexDirection: 'row',
     alignItems: 'center',

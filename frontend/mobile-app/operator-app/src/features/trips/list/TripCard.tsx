@@ -10,6 +10,8 @@ import React, { memo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native';
 import { Phone, Truck, AlertCircle, Clock3, RotateCcw } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+
+const AMBER = '#B54708';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import type { OperatorTrip } from '../../../lib/operator';
 import { CompanyAvatar, initialsOf, niceName, shortName } from '../create/components/ui';
@@ -111,6 +113,21 @@ function TripCardBase({ trip: t, f, now, showDay, clash, onPress, onLongPress }:
         </View>
       ) : null}
 
+      {/* On the road well before its time (TestFlight 30 Oct, TRP-0095 "on the road" with "due 14:00"):
+          say so, so it doesn't read as a mistake. */}
+      {(() => {
+        const startedEarly = t.actual_start && t.planned_start ? Date.parse(t.planned_start) - Date.parse(t.actual_start) : 0;
+        if ((phase !== 'running' && phase !== 'delayed') || startedEarly < 60 * 60_000) return null;
+        const h = Math.round(startedEarly / 3_600_000);
+        const early = h >= 24 ? `${Math.floor(h / 24)} d ${h % 24} h` : `${h} h`;
+        return (
+          <View style={[s.reason, s.earlyBox]}>
+            <Clock3 size={14} color={AMBER} strokeWidth={2.4} />
+            <Text style={[s.reasonText, { color: AMBER }]} numberOfLines={2}>{`Started ${early} early · driver started at ${f.time(t.actual_start)}`}</Text>
+          </View>
+        );
+      })()}
+
       {clash ? (
         <View style={s.reason}>
           <AlertCircle size={14} color={RED} strokeWidth={2.4} />
@@ -152,6 +169,7 @@ function TripCardBase({ trip: t, f, now, showDay, clash, onPress, onLongPress }:
 export const TripCard = memo(TripCardBase);
 
 const s = StyleSheet.create({
+  earlyBox: { backgroundColor: '#FEF6E7' },
   card: {
     backgroundColor: Colors.white, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 12, gap: 10,
     borderWidth: 1, borderColor: '#ECECEF',

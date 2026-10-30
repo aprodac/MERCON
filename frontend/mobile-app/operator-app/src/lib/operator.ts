@@ -300,6 +300,8 @@ export interface DriverUpdate {
   stop: { id: string; name: string; type: string; sequence: number; leg?: 1 | 2 | null } | null;
   /** Trip log send (customer-app trip): where the phone was — no stop yet. */
   place?: string | null;
+  /** Trip log send: customer-app screenshots, else photos of the cargo (absent from servers before 30 Oct). */
+  screenshots?: boolean;
   stage: LiveMediaStage;
   items: LiveMediaItem[];
   delay_note: string | null;

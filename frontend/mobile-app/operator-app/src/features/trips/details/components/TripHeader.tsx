@@ -87,7 +87,8 @@ export function TripHeader({ trip, phase, f, children }: { trip: OperatorTripDet
 
       <View style={{ gap: 4 }}>
         {now && !(delayed && !reported) ? <Text style={[s.now, { color: tone.fg }]}>{now}</Text> : null}
-        {trip.driver_workflow === 'EXTERNAL_APP' ? <Text style={s.note}>Driver uses the customer’s app · screenshots as proof</Text> : null}
+        {/* Every trip runs stop by stop since 30 Oct; only the proof differs. */}
+        <Text style={s.note}>{trip.driver_workflow === 'EXTERNAL_APP' ? 'Driver uses the customer’s app · screenshots as proof' : 'Driver sends 1–3 photos of the cargo at each stop'}</Text>
       </View>
 
       {showProgress ? (

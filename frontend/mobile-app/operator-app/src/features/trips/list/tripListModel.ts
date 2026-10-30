@@ -130,6 +130,20 @@ export function shortDuration(min: number): string {
   return `${Math.round(h / 24)}d`;
 }
 
+/**
+ * The planned transit time of the trip's first leg, in minutes: from the first stop's
+ * planned time (or the trip's start) to the leg's last stop. null when not planned.
+ */
+export function plannedTransitMin(t: OperatorTrip): number | null {
+  const st = stopsOf(t);
+  if (st.length < 2) return null;
+  const legs = splitLegs(st, t.rate_category);
+  const out = legs.round ? legs.outbound : st;
+  const from = Date.parse(out[0]?.planned_arrival ?? t.planned_start ?? '');
+  const to = Date.parse(out[out.length - 1]?.planned_arrival ?? '');
+  return Number.isFinite(from) && Number.isFinite(to) && to > from ? minutes(to - from) : null;
+}
+
 /** What's wrong with a trip — the pills on its card, most serious first. */
 export function flagsOf(t: OperatorTrip, now = Date.now()): Flag[] {
   const flags: Flag[] = [];

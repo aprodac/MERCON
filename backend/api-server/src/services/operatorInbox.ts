@@ -68,12 +68,15 @@ export interface DriverUpdate {
   marked_read: { by: string | null; at: string } | null;
   /** Trip log send: where the phone was (no stop yet). */
   place?: string | null;
+  /** Trip log send: screenshots of the customer's app (a customer-app trip), else photos of the cargo. */
+  screenshots?: boolean;
 }
 
 interface TripRowForUpdates {
   id: string;
   ref_id: string | null;
   status: string;
+  driver_workflow?: string | null;
   customer: {
     name: string;
     whatsapp_number: string | null;
@@ -210,7 +213,7 @@ export function buildDriverUpdates(
           marked_read: readMark
             ? { by: readMark.sharedBy?.name || readMark.sharedBy?.username || null, at: new Date(readMark.createdAt).toISOString() }
             : null,
-          ...(stage === 'log' ? { place: items.find((i) => i.place)?.place ?? null } : {}),
+          ...(stage === 'log' ? { place: items.find((i) => i.place)?.place ?? null, screenshots: t.driver_workflow === 'EXTERNAL_APP' } : {}),
         });
       }
     }
@@ -302,6 +305,7 @@ async function loadUpdatesWhere(
         id: true,
         ref_id: true,
         status: true,
+        driver_workflow: true,
         customer: {
           select: {
             name: true, whatsapp_number: true, primary_contact_person: true, primary_contact_phone: true,

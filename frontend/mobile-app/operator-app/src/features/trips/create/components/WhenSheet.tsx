@@ -109,10 +109,16 @@ function splitTime(t?: string): { h: number; m: number } {
   return { h: Number.isFinite(h) ? h : 8, m: Number.isFinite(m) ? m : 0 };
 }
 const joinTime = (h: number, m: number) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+/** "YYYY-MM-DD" as a UTC day number. Date.UTC counts months from 0: passing the string's month as is read
+ * 31 Oct as "31 Nov" = 1 Dec, the same day as 1 Nov, so a time just past a month end looked earlier. */
+const dayNumber = (d: string) => {
+  const [y, m, day] = d.split('-').map(Number);
+  return Date.UTC(y, m - 1, day) / 86400000;
+};
 const minutesBetween = (d1: string, t1: string, d2: string, t2: string) => {
   const a = splitTime(t1);
   const b = splitTime(t2);
-  const days = Math.round((Date.UTC(...(d2.split('-').map(Number) as [number, number, number])) - Date.UTC(...(d1.split('-').map(Number) as [number, number, number]))) / 86400000);
+  const days = Math.round(dayNumber(d2) - dayNumber(d1));
   return days * 1440 + (b.h * 60 + b.m) - (a.h * 60 + a.m);
 };
 const fmtDuration = (mins: number) => {

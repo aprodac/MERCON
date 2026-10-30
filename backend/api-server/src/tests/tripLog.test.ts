@@ -31,7 +31,9 @@ test('trip log', async (t) => {
     assert.equal(usesTripLog({ driver_workflow: 'EXTERNAL_APP', driver_workflow_state: null }), true);
     assert.equal(usesTripLog({ driver_workflow: 'EXTERNAL_APP', driver_workflow_state: 'TRIP_LOG' }), true);
     assert.equal(usesTripLog({ driver_workflow: 'EXTERNAL_APP', driver_workflow_state: 'GOING_TO_PICKUP' }), false);
-    assert.equal(usesTripLog({ driver_workflow: 'NATIVE', driver_workflow_state: null }), false);
+    // Every trip runs as a trip log since 30 Oct; one started on the old screens finishes there.
+    assert.equal(usesTripLog({ driver_workflow: 'NATIVE', driver_workflow_state: null }), true);
+    assert.equal(usesTripLog({ driver_workflow: 'NATIVE', driver_workflow_state: 'ARRIVED_AT_PICKUP' }), false);
   });
 
   await t.test('a send can be taken back only shortly after, and never once it is on a stop', () => {
