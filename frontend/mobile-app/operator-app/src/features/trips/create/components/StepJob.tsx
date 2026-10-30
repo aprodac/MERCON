@@ -194,8 +194,11 @@ export function StepJob({ form, showErrors, onSetPayout }: {
           quotationLineType(applied) !== form.rateCategory ? lineTypeLabel(quotationLineType(applied)) : null,
           quotationBilling(applied) !== form.billingType ? quotationBilling(applied) : null,
         ].filter(Boolean);
-        return differs.length ? (
-          <Text style={styles.note}>{`The quotation is for ${differs.join(' · ')}. Its price is kept for this trip — tap Edit price if it differs.`}</Text>
+        if (differs.length) {
+          return <Text style={styles.note}>{`The quotation is for ${differs.join(' · ')}. Its price is kept for this trip — tap Edit price if it differs.`}</Text>;
+        }
+        return form.quotationKept ? (
+          <Text style={styles.note}>Trip changed for this trip only (stops). The quotation and its price are kept — tap Edit price if it differs.</Text>
         ) : null;
       })()}
 

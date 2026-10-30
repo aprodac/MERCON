@@ -593,6 +593,21 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     });
   }, [quotations, slot, rateCategory, billingType, vehicleType, routeComplete]);
 
+  /**
+   * The picked quotation kept for this trip although the trip was changed (TestFlight 29 Oct:
+   * "if you edit an already added quotation trip for one trip you should be able to alter
+   * the trip … like adding stops"): stops added / moved / removed, trip type or billing
+   * changed — the quotation and its price stay. Changing the pickup or drop-off still re-matches.
+   */
+  const [kept, setKept] = useState<{ id: string; ends: string } | null>(null);
+  const endsOf = (s: { origin: string; destination: string }) => `${s.origin.trim().toLowerCase()}|${s.destination.trim().toLowerCase()}`;
+  const keepApplied = () => {
+    const card = slot.rateMatched ? (slot.matchedRateCard as OperatorQuotation | null) : null;
+    if (card?.id) setKept({ id: card.id, ends: endsOf(slot) });
+  };
+  const appliedCard = slot.rateMatched ? (slot.matchedRateCard as OperatorQuotation | null) : null;
+  const quotationKept = !!kept && !!appliedCard && kept.id === appliedCard.id && kept.ends === endsOf(slot);
+
   // Any change to the route, trip type, billing or class re-checks the applied quotation.
   const routeKey = useMemo(
     () => JSON.stringify([customerId, rateCategory, billingType, vehicleType, routeLegsFromSlot(slot, isRound)]),
@@ -612,6 +627,7 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     // Truck class changed to one this customer has its own quotation for on this route: use that one.
     const classMoved = !!card && !!classOf(card) && classOf(card) !== vehicleType && routeMatches.some((q) => q.id !== card.id && classOf(q) === vehicleType);
     if (stillFits && !classMoved) return;
+    if (card && current.rateMatched && kept && kept.id === card.id && kept.ends === endsOf(current) && !classMoved) return;
 
     // Keeping the applied quotation in step with the route is this effect's job, so it sets state on purpose.
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -1442,9 +1458,9 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     setCustomerId,
     selectedCustomer,
     rateCategory,
-    setRateCategory,
+    setRateCategory: (v: string) => { keepApplied(); setRateCategory(v); },
     billingType,
-    setBillingType,
+    setBillingType: (v: 'Extra' | 'Monthly') => { keepApplied(); setBillingType(v); },
     vehicleType,
     setVehicleType,
     isMonthly,
@@ -1462,15 +1478,16 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     slot,
     updateSlot,
     setEndpoint,
-    addStop,
-    removeStop,
+    addStop: (leg: 0 | 1, loc: LocationPick) => { keepApplied(); addStop(leg, loc); },
+    removeStop: (leg: 0 | 1, index: number) => { keepApplied(); removeStop(leg, index); },
     setReturnEndpoint,
     createLocation,
     createPinnedLocation,
     setEndpointPin,
     setStopPin,
     setStopFee,
-    moveStop,
+    moveStop: (leg: 0 | 1, index: number, dir: -1 | 1) => { keepApplied(); moveStop(leg, index, dir); },
+    quotationKept,
     routeComplete,
     charges,
     setCharges,
