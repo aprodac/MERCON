@@ -1,16 +1,17 @@
 /** Step 1 — customer, their quotations, route and price. */
 import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, TextInput, StyleSheet, FlatList } from 'react-native';
-import { ArrowRight, Building2, CheckCircle2, Clock, FileText, MapPin, Pencil, Repeat, RotateCcw, Route, Search, X, Receipt, Plus, ChevronDown, ChevronUp, type LucideIcon } from 'lucide-react-native';
+import { ArrowRight, Building2, CheckCircle2, Clock, FileText, MapPin, Pencil, Repeat, RotateCcw, Route, Search, X, Receipt, Plus, ChevronDown, ChevronUp, Timer, type LucideIcon } from 'lucide-react-native';
 import { Colors, Spacing, Radius } from '@mercon/mobile-shared/theme/tokens';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
-import { TRUCK_CLASSES, lineTypeLabel, filterQuotationsBySearch, pricingFromQuotation } from '@mercon/shared-types';
+import { TRUCK_CLASSES, lineTypeLabel, filterQuotationsBySearch, normalizeLineTypeToken, pricingFromQuotation } from '@mercon/shared-types';
 import { PriceHistory } from './PriceHistory';
 import { RecentTripPicker } from './RecentTripPicker';
 import { PinPickerSheet, type PickedPin } from '../../details/components/PinSheet';
 import { getQuotationRoute, getQuotationVia, type OperatorQuotation, type OperatorSurchargeRule } from '../../../../lib/operator';
-import { quotationBilling, quotationClass, quotationLineType, type CreateTripForm, type LocationPick } from '../useCreateTrip';
+import { quotationBilling, quotationClass, quotationLineType, type CreateTripForm, type LocationPick, type RecentRoute } from '../useCreateTrip';
 import { Chip, CompanyAvatar, ErrorText, FieldButton, Label, LinkButton, PickerSheet, Section, SkeletonRows, TextField, fmtSar, niceName, tap, ui } from './ui';
+import { transitText } from './TransitSheet';
 
 const CHARGE_PRESETS = ['Waiting', 'Loading / unloading', 'Toll', 'Night stay', 'Extra stop'];
 
@@ -54,6 +55,7 @@ export function StepJob({ form, showErrors, onSetPayout }: {
     quoted && (Number(form.slot.billingAmount) !== Number(quoted.billingAmount) || Number(form.slot.driverPayout || 0) !== Number(quoted.driverPayout || 0)),
   );
 
+  const [showAllRecent, setShowAllRecent] = useState(false);
   const [billingFilter, setBillingFilter] = useState<BillingFilter>(form.isMonthly ? 'Monthly' : 'ALL');
   const filtered = useMemo(
     () => (billingFilter === 'ALL' ? form.quotations : form.quotations.filter((q) => quotationBilling(q) === billingFilter)),
@@ -142,6 +144,11 @@ export function StepJob({ form, showErrors, onSetPayout }: {
     return pinChip(name, own ?? {}, locationId, (start) => setPinTarget({ kind: 'stop', leg, index, name, start }));
   };
 
+  /** The route's saved Given TT for a quotation's way out (TestFlight 30 Oct: "show TT of the route if added"). */
+  const ttOf = (q: OperatorQuotation) => {
+    const r = getQuotationRoute(q);
+    return form.givenTT(r.origin, r.dest, quotationClass(q));
+  };
   const applyCard = (q: OperatorQuotation) => {
     tap();
     form.applyQuotation(q, { fillRoute: true });
@@ -311,31 +318,31 @@ export function StepJob({ form, showErrors, onSetPayout }: {
 
       {/* TestFlight 29 Oct: "show a section of recents .. show last routes in 30 days". */}
       {!applied && form.customerId && form.recentRoutes.length > 0 ? (
-        <Section icon={RotateCcw} tone="blue" title="Recent routes" badge={<Chip label="Last 30 days" />}>
-          <View style={styles.chipRow}>
-            {form.recentRoutes.map((r) => {
-              const quote = r.quotationId ? form.quotations.find((q) => q.id === r.quotationId) : undefined;
-              return (
-                <TouchableOpacity
-                  key={r.key}
-                  onPress={() => {
-                    tap();
-                    // Start from the quotation those trips used (route, type, size and price), else the route alone.
-                    if (quote) form.applyQuotation(quote, { fillRoute: true });
-                    else form.applyRecentRoute(r);
-                  }}
-                  style={styles.recentChip}
-                  activeOpacity={0.75}
-                >
-                  <Text style={styles.recentText} numberOfLines={1}>
-                    {[r.origin.name, ...r.stops.map((m) => m.name), r.destination.name].map(niceName).join(' → ')}
-                    {r.round ? ' · round' : ''}
-                  </Text>
-                  {r.count > 1 ? <Text style={styles.recentCount}>{r.count}×</Text> : null}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+        <Section
+          icon={RotateCcw}
+          tone="blue"
+          title="Recent routes"
+          badge={<Chip label="Last 30 days" />}
+          action={form.recentRoutes.length > 3 ? { label: showAllRecent ? 'Show less' : `See all ${form.recentRoutes.length}`, onPress: () => setShowAllRecent((v) => !v) } : undefined}
+        >
+          {(showAllRecent ? form.recentRoutes : form.recentRoutes.slice(0, 3)).map((r, i) => {
+            const quote = r.quotationId ? form.quotations.find((q) => q.id === r.quotationId) : undefined;
+            return (
+              <RecentRouteCard
+                key={r.key}
+                r={r}
+                quote={quote}
+                first={i === 0}
+                tt={form.givenTT(r.origin.name, r.destination.name, r.size)}
+                onPress={() => {
+                  tap();
+                  // Start from the quotation those trips used (route, type, size and price), else the route alone.
+                  if (quote) form.applyQuotation(quote, { fillRoute: true });
+                  else form.applyRecentRoute(r);
+                }}
+              />
+            );
+          })}
         </Section>
       ) : null}
 
@@ -360,7 +367,7 @@ export function StepJob({ form, showErrors, onSetPayout }: {
                 <Text style={styles.sectionHint}>No {billingFilter === 'Monthly' ? 'monthly' : 'extra'} quotations for this customer.</Text>
               ) : (
                 preview.map((q, i) => (
-                  <QuotationCard key={q.id} q={q} first={i === 0} fits={form.routeMatches.includes(q)} used={form.quotationUse.get(q.id)} onPress={() => applyCard(q)} />
+                  <QuotationCard key={q.id} q={q} first={i === 0} fits={form.routeMatches.includes(q)} used={form.quotationUse.get(q.id)} tt={ttOf(q)} onPress={() => applyCard(q)} />
                 ))
               )}
             </>
@@ -390,6 +397,7 @@ export function StepJob({ form, showErrors, onSetPayout }: {
         searchPlaceholder="Search customers"
       />
       <QuotationSheet
+        ttOf={ttOf}
         visible={sheet === 'quotes'}
         quotations={form.quotations}
         lineTypes={form.lineTypeOptions}
@@ -747,7 +755,7 @@ function typeLook(lineType: string): { Icon: LucideIcon; bg: string; fg: string 
 }
 
 /** One quotation as a card — also used on the customer details screen. */
-export function QuotationCard({ q, fits, first, used, onPress }: { q: OperatorQuotation; fits?: boolean; first?: boolean; used?: number; onPress?: () => void }) {
+export function QuotationCard({ q, fits, first, used, tt, onPress }: { q: OperatorQuotation; fits?: boolean; first?: boolean; used?: number; tt?: number | null; onPress?: () => void }) {
   const route = getQuotationRoute(q);
   const lineType = quotationLineType(q);
   const monthly = quotationBilling(q) === 'Monthly';
@@ -783,6 +791,7 @@ export function QuotationCard({ q, fits, first, used, onPress }: { q: OperatorQu
             <Text style={styles.usedText}>Used on {used} recent trip{used > 1 ? 's' : ''}</Text>
           </View>
         ) : null}
+        <TTLine tt={tt} />
       </View>
       <View style={{ alignItems: 'flex-end' }}>
         <Text style={styles.quoteRate}>
@@ -793,6 +802,76 @@ export function QuotationCard({ q, fits, first, used, onPress }: { q: OperatorQu
         <Text style={[styles.quoteSub, q.driver_payout == null && { color: Colors.warning }]}>
           {q.driver_payout != null ? `Driver ${fmtSar(Number(q.driver_payout))}` : 'No driver payout'}
         </Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+/** "Given TT 13 h" under a card, when the route has a saved transit time. */
+function TTLine({ tt }: { tt?: number | null }) {
+  if (!tt) return null;
+  return (
+    <View style={styles.fitsRow}>
+      <Timer size={11} color={Colors.info} />
+      <Text style={styles.ttText}>Given TT {transitText(tt)}</Text>
+    </View>
+  );
+}
+
+const ago = (ms: number) => {
+  const days = Math.floor((Date.now() - ms) / 86_400_000);
+  return days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
+};
+
+/** A route this customer ran in the last 30 days, laid out like a quotation card: the latest trip's type, size and money. */
+function RecentRouteCard({ r, quote, first, tt, onPress }: { r: RecentRoute; quote?: OperatorQuotation; first?: boolean; tt: number | null; onPress: () => void }) {
+  const lineType = normalizeLineTypeToken(r.category) || (r.round ? 'ROUND_TRIP' : 'SINGLE_TRIP');
+  const { Icon, bg, fg } = typeLook(lineType);
+  const monthly = r.billingType === 'Monthly';
+  return (
+    <TouchableOpacity activeOpacity={0.7} onPress={onPress} style={[styles.quote, first && { marginTop: 0 }]}>
+      <View style={[styles.quoteIcon, { backgroundColor: bg }]}>
+        <Icon size={16} color={fg} strokeWidth={2.2} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={styles.quoteRoute} numberOfLines={2}>
+          {[r.origin.name, ...r.stops.map((m) => m.name), r.destination.name].map(niceName).join(' → ')}
+        </Text>
+        <View style={styles.quoteTags}>
+          {r.billingType ? (
+            <View style={[styles.tag, monthly ? styles.tagMonthly : styles.tagExtra]}>
+              <Text style={[styles.tagText, monthly ? styles.tagMonthlyText : styles.tagExtraText]}>{r.billingType}</Text>
+            </View>
+          ) : null}
+          <Text style={styles.quoteMeta} numberOfLines={1}>
+            {[lineTypeLabel(lineType), r.size, r.stops.length ? `${r.stops.length} stop${r.stops.length > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')}
+          </Text>
+        </View>
+        <View style={styles.fitsRow}>
+          <RotateCcw size={11} color={Colors.gray500} />
+          <Text style={styles.usedText}>{r.count} trip{r.count > 1 ? 's' : ''} · latest {ago(r.lastUsed)}</Text>
+        </View>
+        <TTLine tt={tt} />
+      </View>
+      <View style={{ alignItems: 'flex-end' }}>
+        {r.billing != null ? (
+          <Text style={styles.quoteRate}>
+            {fmtSar(r.billing)}
+            <Text style={styles.quoteRateUnit}> SAR</Text>
+          </Text>
+        ) : quote && Number(quote.rate) > 0 ? (
+          // A monthly trip carries no amount of its own: show its quotation's rate.
+          <Text style={styles.quoteRate}>
+            {fmtSar(Number(quote.rate))}
+            <Text style={styles.quoteRateUnit}>{quotationBilling(quote) === 'Monthly' ? ' /mo' : ' SAR'}</Text>
+          </Text>
+        ) : (
+          <Text style={styles.quoteSub}>No billing</Text>
+        )}
+        <Text style={[styles.quoteSub, r.payout == null && { color: Colors.warning }]}>
+          {r.payout != null ? `Driver ${fmtSar(r.payout)}` : 'No driver payout'}
+        </Text>
+        <Text style={styles.quoteSub}>last trip</Text>
       </View>
     </TouchableOpacity>
   );
@@ -832,6 +911,7 @@ function BillingFilterChips({ quotations, value, onChange }: { quotations: Opera
 }
 
 function QuotationSheet({
+  ttOf,
   visible,
   quotations,
   lineTypes,
@@ -847,6 +927,7 @@ function QuotationSheet({
   onBillingChange: (v: BillingFilter) => void;
   onPick: (q: OperatorQuotation) => void;
   onClose: () => void;
+  ttOf: (q: OperatorQuotation) => number | null;
 }) {
   const [search, setSearch] = useState('');
   // From / To match the route's two ends separately — one search box couldn't
@@ -931,7 +1012,7 @@ function QuotationSheet({
         keyExtractor={(q) => q.id}
         style={{ maxHeight: 440 }}
         keyboardShouldPersistTaps="handled"
-        renderItem={({ item, index }) => <QuotationCard q={item} first={index === 0} onPress={() => onPick(item)} />}
+        renderItem={({ item, index }) => <QuotationCard q={item} first={index === 0} tt={ttOf(item)} onPress={() => onPick(item)} />}
         ListEmptyComponent={<Text style={[styles.muted, { textAlign: 'center', paddingVertical: Spacing.lg }]}>No quotation matches these filters.</Text>}
       />
     </AppModal>
@@ -1105,9 +1186,7 @@ const styles = StyleSheet.create({
   fitsRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   fitsText: { fontSize: 11, fontWeight: '700', color: Colors.success },
   usedText: { fontSize: 11, fontWeight: '600', color: Colors.gray500 },
-  recentChip: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '100%', paddingHorizontal: 11, paddingVertical: 7, borderRadius: 10, backgroundColor: Colors.gray100 },
-  recentText: { fontSize: 12, fontWeight: '600', color: Colors.charcoal, flexShrink: 1 },
-  recentCount: { fontSize: 11, fontWeight: '700', color: Colors.gray500 },
+  ttText: { fontSize: 11.5, fontWeight: '700', color: Colors.info },
   standing: {
     flexDirection: 'row',
     alignItems: 'center',

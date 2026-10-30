@@ -93,6 +93,12 @@ export interface RecentRoute {
   round: boolean;
   /** The quotation the latest of these trips used, to start from it again. */
   quotationId: string | null;
+  /** The latest trip's money and kind, shown on its card (TestFlight 30 Oct: "recent routes … with trip charge, billing amount"). */
+  billing: number | null;
+  payout: number | null;
+  billingType: 'Extra' | 'Monthly' | null;
+  size: string | null;
+  category: string;
 }
 
 /** How a single trip's payout is shared with the co-driver; empty = 50/50. */
@@ -253,13 +259,24 @@ function recentRoutesFrom(trips: OperatorTrip[], limit = 8): RecentRoute[] {
     const key = `${round ? 'R:' : ''}${[origin, ...mids, destination].map((p) => p.locationId || p.name.trim().toLowerCase()).join('>')}`;
     const when = t.createdAt ? new Date(t.createdAt).getTime() : 0;
     const quotationId: string | null = t.quotationId || t.quotation?.id || null;
+    const money = {
+      billing: Number(t.billing_amount) > 0 ? Number(t.billing_amount) : null,
+      payout: Number(t.driver_payout) > 0 ? Number(t.driver_payout) : null,
+      billingType: t.operation_type ? normalizeBillingTypeToken(t.operation_type) : null,
+      size: t.vehicle_type ? normalizeTruckClass(t.vehicle_type) : null,
+      category: t.rate_category || '',
+    };
     const prev = map.get(key);
     if (prev) {
       prev.count += 1;
-      if (when >= prev.lastUsed && quotationId) prev.quotationId = quotationId;
+      // The card shows the latest trip's price, type and size.
+      if (when >= prev.lastUsed) {
+        if (quotationId) prev.quotationId = quotationId;
+        Object.assign(prev, money);
+      }
       prev.lastUsed = Math.max(prev.lastUsed, when);
     } else {
-      map.set(key, { key, origin, destination, stops: mids, count: 1, lastUsed: when, round, quotationId });
+      map.set(key, { key, origin, destination, stops: mids, count: 1, lastUsed: when, round, quotationId, ...money });
     }
   });
   return [...map.values()].sort((a, b) => b.count - a.count || b.lastUsed - a.lastUsed).slice(0, limit);
@@ -1448,6 +1465,8 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     refreshFleet,
     recentRoutes,
     savedOutbound,
+    /** The saved Given TT of a route's way out for a truck size (its own, else every size), or null. */
+    givenTT: (from: string, to: string, size: string | null) => savedTransitMinutes(savedTransits, 'out', from, to, size || vehicleType),
     savedReturn,
     applyRecentRoute,
     copyTrip,
