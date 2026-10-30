@@ -66,7 +66,23 @@ export default function TripsScreen() {
       : params.view === 'ledger' ? 'history'
       : 'now',
   );
-  const [historyMode, setHistoryMode] = useState<'day' | 'ledger'>(params.view === 'ledger' ? 'ledger' : 'day');
+  const [historyMode, setHistoryModeRaw] = useState<'day' | 'ledger'>(params.view === 'ledger' ? 'ledger' : 'day');
+  // The ledger has its own button in the bottom bar (TestFlight 30 Oct: "make this the trip ledger
+  // instead of drivers"): the route's ?view=ledger opens it, and the screen keeps that in step.
+  const setHistoryMode = (m: 'day' | 'ledger') => {
+    setHistoryModeRaw(m);
+    router.setParams({ view: m === 'ledger' ? 'ledger' : undefined });
+  };
+  const [viewParam, setViewParam] = useState(params.view);
+  if (params.view !== viewParam) {
+    setViewParam(params.view);
+    if (params.view === 'ledger') {
+      setView('history');
+      setHistoryModeRaw('ledger');
+    } else if (viewParam === 'ledger' && !params.view) {
+      setHistoryModeRaw('day');
+    }
+  }
   // Delayed is a filter inside Now, not a tab of its own (owner, 23 Oct: "too many tabs").
   // Links that still ask for the delayed view open Now on it.
   const [nowFilter, setNowFilter] = useState<NowFilter>(params.view === 'delayed' ? 'delayed' : 'all');
@@ -196,11 +212,16 @@ export default function TripsScreen() {
   const historyCount = historyPerDay.get(historySelected);
 
   // Trips that double-book a driver or truck, across everything loaded.
+  // Only lists kept current on this tab (TestFlight 29 Oct: "TRP-0092 already deleted .. but still
+  // showing overlaps" — Now read the Schedule list, which doesn't reload away from its tab, so a
+  // trip deleted since kept clashing). Deleted trips are left out as well.
   const clashes = useMemo(() => {
+    const gone = new Set(data.deleted.map((d) => d.id));
     const seen = new Map<string, OperatorTrip>();
-    for (const t of [...data.window, ...data.open, ...data.results]) seen.set(t.id, t);
+    const lists = view === 'schedule' ? [...data.window, ...data.open] : view === 'history' ? [] : data.open;
+    for (const t of [...lists, ...(data.searching ? data.results : [])]) if (!gone.has(t.id) && !(t as { deletedAt?: string | null }).deletedAt) seen.set(t.id, t);
     return clashesOf([...seen.values()]);
-  }, [data.window, data.open, data.results]);
+  }, [view, data.window, data.open, data.results, data.searching, data.deleted]);
 
   const renderCard = (t: OperatorTrip, showDay = false) => (
     <TripCard trip={t} f={f} now={now} showDay={showDay} clash={clashes.get(t.id)} onPress={open} onLongPress={setActionsFor} />
@@ -295,7 +316,7 @@ export default function TripsScreen() {
             {views.map((v) => {
               const on = v.id === view;
               return (
-                <TouchableOpacity key={v.id} style={[s.segItem, on && s.segOn]} onPress={() => { if (!on) tap(); setView(v.id); }} activeOpacity={0.8} accessibilityRole="tab" accessibilityState={{ selected: on }}>
+                <TouchableOpacity key={v.id} style={[s.segItem, on && s.segOn]} onPress={() => { if (!on) tap(); setView(v.id); if (v.id !== 'history' && params.view === 'ledger') router.setParams({ view: undefined }); }} activeOpacity={0.8} accessibilityRole="tab" accessibilityState={{ selected: on }}>
                   <Text style={[s.segText, on && s.segTextOn]}>{v.label}</Text>
                   {v.badge ? <View style={s.badge}><Text style={s.badgeText}>{v.badge}</Text></View> : null}
                 </TouchableOpacity>
@@ -327,7 +348,15 @@ export default function TripsScreen() {
           ) : view === 'history' && historyMode === 'ledger' ? (
             <View style={{ flex: 1 }}>
               <HistoryMode value={historyMode} onChange={setHistoryMode} />
-              <TripLedger f={f} todayKey={todayKey} scope={scope?.filter} onOpen={open} />
+              <TripLedger
+                f={f}
+                todayKey={todayKey}
+                scope={scope?.filter}
+                customer={scope?.kind === 'customer' ? scope.label : null}
+                onPickCustomer={() => { tap(); setCompanyOpen(true); }}
+                onClearCustomer={() => { tap(); setScope(null); router.setParams({ vehicleId: undefined, plate: undefined, customerId: undefined, customerName: undefined }); }}
+                onOpen={open}
+              />
             </View>
           ) : view === 'schedule' ? (
             <FlatList

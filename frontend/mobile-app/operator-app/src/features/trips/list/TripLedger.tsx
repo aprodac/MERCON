@@ -10,7 +10,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl, ActivityIndicator, Alert } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, Check, ChevronLeft, ChevronRight, Trash2, X } from 'lucide-react-native';
+import { ArrowDown, ArrowUp, Building2, Check, ChevronDown, ChevronLeft, ChevronRight, Trash2, X } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import type { OperatorTrip } from '../../../lib/operator';
@@ -56,11 +56,16 @@ const numberOf = (ref?: string | null) => {
 const liveRef = (name: string) => name.replace(/-DEL-/i, '-').replace(/^([A-Z]+-\d+)-[0-9a-f]{4,}$/i, '$1');
 const DELETED_TONE = { bg: '#F1F1F3', fg: '#9898A4' };
 
-export function TripLedger({ f, todayKey, scope, onOpen }: {
+export function TripLedger({ f, todayKey, scope, customer, onPickCustomer, onClearCustomer, onOpen }: {
   f: TimeFmt;
   todayKey: string;
-  /** One truck or customer only (opened from their page). */
+  /** One truck or customer only (opened from their page, or picked here). */
   scope?: Record<string, string>;
+  /** The customer the ledger is narrowed to, shown on its filter chip; null = all customers. */
+  customer?: string | null;
+  /** Customer filter (TestFlight 30 Oct: "ledger, customer filter option"). */
+  onPickCustomer?: () => void;
+  onClearCustomer?: () => void;
   onOpen: (t: OperatorTrip) => void;
 }) {
   /** 0 = this month, 1 = last month …; null = all time. */
@@ -264,6 +269,19 @@ export function TripLedger({ f, todayKey, scope, onOpen }: {
             </TouchableOpacity>
           );
         })}
+        <View style={{ flex: 1 }} />
+        {onPickCustomer ? (
+          <TouchableOpacity
+            style={[s.custBtn, customer && s.allOn]}
+            onPress={customer && onClearCustomer ? onClearCustomer : onPickCustomer}
+            accessibilityRole="button"
+            accessibilityLabel={customer ? `Customer ${customer}. Tap to show all customers` : 'Filter by customer'}
+          >
+            <Building2 size={13} color={customer ? '#fff' : INK} />
+            <Text style={[s.allText, customer && { color: '#fff' }]} numberOfLines={1}>{customer ?? 'All customers'}</Text>
+            {customer ? <X size={13} color="#fff" /> : <ChevronDown size={13} color={INK} />}
+          </TouchableOpacity>
+        ) : null}
       </View>
       <View style={s.headRow}>
         {picked ? <View style={{ width: 22 }} /> : null}
@@ -360,7 +378,8 @@ const s = StyleSheet.create({
   h: { fontSize: 11, fontWeight: '800', color: MUTED, letterSpacing: 0.4, textTransform: 'uppercase' },
   cNo: { width: 74 },
   sortBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  orderRow: { flexDirection: 'row', gap: 6 },
+  orderRow: { flexDirection: 'row', gap: 6, alignItems: 'center' },
+  custBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, maxWidth: 170, paddingHorizontal: 12, height: 32, borderRadius: 16, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E4E6EB' },
   orderBtn: { paddingHorizontal: 14, height: 32, borderRadius: 16, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E4E6EB', justifyContent: 'center' },
   cAmt: { width: 64, textAlign: 'right' },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: '#fff', paddingHorizontal: 12, paddingVertical: 10 },

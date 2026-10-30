@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, StatusBar, RefreshControl, ActivityIndicator, Dimensions,
+  StyleSheet, StatusBar, RefreshControl, ActivityIndicator, Dimensions, Modal,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -158,6 +158,9 @@ function timeLeft(value: Date | string | null | undefined, now: number, ur: bool
   return h ? `${h} h${m ? ` ${m} min` : ''}` : `${m} min`;
 }
 
+/** A customer-app trip planned further ahead than this asks before it starts (same as the server). */
+const EARLY_START_MS = 3 * 60 * 60 * 1000;
+
 /** Minutes the pickup is overdue (planned start passed, driver not there yet), else 0. */
 function minutesLate(trip: MobileTrip): number {
   const ws = driverWorkflowState(trip);
@@ -202,6 +205,8 @@ const HomeScreen = () => {
   /** Same, but one language only — for small pills where both would not fit. */
   const LS = (en: string, ur: string) => (language === 'ur' ? ur : en);
   const [activeTab, setActiveTab] = useState('Home');
+  /** A trip-log trip the driver tapped Start on well before its time: asked to confirm first. */
+  const [earlyStart, setEarlyStart] = useState<MobileTrip | null>(null);
   // Ticks each minute so "in 3 h 20 min" on the next-stop card stays current.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -288,6 +293,22 @@ const HomeScreen = () => {
     onPress: () => void;
   }
 
+  const startLog = async (t: MobileTrip, confirmEarly: boolean) => {
+    setEarlyStart(null);
+    setAdvancing(true);
+    try {
+      setTrip(await tripService.startTripLog(t.id, { confirmEarly }));
+      router.push({ pathname: '/trip/external-app', params: { tripId: t.id } } as any);
+    } catch (err) {
+      // The server's clock says it's still early (the phone's may be off): ask, as above.
+      const code = (err as { response?: { data?: { error?: { code?: string } } } })?.response?.data?.error?.code;
+      if (code === 'TRIP_EARLY' && !confirmEarly) setEarlyStart(t);
+      else showToast(getApiErrorMessage(err), 'error');
+    } finally {
+      setAdvancing(false);
+    }
+  };
+
   const getWorkflowStateInfo = (t: MobileTrip): WorkflowStateInfo => {
     // Customer-app trips: Start, then the stop-by-stop screen (one screenshot per stop).
     if (usesTripLog(t)) {
@@ -301,16 +322,11 @@ const HomeScreen = () => {
         badgeLabel: 'Assigned',
         btnLabel: 'Start Trip',
         urLabel: 'ٹرپ شروع کریں',
-        onPress: async () => {
-          setAdvancing(true);
-          try {
-            setTrip(await tripService.startTripLog(t.id));
-            router.push({ pathname: '/trip/external-app', params: { tripId: t.id } } as any);
-          } catch (err) {
-            showToast(getApiErrorMessage(err), 'error');
-          } finally {
-            setAdvancing(false);
-          }
+        onPress: () => {
+          // Planned more than 3 h ahead: ask first (TestFlight 30 Oct, TRP-0095 showed "on the road" hours early).
+          const at = t.planned_start ? Date.parse(t.planned_start) : NaN;
+          if (at - Date.now() > EARLY_START_MS) setEarlyStart(t);
+          else void startLog(t, false);
         },
       };
     }
@@ -970,6 +986,27 @@ const HomeScreen = () => {
         )}
       </ScrollView>
 
+      <Modal visible={!!earlyStart} transparent animationType="fade" onRequestClose={() => setEarlyStart(null)}>
+        <View style={styles.earlyOverlay}>
+          <View style={styles.earlyCard}>
+            <Text style={styles.earlyTitle}>{L('Start this trip now?', 'کیا یہ ٹرپ ابھی شروع کریں؟')}</Text>
+            <Text style={styles.earlyBody}>
+              {earlyStart
+                ? L(
+                    `${earlyStart.ref_id ?? 'This trip'} is planned for ${plannedDay(earlyStart.planned_start, 'Tomorrow') ?? 'today'} · ${fmtTime(earlyStart.planned_start) ?? ''}${timeLeft(earlyStart.planned_start, now, false) ? ` (in ${timeLeft(earlyStart.planned_start, now, false)})` : ''}. Once you start, the office sees it on the road.`,
+                    `${earlyStart.ref_id ?? 'یہ ٹرپ'} ${plannedDay(earlyStart.planned_start, 'کل') ?? 'آج'} · ${fmtTime(earlyStart.planned_start) ?? ''} کے لیے ہے۔ شروع کرنے پر دفتر اسے سڑک پر دیکھے گا۔`,
+                  )
+                : ''}
+            </Text>
+            <TouchableOpacity style={styles.earlyLater} onPress={() => setEarlyStart(null)} activeOpacity={0.85}>
+              <Text style={styles.earlyLaterText}>{L('Not yet', 'ابھی نہیں')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.earlyGo} onPress={() => earlyStart && void startLog(earlyStart, true)} activeOpacity={0.85}>
+              <Text style={styles.earlyGoText}>{L('Start now anyway', 'پھر بھی ابھی شروع کریں')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
       <DelayReportModal
         visible={delayModalVisible}
         tripId={displayTrip?.id ?? null}
@@ -1688,6 +1725,14 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     color: '#C2410C',
   },
+  earlyOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 24 },
+  earlyCard: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, gap: 12 },
+  earlyTitle: { fontSize: 20, fontWeight: '800', color: '#1C1B1F' },
+  earlyBody: { fontSize: 15, lineHeight: 22, color: '#57534E' },
+  earlyLater: { backgroundColor: '#F26A4F', borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 4 },
+  earlyLaterText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+  earlyGo: { borderRadius: 14, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: '#E7E5E4' },
+  earlyGoText: { color: '#B42318', fontSize: 15, fontWeight: '700' },
   nextStopWhen: {
     alignItems: 'flex-end',
   },

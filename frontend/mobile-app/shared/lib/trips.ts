@@ -467,8 +467,9 @@ export const tripService = {
   },
 
   /** Start a customer-app trip as a trip log (screenshots only from here on). */
-  async startTripLog(id: string): Promise<MobileTrip> {
-    const { data } = await api.post(`/mobile/trips/${id}/log/start`);
+  async startTripLog(id: string, opts: { confirmEarly?: boolean } = {}): Promise<MobileTrip> {
+    // A trip planned more than 3 h ahead starts only with confirm_early (the driver said yes).
+    const { data } = await api.post(`/mobile/trips/${id}/log/start`, opts.confirmEarly ? { confirm_early: true } : {});
     await workflowStateStore.saveState(id, 'TRIP_LOG');
     return data.data as MobileTrip;
   },
