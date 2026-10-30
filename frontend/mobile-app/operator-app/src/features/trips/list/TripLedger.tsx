@@ -11,11 +11,11 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl, ActivityIndicator, Alert, ScrollView, TextInput } from 'react-native';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDown, ArrowDownUp, ArrowUp, Building2, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, Search, Trash2, X, type LucideIcon } from 'lucide-react-native';
+import { ArrowDown, ArrowDownUp, ArrowUp, Building2, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, Clock3, Search, Trash2, Truck, UserRound, X, type LucideIcon } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import type { OperatorTrip } from '../../../lib/operator';
-import { PHASE_STYLE, driverNameOf, phaseOf, plateOf, routeOf, statusText, type TimeFmt } from './tripListModel';
+import { PHASE_STYLE, driverNameOf, phaseOf, plannedTransitMin, plateOf, routeOf, shortDuration, statusText, type TimeFmt } from './tripListModel';
 import { COMPLETED_DELETE_WARNING, canDeleteTrip, deleteTrips } from '../edit/movePlan';
 
 const INK = '#3E3C3D';
@@ -39,6 +39,8 @@ interface Row {
   route: string;
   plate: string | null;
   driver: string | null;
+  /** Planned transit time of the first leg, minutes. */
+  tt: number | null;
   status: string;
   tone: { bg: string; fg: string };
   amount: number | null;
@@ -74,10 +76,14 @@ export function TripLedger({ f, todayKey, scope, customer, onPickCustomer, onCle
   const [back, setBack] = useState<number | null>(0);
   /** Trip number order: newest first by default (TestFlight 24 Oct: "show latest on top, keep a filter latest / oldest"). */
   const [order, setOrder] = useState<'asc' | 'desc'>('desc');
+  /** Sort by trip number or by loading day (TestFlight 30 Oct: "trips go 1 and 31 by date … filter date wise"). */
+  const [sortBy, setSortBy] = useState<'no' | 'date'>('no');
+  /** One loading day only (YYYY-MM-DD); null = the whole month. */
+  const [dayFilter, setDayFilter] = useState<string | null>(null);
   const queryClient = useQueryClient();
   /** One status only ("Delivered", "On the road" …); null = every status. */
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
-  const [sheet, setSheet] = useState<'month' | 'status' | null>(null);
+  const [sheet, setSheet] = useState<'month' | 'status' | 'day' | 'sort' | null>(null);
   /** Search within the month shown (TestFlight 30 Oct: "keep the search bar also"). */
   const [query, setQuery] = useState('');
   /** Select mode: the trip ids picked for deleting. null = not selecting. */
@@ -123,6 +129,7 @@ export function TripLedger({ f, todayKey, scope, customer, onPickCustomer, onCle
         route: r.from === '—' ? '—' : `${r.from} → ${r.to}${r.back ? ' · round' : ''}`,
         plate: plateOf(t),
         driver: driverNameOf(t),
+        tt: plannedTransitMin(t),
         status: statusText(t),
         tone: t.status === 'Invoiced' ? { bg: '#E7EEFC', fg: '#2449A8' } : { bg: ph.bg, fg: ph.fg },
         amount: t.billing_amount != null ? Number(t.billing_amount) : null,
@@ -147,6 +154,7 @@ export function TripLedger({ f, todayKey, scope, customer, onPickCustomer, onCle
         route: d.trip?.from || d.trip?.to ? `${d.trip?.from ?? '?'} → ${d.trip?.to ?? '?'}${d.trip?.round ? ' · round' : ''}` : '—',
         plate: d.trip?.plate ?? null,
         driver: null,
+        tt: null,
         status: 'Deleted',
         tone: DELETED_TONE,
         amount: null,
@@ -156,11 +164,19 @@ export function TripLedger({ f, todayKey, scope, customer, onPickCustomer, onCle
     // By trip number (lowest or highest first); the live trip before deleted ones with the
     // same number; trips without a number (drafts) always last.
     const dir = order === 'asc' ? 1 : -1;
+    if (sortBy === 'date') {
+      const at = (r: Row) => (r.day ? Date.parse(r.day) : NaN);
+      return [...live, ...gone].sort((a, b) => {
+        const x = at(a), y = at(b);
+        if (Number.isNaN(x) || Number.isNaN(y)) return Number.isNaN(x) && Number.isNaN(y) ? 0 : Number.isNaN(x) ? 1 : -1;
+        return (x - y) * dir || (a.no ?? 0) - (b.no ?? 0);
+      });
+    }
     return [...live, ...gone].sort((a, b) => {
       if (a.no == null || b.no == null) return a.no == null && b.no == null ? a.ref.localeCompare(b.ref) : a.no == null ? 1 : -1;
       return (a.no - b.no) * dir || Number(a.deleted) - Number(b.deleted) || a.ref.localeCompare(b.ref);
     });
-  }, [trips.data, deleted.data, range, scope, order]);
+  }, [trips.data, deleted.data, range, scope, order, sortBy]);
 
   const statusKey = (r: Row) => (r.deleted ? 'Deleted' : r.status === 'Starting late' || r.status === 'Late arriving' ? 'Delayed' : r.status);
   const counts = useMemo(() => {
@@ -173,7 +189,13 @@ export function TripLedger({ f, todayKey, scope, customer, onPickCustomer, onCle
   }, [rows]);
   /** The rows the list shows: the search and status filters applied. The summary counts stay for the whole month. */
   const term = query.trim().toLowerCase();
-  const shown = rows.filter((r) => (!statusFilter || statusKey(r) === statusFilter)
+  const dayOf = (r: Row) => (r.day ? f.dayKey(r.day) : null);
+  const days = useMemo(() => {
+    const c = new Map<string, { n: number; iso: string }>();
+    for (const r of rows) { const k = dayOf(r); if (k && r.day) c.set(k, { n: (c.get(k)?.n ?? 0) + 1, iso: r.day }); }
+    return [...c.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [rows]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shown = rows.filter((r) => (!statusFilter || statusKey(r) === statusFilter) && (!dayFilter || dayOf(r) === dayFilter)
     && (!term || [r.ref, r.customer, r.route, r.plate, r.driver].some((v) => v?.toLowerCase().includes(term))));
   const live = rows.filter((r) => !r.deleted);
   const billed = live.filter((r) => r.trip?.status !== 'Cancelled').reduce((n, r) => n + (r.amount ?? 0), 0);
@@ -256,7 +278,7 @@ export function TripLedger({ f, todayKey, scope, customer, onPickCustomer, onCle
         <TouchableOpacity
           style={[s.monthStep, (back === null || back >= monthCount - 1) && s.stepOff]}
           disabled={back === null || back >= monthCount - 1}
-          onPress={() => setBack((b) => (b ?? 0) + 1)}
+          onPress={() => { setBack((b) => (b ?? 0) + 1); setDayFilter(null); }}
           accessibilityLabel="Previous month"
           hitSlop={6}
         >
@@ -269,7 +291,7 @@ export function TripLedger({ f, todayKey, scope, customer, onPickCustomer, onCle
         <TouchableOpacity
           style={[s.monthStep, (back === null || back === 0) && s.stepOff]}
           disabled={back === null || back === 0}
-          onPress={() => setBack((b) => Math.max(0, (b ?? 0) - 1))}
+          onPress={() => { setBack((b) => Math.max(0, (b ?? 0) - 1)); setDayFilter(null); }}
           accessibilityLabel="Next month"
           hitSlop={6}
         >
@@ -280,6 +302,10 @@ export function TripLedger({ f, todayKey, scope, customer, onPickCustomer, onCle
       <View style={s.filters}>
         <Pill icon={Building2} value={customer ?? 'All customers'} on={!!customer} onPress={() => onPickCustomer?.()} onClear={customer ? onClearCustomer : undefined} label="Customer" />
         <Pill icon={CircleDot} value={statusFilter ?? 'All statuses'} on={!!statusFilter} onPress={() => setSheet('status')} onClear={statusFilter ? () => setStatusFilter(null) : undefined} label="Status" />
+      </View>
+      <View style={s.filters}>
+        <Pill icon={CalendarDays} value={dayFilter ? f.day(days.find(([k]) => k === dayFilter)?.[1].iso) || dayFilter : 'All days'} on={!!dayFilter} onPress={() => setSheet('day')} onClear={dayFilter ? () => setDayFilter(null) : undefined} label="Loading day" />
+        <Pill icon={ArrowDownUp} value={sortBy === 'no' ? (order === 'desc' ? 'Trip no. ↓' : 'Trip no. ↑') : order === 'desc' ? 'Latest loading' : 'Earliest loading'} onPress={() => setSheet('sort')} label="Sort" />
       </View>
 
       <View style={s.summary}>
@@ -318,11 +344,8 @@ export function TripLedger({ f, todayKey, scope, customer, onPickCustomer, onCle
       <View style={s.listBar}>
         <Text style={s.listCount} numberOfLines={1}>
           {term ? `${shown.length} match${shown.length === 1 ? '' : 'es'}` : statusFilter ? `${shown.length} ${statusFilter.toLowerCase()}` : `${shown.length} row${shown.length === 1 ? '' : 's'}`}
+          {dayFilter ? ` · ${f.day(days.find(([k]) => k === dayFilter)?.[1].iso)}` : ''}
         </Text>
-        <TouchableOpacity style={s.orderBtn} onPress={() => setOrder((o) => (o === 'asc' ? 'desc' : 'asc'))} accessibilityRole="button" accessibilityLabel={order === 'desc' ? 'Newest first. Tap for oldest first' : 'Oldest first. Tap for newest first'}>
-          <ArrowDownUp size={14} color={INK} />
-          <Text style={s.orderText}>{order === 'desc' ? 'Newest first' : 'Oldest first'}</Text>
-        </TouchableOpacity>
         <TouchableOpacity style={[s.selectBtn, picked && s.selectOn]} onPress={() => setPicked((p) => (p ? null : new Set()))} accessibilityRole="button">
           <Text style={[s.selectText, picked && { color: '#fff' }]}>{picked ? 'Done' : 'Select'}</Text>
         </TouchableOpacity>
@@ -336,7 +359,7 @@ export function TripLedger({ f, todayKey, scope, customer, onPickCustomer, onCle
       <View style={s.headRow}>
         {picked ? <View style={{ width: 22 }} /> : null}
         <TouchableOpacity style={[s.cNo, s.sortBtn]} onPress={() => setOrder((o) => (o === 'asc' ? 'desc' : 'asc'))} accessibilityRole="button" accessibilityLabel={order === 'asc' ? 'Trip number, lowest first. Tap for highest first' : 'Trip number, highest first. Tap for lowest first'} hitSlop={8}>
-          <Text style={[s.h, { color: INK }]}>No.</Text>
+          <Text style={[s.h, { color: INK }]}>{sortBy === 'no' ? 'No.' : 'Date'}</Text>
           {order === 'asc' ? <ArrowUp size={12} color={INK} strokeWidth={3} /> : <ArrowDown size={12} color={INK} strokeWidth={3} />}
         </TouchableOpacity>
         <Text style={[s.h, { flex: 1 }]}>Customer · route</Text>
@@ -369,9 +392,24 @@ export function TripLedger({ f, todayKey, scope, customer, onPickCustomer, onCle
             <Text style={[s.no, r.deleted && s.struck]}>{r.no != null ? String(r.no).padStart(4, '0') : '—'}</Text>
             <Text style={s.day}>{r.day ? f.day(r.day) : ''}</Text>
           </View>
-          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+          {/* Loading time, route, transit time, driver and truck (TestFlight 30 Oct: "should be visible"). */}
+          <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
             <Text style={[s.cust, r.deleted && s.struck]} numberOfLines={1}>{r.customer}</Text>
-            <Text style={s.route} numberOfLines={1}>{[r.route, r.plate].filter(Boolean).join(' · ')}</Text>
+            <Text style={s.route} numberOfLines={2}>{r.route}</Text>
+            {!r.deleted && (r.day || r.tt != null) ? (
+              <View style={s.meta}>
+                <Clock3 size={12} color={MUTED} />
+                <Text style={s.metaText} numberOfLines={1}>
+                  {[r.day ? `Load ${f.time(r.day)}` : null, r.tt != null ? `TT ${shortDuration(r.tt)}` : 'No TT'].filter(Boolean).join('  ·  ')}
+                </Text>
+              </View>
+            ) : null}
+            {r.driver || r.plate ? (
+              <View style={s.meta}>
+                {r.driver ? <><UserRound size={12} color={MUTED} /><Text style={[s.metaText, { flexShrink: 1 }]} numberOfLines={1}>{r.driver}</Text></> : null}
+                {r.plate ? <><Truck size={12} color={MUTED} style={r.driver ? { marginLeft: 6 } : undefined} /><Text style={[s.metaText, { flexShrink: 0 }]}>{r.plate}</Text></> : null}
+              </View>
+            ) : null}
             <View style={[s.status, { backgroundColor: r.tone.bg }]}>
               <Text style={[s.statusText, { color: r.tone.fg }]}>{r.status}</Text>
             </View>
@@ -397,7 +435,7 @@ export function TripLedger({ f, todayKey, scope, customer, onPickCustomer, onCle
       title="Month"
       value={back === null ? 'all' : String(back)}
       options={[{ value: '0', label: monthName(0), sub: 'This month' }, ...Array.from({ length: 11 }, (_, k) => ({ value: String(k + 1), label: monthName(k + 1) })), { value: 'all', label: 'All time', sub: 'Every trip, with numbers not used' }]}
-      onPick={(v) => { setBack(v === 'all' ? null : Number(v)); setSheet(null); }}
+      onPick={(v) => { setBack(v === 'all' ? null : Number(v)); setDayFilter(null); setSheet(null); }}
       onClose={() => setSheet(null)}
     />
     <OptionSheet
@@ -406,6 +444,27 @@ export function TripLedger({ f, todayKey, scope, customer, onPickCustomer, onCle
       value={statusFilter ?? 'all'}
       options={[{ value: 'all', label: 'All statuses', sub: `${rows.length} rows` }, ...counts.map(([label, c]) => ({ value: label, label, sub: `${c.n}`, dot: c.tone.fg }))]}
       onPick={(v) => { setStatusFilter(v === 'all' ? null : v); setSheet(null); }}
+      onClose={() => setSheet(null)}
+    />
+    <OptionSheet
+      visible={sheet === 'day'}
+      title="Loading day"
+      value={dayFilter ?? 'all'}
+      options={[{ value: 'all', label: 'All days', sub: `${rows.length} rows` }, ...days.map(([k, d]) => ({ value: k, label: f.day(d.iso), sub: `${d.n} trip${d.n === 1 ? '' : 's'}` }))]}
+      onPick={(v) => { setDayFilter(v === 'all' ? null : v); setSheet(null); }}
+      onClose={() => setSheet(null)}
+    />
+    <OptionSheet
+      visible={sheet === 'sort'}
+      title="Sort"
+      value={`${sortBy}-${order}`}
+      options={[
+        { value: 'no-desc', label: 'Trip number, newest first', sub: 'TRP-0107, 0106 …' },
+        { value: 'no-asc', label: 'Trip number, oldest first', sub: 'TRP-0001, 0002 …' },
+        { value: 'date-desc', label: 'Loading day, latest first' },
+        { value: 'date-asc', label: 'Loading day, earliest first' },
+      ]}
+      onPick={(v) => { const [k, o] = v.split('-'); setSortBy(k as 'no' | 'date'); setOrder(o as 'asc' | 'desc'); setSheet(null); }}
       onClose={() => setSheet(null)}
     />
     {picked ? (
@@ -498,8 +557,6 @@ const s = StyleSheet.create({
   legText: { fontSize: 12.5, color: MUTED },
   listBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
   listCount: { flex: 1, fontSize: 13, fontWeight: '700', color: MUTED },
-  orderBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, height: 34, borderRadius: 17 },
-  orderText: { fontSize: 13, fontWeight: '700', color: INK },
   selectBtn: { paddingHorizontal: 16, height: 34, borderRadius: 17, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E4E6EB', justifyContent: 'center' },
   selectOn: { backgroundColor: INK, borderColor: INK },
   selectText: { fontSize: 13, fontWeight: '700', color: INK },
@@ -524,6 +581,8 @@ const s = StyleSheet.create({
   rowLast: { borderBottomLeftRadius: 14, borderBottomRightRadius: 14 },
   no: { fontSize: 16, fontWeight: '800', color: INK, fontVariant: ['tabular-nums'] },
   day: { fontSize: 11, color: MUTED, marginTop: 1 },
+  meta: { flexDirection: 'row', alignItems: 'center', gap: 4, minWidth: 0 },
+  metaText: { fontSize: 12, color: '#55545C' },
   cust: { fontSize: 14, fontWeight: '700', color: INK },
   route: { fontSize: 12, color: MUTED },
   status: { alignSelf: 'flex-start', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1, marginTop: 2 },
