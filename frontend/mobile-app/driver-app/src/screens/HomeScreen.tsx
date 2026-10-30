@@ -139,6 +139,25 @@ function plannedDay(value: Date | string | null | undefined, tomorrowWord: strin
   return d.toLocaleDateString('en-GB', inCompanyZone({ weekday: 'short', day: 'numeric', month: 'short' }));
 }
 
+/**
+ * How long until a planned time, for the next-stop card (TestFlight 30 Oct: "also show
+ * how many hours and days remaining"): "45 min", "3 h 20 min", "1 day 8 h"; null once it has passed.
+ */
+function timeLeft(value: Date | string | null | undefined, now: number, ur: boolean): string | null {
+  if (!value) return null;
+  const mins = Math.floor((new Date(value).getTime() - now) / 60000);
+  if (!Number.isFinite(mins) || mins < 1) return null;
+  const d = Math.floor(mins / 1440);
+  const h = Math.floor((mins % 1440) / 60);
+  const m = mins % 60;
+  if (ur) {
+    if (d) return `${d} دن${h ? ` ${h} گھنٹے` : ''}`;
+    return h ? `${h} گھنٹے${m ? ` ${m} منٹ` : ''}` : `${m} منٹ`;
+  }
+  if (d) return `${d} day${d > 1 ? 's' : ''}${h ? ` ${h} h` : ''}`;
+  return h ? `${h} h${m ? ` ${m} min` : ''}` : `${m} min`;
+}
+
 /** Minutes the pickup is overdue (planned start passed, driver not there yet), else 0. */
 function minutesLate(trip: MobileTrip): number {
   const ws = driverWorkflowState(trip);
@@ -183,6 +202,12 @@ const HomeScreen = () => {
   /** Same, but one language only — for small pills where both would not fit. */
   const LS = (en: string, ur: string) => (language === 'ur' ? ur : en);
   const [activeTab, setActiveTab] = useState('Home');
+  // Ticks each minute so "in 3 h 20 min" on the next-stop card stays current.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
   const [advancing, setAdvancing] = useState(false);
   const [delayModalVisible, setDelayModalVisible] = useState(false);
   const router = useRouter();
@@ -751,7 +776,16 @@ const HomeScreen = () => {
                     <TouchableOpacity style={styles.nextStopBox} activeOpacity={0.85} onPress={() => handleStopPress(nextStop)}>
                       <View style={styles.nextStopHeader}>
                         <Text style={styles.nextStopLabel}>{atNextStop ? L('YOU ARE HERE', 'آپ یہاں ہیں') : L('NEXT STOP', 'اگلا اسٹاپ')}</Text>
-                        {plannedAt ? <Text style={styles.nextStopMeta}>{L(`Planned ${plannedAt}`, `متوقع ${plannedAt}`)}</Text> : null}
+                        {plannedAt ? (
+                          <View style={styles.nextStopWhen}>
+                            <Text style={styles.nextStopMeta}>{L(`Planned ${plannedAt}`, `متوقع ${plannedAt}`)}</Text>
+                            {!atNextStop && timeLeft(nextStop.plannedArrival, now, false) ? (
+                              <Text style={styles.nextStopLeft}>
+                                {L(`in ${timeLeft(nextStop.plannedArrival, now, false)}`, `${timeLeft(nextStop.plannedArrival, now, true)} میں`)}
+                              </Text>
+                            ) : null}
+                          </View>
+                        ) : null}
                       </View>
                       <View style={styles.nextStopRow}>
                         <View style={styles.nextStopIcon}>
@@ -1653,6 +1687,15 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.8,
     color: '#C2410C',
+  },
+  nextStopWhen: {
+    alignItems: 'flex-end',
+  },
+  nextStopLeft: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#C2410C',
+    marginTop: 2,
   },
   nextStopMeta: {
     fontSize: 12,
