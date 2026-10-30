@@ -270,10 +270,9 @@ function recentRoutesFrom(trips: OperatorTrip[], limit = 8): RecentRoute[] {
     if (prev) {
       prev.count += 1;
       // The card shows the latest trip's price, type and size.
-      if (when >= prev.lastUsed) {
-        if (quotationId) prev.quotationId = quotationId;
-        Object.assign(prev, money);
-      }
+      // A trip without a quotation never unlinks the route from the one its other trips used.
+      if (quotationId && (!prev.quotationId || when >= prev.lastUsed)) prev.quotationId = quotationId;
+      if (when >= prev.lastUsed) Object.assign(prev, money);
       prev.lastUsed = Math.max(prev.lastUsed, when);
     } else {
       map.set(key, { key, origin, destination, stops: mids, count: 1, lastUsed: when, round, quotationId, ...money });

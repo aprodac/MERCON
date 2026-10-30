@@ -55,20 +55,50 @@ export function StepJob({ form, showErrors, onSetPayout }: {
     quoted && (Number(form.slot.billingAmount) !== Number(quoted.billingAmount) || Number(form.slot.driverPayout || 0) !== Number(quoted.driverPayout || 0)),
   );
 
-  const [showAllRecent, setShowAllRecent] = useState(false);
-  const [billingFilter, setBillingFilter] = useState<BillingFilter>(form.isMonthly ? 'Monthly' : 'ALL');
+  // One list for recent routes and quotations (TestFlight 30 Oct: "combine recent routes and quotations").
+  // A recent route that used a quotation is shown on that quotation's card; one without a quotation gets
+  // its own route card. "Recent" (the last 30 days) is the first filter when there is any.
+  const [showAll, setShowAll] = useState(false);
+  const [pickedFilter, setPickedFilter] = useState<ListFilter | null>(null);
+  const recentOfQuote = useMemo(() => {
+    const m = new Map<string, RecentRoute>();
+    form.recentRoutes.forEach((r) => {
+      if (r.quotationId && (!m.has(r.quotationId) || m.get(r.quotationId)!.count < r.count)) m.set(r.quotationId, r);
+    });
+    return m;
+  }, [form.recentRoutes]);
+  const routeOnly = useMemo(
+    () => form.recentRoutes.filter((r) => !r.quotationId || !form.quotations.some((q) => q.id === r.quotationId)),
+    [form.recentRoutes, form.quotations],
+  );
+  const recentCount = form.quotations.filter((q) => recentOfQuote.has(q.id)).length + routeOnly.length;
+  const listFilter: ListFilter = pickedFilter ?? (recentCount ? 'RECENT' : form.isMonthly ? 'Monthly' : 'ALL');
+  const billingFilter: BillingFilter = listFilter === 'RECENT' ? 'ALL' : listFilter;
+  const setBillingFilter = (v: ListFilter) => { setPickedFilter(v); setShowAll(false); };
   const filtered = useMemo(
     () => (billingFilter === 'ALL' ? form.quotations : form.quotations.filter((q) => quotationBilling(q) === billingFilter)),
     [form.quotations, billingFilter],
   );
-  // The three most useful quotations: those fitting the route entered, then the ones this
-  // customer used most on recent trips, then the rest.
-  const preview = useMemo(() => {
-    const used = (q: OperatorQuotation) => form.quotationUse.get(q.id) || 0;
+  type ListItem = { kind: 'quote'; q: OperatorQuotation; recent?: RecentRoute } | { kind: 'route'; r: RecentRoute };
+  const items = useMemo<ListItem[]>(() => {
+    const score = (i: ListItem) => {
+      const r = i.kind === 'quote' ? i.recent : i.r;
+      return r ? r.count * 1e13 + r.lastUsed : 0;
+    };
+    const recentItems: ListItem[] = [
+      ...filtered.filter((q) => recentOfQuote.has(q.id)).map((q) => ({ kind: 'quote' as const, q, recent: recentOfQuote.get(q.id) })),
+      ...routeOnly.filter((r) => billingFilter === 'ALL' || r.billingType === billingFilter).map((r) => ({ kind: 'route' as const, r })),
+    ].sort((a, b) => score(b) - score(a));
+    if (listFilter === 'RECENT') return recentItems;
+    // Fitting the route entered first, then the recent ones, then the rest by use.
     const fitting = form.routeMatches.filter((q) => filtered.includes(q));
-    const rest = filtered.filter((q) => !fitting.includes(q)).sort((a, b) => used(b) - used(a));
-    return [...fitting, ...rest].slice(0, 3);
-  }, [form.routeMatches, filtered, form.quotationUse]);
+    const fitItems: ListItem[] = fitting.map((q) => ({ kind: 'quote', q, recent: recentOfQuote.get(q.id) }));
+    const rest = filtered
+      .filter((q) => !fitting.includes(q) && !recentOfQuote.has(q.id))
+      .map((q): ListItem => ({ kind: 'quote', q }));
+    return [...fitItems, ...recentItems.filter((i) => i.kind === 'route' || !fitting.includes(i.q)), ...rest];
+  }, [filtered, recentOfQuote, routeOnly, billingFilter, listFilter, form.routeMatches]);
+  const preview = showAll && listFilter === 'RECENT' ? items : items.slice(0, 3);
 
   const placeTo = (t: LocationTarget, loc: LocationPick) => {
     if (t.kind === 'origin' || t.kind === 'destination') form.setEndpoint(t.kind, loc);
@@ -316,59 +346,43 @@ export function StepJob({ form, showErrors, onSetPayout }: {
         <ErrorText>{err('customer')}</ErrorText>
       </Section>
 
-      {/* TestFlight 29 Oct: "show a section of recents .. show last routes in 30 days". */}
-      {!applied && form.customerId && form.recentRoutes.length > 0 ? (
-        <Section
-          icon={RotateCcw}
-          tone="blue"
-          title="Recent routes"
-          badge={<Chip label="Last 30 days" />}
-          action={form.recentRoutes.length > 3 ? { label: showAllRecent ? 'Show less' : `See all ${form.recentRoutes.length}`, onPress: () => setShowAllRecent((v) => !v) } : undefined}
-        >
-          {(showAllRecent ? form.recentRoutes : form.recentRoutes.slice(0, 3)).map((r, i) => {
-            const quote = r.quotationId ? form.quotations.find((q) => q.id === r.quotationId) : undefined;
-            return (
-              <RecentRouteCard
-                key={r.key}
-                r={r}
-                quote={quote}
-                first={i === 0}
-                tt={form.givenTT(r.origin.name, r.destination.name, r.size)}
-                onPress={() => {
-                  tap();
-                  // Start from the quotation those trips used (route, type, size and price), else the route alone.
-                  if (quote) form.applyQuotation(quote, { fillRoute: true });
-                  else form.applyRecentRoute(r);
-                }}
-              />
-            );
-          })}
-        </Section>
-      ) : null}
-
       {applied ? (
         priceSection
       ) : form.customerId ? (
         <Section
           icon={FileText}
           tone="violet"
-          title="Quotations"
-          badge={form.quotations.length ? <Chip label={String(form.quotations.length)} /> : undefined}
-          action={filtered.length > 3 ? { label: `See all ${filtered.length}`, onPress: () => setSheet('quotes') } : undefined}
+          title="Routes & quotations"
+          action={
+            listFilter === 'RECENT'
+              ? items.length > 3 ? { label: showAll ? 'Show less' : `See all ${items.length}`, onPress: () => setShowAll((v) => !v) } : undefined
+              : filtered.length > 3 ? { label: `See all ${filtered.length}`, onPress: () => setSheet('quotes') } : undefined
+          }
         >
           {form.quotationsLoading ? (
             <SkeletonRows rows={3} />
-          ) : form.quotations.length === 0 ? (
-            <Text style={styles.sectionHint}>No quotations for this customer yet. Enter the route below.</Text>
+          ) : form.quotations.length === 0 && routeOnly.length === 0 ? (
+            <Text style={styles.sectionHint}>No quotations or recent trips for this customer yet. Enter the route below.</Text>
           ) : (
             <>
-              <BillingFilterChips quotations={form.quotations} value={billingFilter} onChange={setBillingFilter} />
+              <BillingFilterChips quotations={form.quotations} recentCount={recentCount} value={listFilter} onChange={setBillingFilter} />
+              {listFilter === 'RECENT' ? <Text style={styles.sectionHint}>Routes this customer ran in the last 30 days, most used first.</Text> : null}
               {preview.length === 0 ? (
                 <Text style={styles.sectionHint}>No {billingFilter === 'Monthly' ? 'monthly' : 'extra'} quotations for this customer.</Text>
               ) : (
-                preview.map((q, i) => (
-                  <QuotationCard key={q.id} q={q} first={i === 0} fits={form.routeMatches.includes(q)} used={form.quotationUse.get(q.id)} tt={ttOf(q)} onPress={() => applyCard(q)} />
-                ))
+                preview.map((it, i) =>
+                  it.kind === 'quote' ? (
+                    <QuotationCard key={it.q.id} q={it.q} first={i === 0} fits={form.routeMatches.includes(it.q)} recent={it.recent} used={form.quotationUse.get(it.q.id)} tt={ttOf(it.q)} onPress={() => applyCard(it.q)} />
+                  ) : (
+                    <RecentRouteCard
+                      key={it.r.key}
+                      r={it.r}
+                      first={i === 0}
+                      tt={form.givenTT(it.r.origin.name, it.r.destination.name, it.r.size)}
+                      onPress={() => { tap(); form.applyRecentRoute(it.r); }}
+                    />
+                  ),
+                )
               )}
             </>
           )}
@@ -746,6 +760,8 @@ function SelectChip({ label, onPress }: { label: string; onPress: () => void }) 
 }
 
 type BillingFilter = 'ALL' | 'Extra' | 'Monthly';
+/** The list's filter: recent routes (last 30 days) or quotations by billing. */
+type ListFilter = BillingFilter | 'RECENT';
 
 /** Trip type → icon and colour, so a card's shape reads at a glance. */
 function typeLook(lineType: string): { Icon: LucideIcon; bg: string; fg: string } {
@@ -755,7 +771,16 @@ function typeLook(lineType: string): { Icon: LucideIcon; bg: string; fg: string 
 }
 
 /** One quotation as a card — also used on the customer details screen. */
-export function QuotationCard({ q, fits, first, used, tt, onPress }: { q: OperatorQuotation; fits?: boolean; first?: boolean; used?: number; tt?: number | null; onPress?: () => void }) {
+export function QuotationCard({ q, fits, first, used, recent, tt, onPress }: {
+  q: OperatorQuotation;
+  fits?: boolean;
+  first?: boolean;
+  used?: number;
+  /** This quotation's route run in the last 30 days: "6 trips · latest today". */
+  recent?: RecentRoute;
+  tt?: number | null;
+  onPress?: () => void;
+}) {
   const route = getQuotationRoute(q);
   const lineType = quotationLineType(q);
   const monthly = quotationBilling(q) === 'Monthly';
@@ -785,7 +810,13 @@ export function QuotationCard({ q, fits, first, used, tt, onPress }: { q: Operat
             <CheckCircle2 size={12} color={Colors.success} />
             <Text style={styles.fitsText}>Fits this route</Text>
           </View>
-        ) : used ? (
+        ) : null}
+        {recent ? (
+          <View style={styles.fitsRow}>
+            <RotateCcw size={11} color={Colors.gray500} />
+            <Text style={styles.usedText}>{recent.count} trip{recent.count > 1 ? 's' : ''} · latest {ago(recent.lastUsed)}</Text>
+          </View>
+        ) : used && !fits ? (
           <View style={styles.fitsRow}>
             <RotateCcw size={11} color={Colors.gray500} />
             <Text style={styles.usedText}>Used on {used} recent trip{used > 1 ? 's' : ''}</Text>
@@ -878,9 +909,16 @@ function RecentRouteCard({ r, quote, first, tt, onPress }: { r: RecentRoute; quo
 }
 
 /** All / Extra / Monthly with how many quotations each holds. */
-function BillingFilterChips({ quotations, value, onChange }: { quotations: OperatorQuotation[]; value: BillingFilter; onChange: (v: BillingFilter) => void }) {
+function BillingFilterChips({ quotations, recentCount, value, onChange }: {
+  quotations: OperatorQuotation[];
+  /** With a count, a "Recent" chip comes first. */
+  recentCount?: number;
+  value: ListFilter;
+  onChange: (v: ListFilter) => void;
+}) {
   const monthly = quotations.filter((q) => quotationBilling(q) === 'Monthly').length;
-  const options: { value: BillingFilter; label: string; count: number }[] = [
+  const options: { value: ListFilter; label: string; count: number }[] = [
+    ...(recentCount ? [{ value: 'RECENT' as const, label: 'Recent', count: recentCount }] : []),
     { value: 'ALL', label: 'All', count: quotations.length },
     { value: 'Extra', label: 'Extra', count: quotations.length - monthly },
     { value: 'Monthly', label: 'Monthly', count: monthly },
@@ -924,7 +962,7 @@ function QuotationSheet({
   quotations: OperatorQuotation[];
   lineTypes: string[];
   billing: BillingFilter;
-  onBillingChange: (v: BillingFilter) => void;
+  onBillingChange: (v: ListFilter) => void;
   onPick: (q: OperatorQuotation) => void;
   onClose: () => void;
   ttOf: (q: OperatorQuotation) => number | null;
