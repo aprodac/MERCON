@@ -67,12 +67,15 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
       .setPlannedTransit(form.customerId, `${leg}|${placeKey(from)}|${placeKey(to)}|${ANY_SIZE}`, min)
       .then(() => {
         queryClient.invalidateQueries({ queryKey: ['transit', form.customerId] });
-        setSavedNote((n) => ({ ...n, [leg]: `✓ Saved ${transitText(min)} as Given TT for ${niceName(from)} → ${niceName(to)}` }));
+        setSavedNote((n) => ({ ...n, [leg]: `✓ Saved ${transitText(min)} as ${company}'s Given TT for ${niceName(from)} → ${niceName(to)}` }));
       })
       .catch(() => Alert.alert('Couldn’t save the transit time', 'It is still set on this trip. Try again from the transit time.'));
   };
+  // Saved TTs belong to one customer (TestFlight 30 Oct: "TT added for iMile should only reflect to them").
+  const company = niceName(form.selectedCustomer?.name) || 'this customer';
   const saveLabelFor = (from: string, to: string) =>
-    form.customerId && from.trim() && to.trim() ? `Save as Given TT for ${niceName(from)} → ${niceName(to)}` : undefined;
+    form.customerId && from.trim() && to.trim() ? `Save as ${company}'s Given TT for ${niceName(from)} → ${niceName(to)}` : undefined;
+  const saveSub = `Only ${company}'s new trips on this route start with it (every truck size). Other companies keep their own times.`;
   /** Minutes after pickup of a planned time, for the route timing. */
   const afterPickup = (v: WhenValue | null) => (slot.pickupTime && v?.time ? (v.day ?? 0) * 1440 + toMin(v.time) - toMin(slot.pickupTime) : null);
   // Transit time (TestFlight: "transit time option"): pickup + chosen length → planned drop-off.
@@ -313,6 +316,7 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
         value={transitMin}
         arrivalText={(m) => { const { time, days } = transitAt(m); return `Drop-off ${time}${plusDays(days)}`; }}
         saveLabel={saveLabelFor(slot.origin, slot.destination)}
+        saveSub={saveSub}
         onDone={(m, save) => { setTransit(m); setTransitOpen(null); if (save) saveGivenTT('out', slot.origin, slot.destination, m); }}
         onClose={() => setTransitOpen(null)}
       />
@@ -322,6 +326,7 @@ export function StepSchedule({ form, showErrors }: { form: CreateTripForm; showE
         value={returnTransitMin}
         arrivalText={(m) => { const { time, days } = later(returnLoad?.time ?? '00:00', m); return `Arrival home ${time}${plusDays(days)}`; }}
         saveLabel={saveLabelFor(returnFrom, returnTo)}
+        saveSub={saveSub}
         onDone={(m, save) => { setReturnTransit(m); setTransitOpen(null); if (save) saveGivenTT('return', returnFrom, returnTo, m); }}
         onClose={() => setTransitOpen(null)}
       />
