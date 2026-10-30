@@ -4,7 +4,7 @@
  * Mirrors the web's TripDetailsPage (tripStatus.ts, stopEvidence.ts,
  * utils/financialCalculations.ts) so both show the same thing.
  */
-import { STAGE_TITLE } from '../../dashboard/actions/actionModel';
+import { stageTitle } from '../../dashboard/actions/actionModel';
 import type { TripStatus } from '@mercon/mobile-shared/lib/trips';
 import { formatTripStatusMessage, haltActivityLabel, insertByTime, stopDueAt, stopMinutesLate, tripLogEntries, type StatusTrip, type TripLogEntry } from '@mercon/shared-types';
 import { operatorService, type DriverUpdate, type OperatorTripDetail, type OperatorTripStop, type TripHalt, type TripPhase } from '../../../lib/operator';
@@ -339,7 +339,7 @@ export const sar = (n: number) => `SAR ${Math.round(n).toLocaleString('en-US')}`
 
 export function updateTitle(u: DriverUpdate): string {
   // One name per photo set across the app (Home, Notifications, trip page, WhatsApp caption).
-  return STAGE_TITLE[u.stage] ?? 'Photos';
+  return stageTitle(u);
 }
 
 const RECIPIENT_LABEL: Record<string, string> = {

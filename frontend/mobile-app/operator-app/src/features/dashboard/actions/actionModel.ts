@@ -146,6 +146,19 @@ export const STAGE_TITLE: Record<string, string> = {
 };
 
 /**
+ * A photo set's name. A trip log send is the customer-app screenshots on a
+ * customer-app trip; on a MERCON trip (every trip runs as a trip log since
+ * 30 Oct) it is the loading or delivery photos of its stop.
+ */
+export function stageTitle(u: { stage: string; screenshots?: boolean; stop?: { type: string } | null }): string {
+  if (u.stage === 'log' && u.screenshots === false) {
+    const type = u.stop?.type ?? '';
+    return /pick|load/i.test(type) ? STAGE_TITLE.loaded : /drop|deliver|unload/i.test(type) ? STAGE_TITLE.delivered : STAGE_TITLE.stop;
+  }
+  return STAGE_TITLE[u.stage] ?? 'Photos';
+}
+
+/**
  * Where a photo set is from (TestFlight 23 Oct: "show which stop and which leg,
  * also loading or offloading"): "Stop 2 · Najran · Leg 1 · Unloading". The
  * loading word is left out when the set's own title already says it.
@@ -287,7 +300,7 @@ export function buildActions(src: ActionSources): ActionItem[] {
       kind: 'photos',
       urgency: u.stage === 'delivered' || u.stage === 'delay' ? 'today' : 'watch',
       group: 'whatsapp',
-      title: `${STAGE_TITLE[u.stage] ?? 'Photos'} to send`,
+      title: `${stageTitle(u)} to send`,
       detail: [u.trip.ref_id, u.stop?.name ?? u.customer?.name, `${u.unsent_count} new`].filter(Boolean).join(' · '),
       at: u.latest_at,
       tripId: u.trip.id,
