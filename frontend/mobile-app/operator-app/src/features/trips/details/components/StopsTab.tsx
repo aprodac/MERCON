@@ -5,7 +5,7 @@ import { Camera, Check, CheckCheck, Clock3, Image as ImageIcon, ImageOff, MapPin
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import type { DriverUpdate, LiveMediaItem, OperatorTripDetail, TripPhase } from '../../../../lib/operator';
-import { ON_TIME_GRACE_MIN, TONE, delayText, mapsLink, minutesLate, minutesText, photoPinsForStop, sendStatus, sortedStops, stopName, stopTiming, tripStopProgress, tripLegsOf, updateTitle, type Formatters, type Stop } from '../tripDetailsModel';
+import { ON_TIME_GRACE_MIN, TONE, delayText, mapsLink, minutesText, photoPinsForStop, sendStatus, sortedStops, stopName, stopTiming, tripStopProgress, tripLegsOf, updateTitle, type Formatters, type Stop } from '../tripDetailsModel';
 import { extraStopNote } from '@mercon/shared-types';
 import { liveLegOf } from '../../tripLegs';
 import { Card, Chip, INK, MUTED, WA, WA_INK, WA_LIGHT, tap } from './parts';
@@ -150,7 +150,7 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
         const logged = progress.fromLog.get(st.id);
         const isNext = i === nextIdx;
         const last = i === stops.length - 1;
-        const late = minutesLate(st.planned_arrival, st.actual_arrival);
+        const late = stopTiming(stops, i).late;
         const delay = delayText(st);
         const sets = updates.filter((u) => u.stop?.id === st.id);
         const check = docs.find((d) => pendingTimeCheck(d) && d.ai_extracted_json?.stop_id === st.id);
@@ -215,7 +215,7 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
               </View>
               <Text style={s.muted}>{st.stop_type}{leg}{st.actual_arrival ? '' : ` · ${times}`}</Text>
               {st.actual_arrival ? (() => {
-                const { late: lateMin, dwell } = stopTiming(st);
+                const { late: lateMin, dwell, movedDue } = stopTiming(stops, i);
                 return (
                   <>
                     {/* Planned vs real, side by side */}
@@ -227,6 +227,7 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
                     <Text style={s.timeNote}>
                       {lateMin == null ? 'No planned time' : lateMin > ON_TIME_GRACE_MIN ? `${minutesText(lateMin)} late` : lateMin < -ON_TIME_GRACE_MIN ? `${minutesText(lateMin)} early` : 'On time'}
                       {dwell != null && !isDropoff(st) ? ` · ${minutesText(dwell)} at the stop` : ''}
+                      {movedDue ? ` · due ${f.time(movedDue)} by transit time` : ''}
                     </Text>
                   </>
                 );

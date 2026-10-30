@@ -89,6 +89,16 @@ export interface RecentRoute {
   stops: LocationPick[];
   count: number;
   lastUsed: number;
+  /** A round trip: the stops are its way out; the way back returns to the start. */
+  round: boolean;
+  /** The quotation the latest of these trips used, to start from it again. */
+  quotationId: string | null;
+  /** The latest trip's money and kind, shown on its card (TestFlight 30 Oct: "recent routes … with trip charge, billing amount"). */
+  billing: number | null;
+  payout: number | null;
+  billingType: 'Extra' | 'Monthly' | null;
+  size: string | null;
+  category: string;
 }
 
 /** How a single trip's payout is shared with the co-driver; empty = 50/50. */
@@ -223,8 +233,11 @@ const listCache: {
   compatRules?: VehicleCompatibilityRule[];
 } = {};
 
-/** First stop → last stop of each recent one-way trip, with the stops in between; most used first. */
-function recentRoutesFrom(trips: OperatorTrip[]): RecentRoute[] {
+/**
+ * First stop → last stop of each recent trip's way out, with the stops in between; most used first.
+ * `limit` caps the list (the Job step shows up to 8).
+ */
+function recentRoutesFrom(trips: OperatorTrip[], limit = 8): RecentRoute[] {
   const map = new Map<string, RecentRoute>();
   const pick = (st: any): LocationPick => ({
     name: st?.location?.name || st?.location_name || '',
@@ -233,25 +246,39 @@ function recentRoutesFrom(trips: OperatorTrip[]): RecentRoute[] {
     lng: st?.location?.lng ?? st?.location_lng ?? null,
   });
   trips.forEach((t: any) => {
-    // A round trip's last stop is back home — its route isn't origin → last stop.
-    if (isRoundTripCategory(t.rate_category || '')) return;
-    const stops = [...(t.stops || [])].sort((a: any, b: any) => (a.stop_sequence ?? 0) - (b.stop_sequence ?? 0));
+    // A round trip's last stop is back home: its route is the way out (leg 0).
+    const round = isRoundTripCategory(t.rate_category || '');
+    const stops = [...(t.stops || [])]
+      .filter((st: any) => !round || (st.leg_index ?? 0) === 0)
+      .sort((a: any, b: any) => (a.stop_sequence ?? 0) - (b.stop_sequence ?? 0));
     if (stops.length < 2) return;
     const origin = pick(stops[0]);
     const destination = pick(stops[stops.length - 1]);
     if (!origin.name || !destination.name) return;
     const mids = stops.slice(1, -1).map(pick).filter((m) => m.name);
-    const key = [origin, ...mids, destination].map((p) => p.locationId || p.name.trim().toLowerCase()).join('>');
+    const key = `${round ? 'R:' : ''}${[origin, ...mids, destination].map((p) => p.locationId || p.name.trim().toLowerCase()).join('>')}`;
     const when = t.createdAt ? new Date(t.createdAt).getTime() : 0;
+    const quotationId: string | null = t.quotationId || t.quotation?.id || null;
+    const money = {
+      billing: Number(t.billing_amount) > 0 ? Number(t.billing_amount) : null,
+      payout: Number(t.driver_payout) > 0 ? Number(t.driver_payout) : null,
+      billingType: t.operation_type ? normalizeBillingTypeToken(t.operation_type) : null,
+      size: t.vehicle_type ? normalizeTruckClass(t.vehicle_type) : null,
+      category: t.rate_category || '',
+    };
     const prev = map.get(key);
     if (prev) {
       prev.count += 1;
+      // The card shows the latest trip's price, type and size.
+      // A trip without a quotation never unlinks the route from the one its other trips used.
+      if (quotationId && (!prev.quotationId || when >= prev.lastUsed)) prev.quotationId = quotationId;
+      if (when >= prev.lastUsed) Object.assign(prev, money);
       prev.lastUsed = Math.max(prev.lastUsed, when);
     } else {
-      map.set(key, { key, origin, destination, stops: mids, count: 1, lastUsed: when });
+      map.set(key, { key, origin, destination, stops: mids, count: 1, lastUsed: when, round, quotationId, ...money });
     }
   });
-  return [...map.values()].sort((a, b) => b.count - a.count || b.lastUsed - a.lastUsed).slice(0, 4);
+  return [...map.values()].sort((a, b) => b.count - a.count || b.lastUsed - a.lastUsed).slice(0, limit);
 }
 
 /** Opened from a lane search (Fleet map): its two ends, by name and city-centre coordinates. */
@@ -313,6 +340,8 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
   const [charges, setCharges] = useState<TripChargeInput[]>([]);
   const [dropoffTouched, setDropoffTouched] = useState(false);
   const [returnDropoffTouched, setReturnDropoffTouched] = useState(false);
+  /** The way back takes leg 1's transit time ("Same as leg 1"); on by default (TestFlight 29 Oct). */
+  const [sameBackTransit, setSameBackTransit] = useState(true);
   const [routeEstimate, setRouteEstimate] = useState<RouteEstimate | null>(null);
 
   const [assignmentType, setAssignmentType] = useState<AssignmentType>(params.assignment === 'third_party' ? 'third_party' : 'own');
@@ -580,6 +609,21 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     });
   }, [quotations, slot, rateCategory, billingType, vehicleType, routeComplete]);
 
+  /**
+   * The picked quotation kept for this trip although the trip was changed (TestFlight 29 Oct:
+   * "if you edit an already added quotation trip for one trip you should be able to alter
+   * the trip … like adding stops"): stops added / moved / removed, trip type or billing
+   * changed — the quotation and its price stay. Changing the pickup or drop-off still re-matches.
+   */
+  const [kept, setKept] = useState<{ id: string; ends: string } | null>(null);
+  const endsOf = (s: { origin: string; destination: string }) => `${s.origin.trim().toLowerCase()}|${s.destination.trim().toLowerCase()}`;
+  const keepApplied = () => {
+    const card = slot.rateMatched ? (slot.matchedRateCard as OperatorQuotation | null) : null;
+    if (card?.id) setKept({ id: card.id, ends: endsOf(slot) });
+  };
+  const appliedCard = slot.rateMatched ? (slot.matchedRateCard as OperatorQuotation | null) : null;
+  const quotationKept = !!kept && !!appliedCard && kept.id === appliedCard.id && kept.ends === endsOf(slot);
+
   // Any change to the route, trip type, billing or class re-checks the applied quotation.
   const routeKey = useMemo(
     () => JSON.stringify([customerId, rateCategory, billingType, vehicleType, routeLegsFromSlot(slot, isRound)]),
@@ -599,6 +643,7 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     // Truck class changed to one this customer has its own quotation for on this route: use that one.
     const classMoved = !!card && !!classOf(card) && classOf(card) !== vehicleType && routeMatches.some((q) => q.id !== card.id && classOf(q) === vehicleType);
     if (stillFits && !classMoved) return;
+    if (card && current.rateMatched && kept && kept.id === card.id && kept.ends === endsOf(current) && !classMoved) return;
 
     // Keeping the applied quotation in step with the route is this effect's job, so it sets state on purpose.
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -649,8 +694,12 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
   /** Own-fleet trips need a driver payout; a quotation saved without one leaves it empty. */
   const payoutMissing = assignmentType === 'own' && priceState !== 'no_route' && !(num(slot.driverPayout) > 0);
 
-  /** A price typed for an unquoted route is saved as a new quotation when the trip is created. */
-  const savesNewQuotation = priceState === 'define' && num(slot.billingAmount) > 0;
+  /**
+   * A price typed for an unquoted route is saved as a new quotation when the trip is created —
+   * unless the operator untick it: this trip only (TestFlight 29 Oct).
+   */
+  const [saveQuotation, setSaveQuotation] = useState(true);
+  const savesNewQuotation = priceState === 'define' && num(slot.billingAmount) > 0 && saveQuotation;
 
   const setCustomerId = useCallback((id: string) => {
     setCustomerIdRaw(id);
@@ -714,6 +763,38 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
             returnIntermediateStopPins: padPins(s.returnIntermediateStopPins, (s.returnIntermediateLocations || []).length).filter((_, i) => i !== index),
           },
     );
+  }, []);
+
+  /** Moves a stop in between one place earlier (-1) or later (+1), with its place, fee and pin (TestFlight 29 Oct). */
+  const moveStop = useCallback((leg: 0 | 1, index: number, dir: -1 | 1) => {
+    setSlot((s) => {
+      const names = leg === 0 ? s.intermediateLocations : s.returnIntermediateLocations || [];
+      const to = index + dir;
+      if (to < 0 || to >= names.length) return s;
+      const swap = <T,>(arr: T[]) => {
+        const out = [...arr];
+        [out[index], out[to]] = [out[to], out[index]];
+        return out;
+      };
+      const n = names.length;
+      const ids = [...(leg === 0 ? s.intermediateLocationIds || [] : s.returnIntermediateLocationIds || [])];
+      while (ids.length < n) ids.push(null);
+      return leg === 0
+        ? {
+            ...s,
+            intermediateLocations: swap(s.intermediateLocations),
+            intermediateLocationIds: swap(ids),
+            intermediateStopFees: swap(padFees(s.intermediateStopFees, n)),
+            intermediateStopPins: swap(padPins(s.intermediateStopPins, n)),
+          }
+        : {
+            ...s,
+            returnIntermediateLocations: swap(s.returnIntermediateLocations || []),
+            returnIntermediateLocationIds: swap(ids),
+            returnIntermediateStopFees: swap(padFees(s.returnIntermediateStopFees, n)),
+            returnIntermediateStopPins: swap(padPins(s.returnIntermediateStopPins, n)),
+          };
+    });
   }, []);
 
   const setStopFee = useCallback((leg: 0 | 1, index: number, fee: string) => {
@@ -1383,6 +1464,8 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     refreshFleet,
     recentRoutes,
     savedOutbound,
+    /** The saved Given TT of a route's way out for a truck size (its own, else every size), or null. */
+    givenTT: (from: string, to: string, size: string | null) => savedTransitMinutes(savedTransits, 'out', from, to, size || vehicleType),
     savedReturn,
     applyRecentRoute,
     copyTrip,
@@ -1393,9 +1476,9 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     setCustomerId,
     selectedCustomer,
     rateCategory,
-    setRateCategory,
+    setRateCategory: (v: string) => { keepApplied(); setRateCategory(v); },
     billingType,
-    setBillingType,
+    setBillingType: (v: 'Extra' | 'Monthly') => { keepApplied(); setBillingType(v); },
     vehicleType,
     setVehicleType,
     isMonthly,
@@ -1405,20 +1488,24 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     routeMatches,
     priceState,
     savesNewQuotation,
+    saveQuotation,
+    setSaveQuotation,
     payoutMissing,
     dutyMinutes,
     // route
     slot,
     updateSlot,
     setEndpoint,
-    addStop,
-    removeStop,
+    addStop: (leg: 0 | 1, loc: LocationPick) => { keepApplied(); addStop(leg, loc); },
+    removeStop: (leg: 0 | 1, index: number) => { keepApplied(); removeStop(leg, index); },
     setReturnEndpoint,
     createLocation,
     createPinnedLocation,
     setEndpointPin,
     setStopPin,
     setStopFee,
+    moveStop: (leg: 0 | 1, index: number, dir: -1 | 1) => { keepApplied(); moveStop(leg, index, dir); },
+    quotationKept,
     routeComplete,
     charges,
     setCharges,
@@ -1428,6 +1515,8 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     setReturnPickup,
     setReturnDropoff,
     returnDropoffTouched,
+    sameBackTransit,
+    setSameBackTransit,
     isRoundTrip,
     runCheck,
     travelMinutes,

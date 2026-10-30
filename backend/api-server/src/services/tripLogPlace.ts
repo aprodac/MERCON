@@ -62,6 +62,10 @@ export async function placeLogEntry(tripId: string, entry: string, input: PlaceL
   const departure = depart_at ? new Date(depart_at) : null;
   if (arrival && departure && departure < arrival) throw new PlaceLogError(400, 'DEPARTURE_BEFORE_ARRIVAL', 'Left is before arrived');
   const placedAt = arrival ?? at;
+  // The driver sends a stop's images when the work there is done, so the send is when the truck
+  // left it — what lateness by transit time is measured from (owner 30 Oct: one workflow for every
+  // trip; a MERCON trip has no screenshot for the office to read the time off).
+  const driverLeft = byDriver && !departure ? new Date() : null;
 
   return prisma.$transaction(async (tx) => {
     let target: string;
@@ -75,6 +79,7 @@ export async function placeLogEntry(tripId: string, entry: string, input: PlaceL
         // Only fills an empty arrival — a time already set (or corrected) wins.
         await tx.tripStop.updateMany({ where: { id: stop.id, actual_arrival: null }, data: { actual_arrival: at } });
       }
+      if (driverLeft) await tx.tripStop.updateMany({ where: { id: stop.id, actual_departure: null }, data: { actual_departure: driverLeft } });
       target = stop.id;
     } else {
       // The driver adds the stop they are at: right before the next stop not reached yet (planned
@@ -93,7 +98,7 @@ export async function placeLogEntry(tripId: string, entry: string, input: PlaceL
           location_lat: gps?.lat ?? e.gps?.lat ?? null,
           location_lng: gps?.lng ?? e.gps?.lng ?? null,
           actual_arrival: placedAt,
-          ...(departure ? { actual_departure: departure } : {}),
+          ...(departure ?? driverLeft ? { actual_departure: departure ?? driverLeft } : {}),
         },
         select: { id: true },
       });

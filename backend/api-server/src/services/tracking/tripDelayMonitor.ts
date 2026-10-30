@@ -3,7 +3,7 @@ import { prisma } from '../../db';
 import { logger } from '../../utils/logger';
 import { DELAY_THRESHOLD_MINUTES } from '../tripLifecycle';
 import { notifyOperatorsOfDelay, createNotification, createDriverNotification } from '../../controllers/notificationController';
-import { TRIP_LOG_STATE } from '@mercon/shared-types';
+import { TRIP_LOG_STATE, isDutyCategory, stopDueAt } from '@mercon/shared-types';
 
 let monitorInterval: NodeJS.Timeout | null = null;
 /** Trips already marked Delayed still get the driver prompt only this long after the stop was due. */
@@ -192,12 +192,16 @@ export async function checkTripsForDelay(now: Date = new Date()): Promise<number
           where: { deletedAt: null },
           orderBy: { stop_sequence: 'asc' },
         },
+        quotation: { select: { line_type: true } },
       },
     });
 
     for (const trip of activeTrips) {
-      // A trip log has no stop times to judge (the office builds the stops afterwards).
-      if (trip.driver_workflow_state === TRIP_LOG_STATE) continue;
+      // Every trip runs as a trip log now, with Arrived and the send stamping each stop's
+      // arrival and departure, so it is judged like any trip (owner 30 Oct). A 10 / 12 hours
+      // duty on the road has no route to be late on: only its start is checked.
+      const duty = isDutyCategory(trip.rate_category) || isDutyCategory(trip.quotation?.line_type);
+      if (trip.driver_workflow_state === TRIP_LOG_STATE && duty) continue;
       const alreadyDelayed = trip.status === TripStatus.Delayed;
       // A Delayed trip is judged like the stage it is really at.
       const firstPickup = trip.stops.find((s) => s.stop_type === StopType.Pickup) || trip.stops[0];
@@ -290,7 +294,10 @@ export async function checkTripsForDelay(now: Date = new Date()): Promise<number
         // is the way out's, so it read "Delayed" the moment the truck turned back
         // (TestFlight 25 Oct, TRP-0066: "leg 2 time not set, but it's showing delayed").
         const unplannedReturn = !!pendingStop && !pendingStop.planned_arrival && (pendingStop.leg_index ?? 0) > 0;
-        const plannedTime = pendingStop?.planned_arrival || (unplannedReturn ? null : trip.planned_end);
+        // Due by the transit time: the departure from the stop before + the planned time between
+        // them, never earlier than booked (TestFlight 29 Oct; shared-types stopDue.ts).
+        const pendingDue = pendingStop ? stopDueAt(trip.stops, trip.stops.indexOf(pendingStop)) : null;
+        const plannedTime = pendingDue || (unplannedReturn ? null : trip.planned_end);
 
         if (plannedTime) {
           const diffMs = now.getTime() - plannedTime.getTime();

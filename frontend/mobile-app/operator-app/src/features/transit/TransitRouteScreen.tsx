@@ -70,7 +70,7 @@ export default function TransitRouteScreen() {
   };
   const clearSaved = () => d && run(() => operatorService.clearPlannedTransit(cid, anySizeKey(d.key)), 'Given TT reset — new trips plan what Create trip works out', 'Couldn’t reset the time');
 
-  const tone = d?.tone ? TONE[d.tone] : null;
+  const tone = d?.plannedSaved && d.tone ? TONE[d.tone] : null;
   const route = d ? `${niceName(d.from)} → ${niceName(d.to)}` : '';
   const parts = d ? ([['loading', d.time.loadingMin], ['road', d.time.roadMin], ['offload', d.time.offloadMin]] as const) : [];
   const total = parts.reduce((a, [, m]) => a + (m ?? 0), 0);
@@ -112,8 +112,8 @@ export default function TransitRouteScreen() {
             </View>
 
             <Card style={s.stats}>
-              <Stat label="Given TT" value={hm(d.plannedMin)} sub={d.plannedSaved ? 'set by you' : 'as booked'} />
-              <Stat label="Actual avg" value={hm(d.actualAvgMin)} color={tone?.fg} bg={tone?.bg} sub={overText(d.actualAvgMin, d.plannedMin) || (d.trips ? '' : 'no trips')} />
+              <Stat label="Given TT" value={d.plannedSaved ? hm(d.plannedMin) : 'No TT set'} sub={d.plannedSaved ? 'set by you' : 'tap Set TT'} />
+              <Stat label="Actual avg" value={hm(d.actualAvgMin)} color={tone?.fg} bg={tone?.bg} sub={(d.plannedSaved ? overText(d.actualAvgMin, d.plannedMin) : '') || (d.trips ? '' : 'no trips')} />
               <Stat label="Slowest 1 in 10" value={hm(d.p90Min)} />
             </Card>
 

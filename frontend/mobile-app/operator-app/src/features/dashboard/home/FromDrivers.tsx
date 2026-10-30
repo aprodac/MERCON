@@ -8,7 +8,7 @@ import { View, Text, TouchableOpacity, ScrollView, Image, StyleSheet } from 'rea
 import { ImageOff, Play } from 'lucide-react-native';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import { needsSending, type DriverUpdate } from '../../../lib/operator';
-import { STAGE_TITLE, durationText } from '../actions/actionModel';
+import { stageTitle, durationText } from '../actions/actionModel';
 import { INK, MUTED, tap } from '../../notifications/components/parts';
 
 const SHOWN = 8;
@@ -51,7 +51,7 @@ export function FromDrivers({ updates, now, onSend }: {
           return (
             <View key={`${u.trip.id}:${u.key}`} style={s.item}>
               <TouchableOpacity style={s.thumb} onPress={() => { tap(); onSend(u); }} activeOpacity={0.85}
-                accessibilityRole="button" accessibilityLabel={`${STAGE_TITLE[u.stage] ?? 'Photos'}, ${u.trip.ref_id ?? ''}, ${label}`}>
+                accessibilityRole="button" accessibilityLabel={`${stageTitle(u)}, ${u.trip.ref_id ?? ''}, ${label}`}>
                 {uri ? (
                   <Image source={{ uri }} style={StyleSheet.absoluteFill} />
                 ) : (
@@ -62,7 +62,7 @@ export function FromDrivers({ updates, now, onSend }: {
                 <View style={s.badge}><Text style={s.badgeText}>{label}</Text></View>
                 <View style={s.send}><Text style={s.sendText}>Send</Text></View>
               </TouchableOpacity>
-              <Text style={s.title} numberOfLines={1}>{STAGE_TITLE[u.stage] ?? 'Photos'}</Text>
+              <Text style={s.title} numberOfLines={1}>{stageTitle(u)}</Text>
               <Text style={s.meta} numberOfLines={1}>{[u.trip.ref_id, ago(u.latest_at)].filter(Boolean).join(' · ')}</Text>
             </View>
           );

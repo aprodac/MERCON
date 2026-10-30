@@ -60,6 +60,7 @@
     "test:trip-stops-edit": "node -r ts-node/register --test src/tests/tripStopsEdit.test.ts",
     "test:same-day-trips": "node -r ts-node/register --test src/tests/sameDayTrips.test.ts",
     "test:trip-log": "node -r ts-node/register --test src/tests/tripLog.test.ts src/tests/tripLogRead.test.ts src/tests/tripLogArrive.test.ts",
+    "test:stop-due": "node -r ts-node/register --test src/tests/stopDue.test.ts",
     "test:completed-on-create": "node -r ts-node/register --test src/tests/completedOnCreate.test.ts",
     "test:stop-times": "node -r ts-node/register --test src/tests/stopTimes.test.ts",
     "test:transit-times": "node -r ts-node/register --test src/tests/transitTimes.test.ts src/tests/transitQuotations.test.ts",

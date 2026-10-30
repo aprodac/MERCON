@@ -26,8 +26,6 @@ import { TONE, hm, overText, overviewRoutes, quotationRouteMatches, routeKm, rou
 
 type Filter = 'all' | 'set' | 'unset' | 'late';
 const FILTERS: [Filter, string][] = [['all', 'All'], ['set', 'Given TT set'], ['unset', 'Not set'], ['late', 'Running late']];
-const SOURCE = { road: 'road route', approx: 'distance', duty: 'duty length' } as const;
-
 export default function TransitOverviewScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -130,7 +128,7 @@ export default function TransitOverviewScreen() {
           <EmptyState title="No route matches" subtitle="Change the search or the filters." />
         ) : (
           routes.map((r) => {
-            const tone = routeTone(r);
+            const tone = r.saved ? routeTone(r) : null;
             const on = r.uid === picked?.uid;
             const km = routeKm(r.points);
             const actual5 = r.actualAvgMin != null ? Math.round(r.actualAvgMin / 5) * 5 : null;
@@ -152,8 +150,8 @@ export default function TransitOverviewScreen() {
                     </View>
                     <View style={s.given}>
                       <Text style={s.givenLabel}>Given TT</Text>
-                      <Text style={[s.givenValue, !r.saved && { color: INK }]}>{hm(r.givenMin)}</Text>
-                      <Text style={s.givenSub}>{r.saved ? 'set by you' : r.source ? SOURCE[r.source] : 'not located'}</Text>
+                      <Text style={[s.givenValue, !r.saved && { color: MUTED, fontSize: 15 }]}>{r.saved ? hm(r.givenMin) : 'No TT set'}</Text>
+                      {r.saved ? <Text style={s.givenSub}>set by you</Text> : null}
                     </View>
                   </View>
 
@@ -164,7 +162,7 @@ export default function TransitOverviewScreen() {
                     </View>
                     <View style={s.stat}>
                       <Text style={s.statLabel}>Against TT</Text>
-                      <Text style={[s.statValue, tone && { color: tone.fg }]}>{r.trips ? overText(r.actualAvgMin, r.givenMin) || '—' : '—'}</Text>
+                      <Text style={[s.statValue, tone && { color: tone.fg }]}>{r.trips && r.saved ? overText(r.actualAvgMin, r.givenMin) || '—' : '—'}</Text>
                     </View>
                     <View style={[s.stat, { flex: 0.8 }]}>
                       <Text style={s.statLabel}>Trips · 90 d</Text>

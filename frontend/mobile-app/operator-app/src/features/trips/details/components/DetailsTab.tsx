@@ -18,7 +18,7 @@ import { initialsOf, niceName } from '../../create/components/ui';
 import { transitText } from '../../create/components/TransitSheet';
 import type { LiveGpsFix, OperatorTripDetail, OperatorTripDocument, TripOverview, TripPhase } from '../../../../lib/operator';
 import {
-  ON_TIME_GRACE_MIN, TONE, type Tone, ago, billingLabel, canChangeAssignment, formatDuration, lineType, minutesLate, moneyOf, runTimes, sar, sortedStops,
+  ON_TIME_GRACE_MIN, TONE, type Tone, ago, billingLabel, canChangeAssignment, formatDuration, lineType, moneyOf, runTimes, sar, sortedStops, stopTiming,
   type Formatters,
   tripLegsOf,
   stopName,
@@ -191,7 +191,7 @@ function PreTripChecks({ checks, f }: { checks: NonNullable<TripOverview['checks
 /** How the finished trip actually ran: when, how long, how far, how punctual, and whether it's been invoiced. */
 function TripSummary({ trip, overview, f }: { trip: OperatorTripDetail; overview: TripOverview | null; f: Formatters }) {
   const stops = sortedStops(trip);
-  const judged = stops.map((st) => minutesLate(st.planned_arrival, st.actual_arrival)).filter((m): m is number => m != null);
+  const judged = stops.map((_, i) => stopTiming(stops, i).late).filter((m): m is number => m != null);
   const onTime = judged.filter((m) => m <= ON_TIME_GRACE_MIN).length;
   const late = judged.length - onTime;
   const run = runTimes(trip);

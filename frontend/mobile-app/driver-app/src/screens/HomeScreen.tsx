@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, StatusBar, RefreshControl, ActivityIndicator, Dimensions,
+  StyleSheet, StatusBar, RefreshControl, ActivityIndicator, Dimensions, Modal,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -28,7 +28,7 @@ import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useLanguage, getLocalizedStatus, bilingual, translate } from '@mercon/mobile-shared/lib/language-context';
 import { parseTripRouteNodes, getIntermediateStops, getOutboundIntermediateStops, getReturnIntermediateStops, targetFromWorkflowState, type TimelineStop } from '../utils/routeParser';
 import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
-import { inCompanyZone } from '@mercon/mobile-shared/lib/dates';
+import { companyDayKey, inCompanyZone } from '@mercon/mobile-shared/lib/dates';
 import { useNotifications } from '../hooks/use-notifications';
 import { localizeNotification } from '../utils/notificationText';
 
@@ -125,6 +125,42 @@ function fmtTime(value?: Date | string | null): string | null {
   return d.toLocaleTimeString(undefined, inCompanyZone({ hour: '2-digit', minute: '2-digit', hour12: false }));
 }
 
+/**
+ * The day of a planned time when it isn't today (company zone): "Tomorrow" or
+ * "Fri 31 Oct" — else null, the time alone is enough.
+ */
+function plannedDay(value: Date | string | null | undefined, tomorrowWord: string): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  const day = companyDayKey(d);
+  if (day === companyDayKey(Date.now())) return null;
+  if (day === companyDayKey(Date.now() + 24 * 60 * 60 * 1000)) return tomorrowWord;
+  return d.toLocaleDateString('en-GB', inCompanyZone({ weekday: 'short', day: 'numeric', month: 'short' }));
+}
+
+/**
+ * How long until a planned time, for the next-stop card (TestFlight 30 Oct: "also show
+ * how many hours and days remaining"): "45 min", "3 h 20 min", "1 day 8 h"; null once it has passed.
+ */
+function timeLeft(value: Date | string | null | undefined, now: number, ur: boolean): string | null {
+  if (!value) return null;
+  const mins = Math.floor((new Date(value).getTime() - now) / 60000);
+  if (!Number.isFinite(mins) || mins < 1) return null;
+  const d = Math.floor(mins / 1440);
+  const h = Math.floor((mins % 1440) / 60);
+  const m = mins % 60;
+  if (ur) {
+    if (d) return `${d} دن${h ? ` ${h} گھنٹے` : ''}`;
+    return h ? `${h} گھنٹے${m ? ` ${m} منٹ` : ''}` : `${m} منٹ`;
+  }
+  if (d) return `${d} day${d > 1 ? 's' : ''}${h ? ` ${h} h` : ''}`;
+  return h ? `${h} h${m ? ` ${m} min` : ''}` : `${m} min`;
+}
+
+/** A customer-app trip planned further ahead than this asks before it starts (same as the server). */
+const EARLY_START_MS = 3 * 60 * 60 * 1000;
+
 /** Minutes the pickup is overdue (planned start passed, driver not there yet), else 0. */
 function minutesLate(trip: MobileTrip): number {
   const ws = driverWorkflowState(trip);
@@ -169,6 +205,14 @@ const HomeScreen = () => {
   /** Same, but one language only — for small pills where both would not fit. */
   const LS = (en: string, ur: string) => (language === 'ur' ? ur : en);
   const [activeTab, setActiveTab] = useState('Home');
+  /** A trip-log trip the driver tapped Start on well before its time: asked to confirm first. */
+  const [earlyStart, setEarlyStart] = useState<MobileTrip | null>(null);
+  // Ticks each minute so "in 3 h 20 min" on the next-stop card stays current.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
   const [advancing, setAdvancing] = useState(false);
   const [delayModalVisible, setDelayModalVisible] = useState(false);
   const router = useRouter();
@@ -249,6 +293,22 @@ const HomeScreen = () => {
     onPress: () => void;
   }
 
+  const startLog = async (t: MobileTrip, confirmEarly: boolean) => {
+    setEarlyStart(null);
+    setAdvancing(true);
+    try {
+      setTrip(await tripService.startTripLog(t.id, { confirmEarly }));
+      router.push({ pathname: '/trip/external-app', params: { tripId: t.id } } as any);
+    } catch (err) {
+      // The server's clock says it's still early (the phone's may be off): ask, as above.
+      const code = (err as { response?: { data?: { error?: { code?: string } } } })?.response?.data?.error?.code;
+      if (code === 'TRIP_EARLY' && !confirmEarly) setEarlyStart(t);
+      else showToast(getApiErrorMessage(err), 'error');
+    } finally {
+      setAdvancing(false);
+    }
+  };
+
   const getWorkflowStateInfo = (t: MobileTrip): WorkflowStateInfo => {
     // Customer-app trips: Start, then the stop-by-stop screen (one screenshot per stop).
     if (usesTripLog(t)) {
@@ -262,16 +322,11 @@ const HomeScreen = () => {
         badgeLabel: 'Assigned',
         btnLabel: 'Start Trip',
         urLabel: 'ٹرپ شروع کریں',
-        onPress: async () => {
-          setAdvancing(true);
-          try {
-            setTrip(await tripService.startTripLog(t.id));
-            router.push({ pathname: '/trip/external-app', params: { tripId: t.id } } as any);
-          } catch (err) {
-            showToast(getApiErrorMessage(err), 'error');
-          } finally {
-            setAdvancing(false);
-          }
+        onPress: () => {
+          // Planned more than 3 h ahead: ask first (TestFlight 30 Oct, TRP-0095 showed "on the road" hours early).
+          const at = t.planned_start ? Date.parse(t.planned_start) : NaN;
+          if (at - Date.now() > EARLY_START_MS) setEarlyStart(t);
+          else void startLog(t, false);
         },
       };
     }
@@ -691,7 +746,10 @@ const HomeScreen = () => {
                 const nextStop = timelineStops[currentIdx];
                 const atNextStop = !!nextStop.actualArrival;
                 const stopType = (st: TimelineStop) => (language === 'ur' ? st.typeUrdu : st.typeEn);
-                const plannedAt = fmtTime(nextStop.plannedArrival);
+                // TestFlight 29 Oct: "show the date .. it's scheduled for tomorrow and it's not visible".
+                const plannedTime = fmtTime(nextStop.plannedArrival);
+                const plannedOn = plannedDay(nextStop.plannedArrival, LS('Tomorrow', 'کل'));
+                const plannedAt = plannedTime && plannedOn ? `${plannedOn} · ${plannedTime}` : plannedTime;
                 const scrollStops = timelineStops.length > 4;
 
                 const stepItems = timelineStops.map((st, idx) => {
@@ -734,7 +792,16 @@ const HomeScreen = () => {
                     <TouchableOpacity style={styles.nextStopBox} activeOpacity={0.85} onPress={() => handleStopPress(nextStop)}>
                       <View style={styles.nextStopHeader}>
                         <Text style={styles.nextStopLabel}>{atNextStop ? L('YOU ARE HERE', 'آپ یہاں ہیں') : L('NEXT STOP', 'اگلا اسٹاپ')}</Text>
-                        {plannedAt ? <Text style={styles.nextStopMeta}>{L(`Planned ${plannedAt}`, `متوقع ${plannedAt}`)}</Text> : null}
+                        {plannedAt ? (
+                          <View style={styles.nextStopWhen}>
+                            <Text style={styles.nextStopMeta}>{L(`Planned ${plannedAt}`, `متوقع ${plannedAt}`)}</Text>
+                            {!atNextStop && timeLeft(nextStop.plannedArrival, now, false) ? (
+                              <Text style={styles.nextStopLeft}>
+                                {L(`in ${timeLeft(nextStop.plannedArrival, now, false)}`, `${timeLeft(nextStop.plannedArrival, now, true)} میں`)}
+                              </Text>
+                            ) : null}
+                          </View>
+                        ) : null}
                       </View>
                       <View style={styles.nextStopRow}>
                         <View style={styles.nextStopIcon}>
@@ -919,6 +986,27 @@ const HomeScreen = () => {
         )}
       </ScrollView>
 
+      <Modal visible={!!earlyStart} transparent animationType="fade" onRequestClose={() => setEarlyStart(null)}>
+        <View style={styles.earlyOverlay}>
+          <View style={styles.earlyCard}>
+            <Text style={styles.earlyTitle}>{L('Start this trip now?', 'کیا یہ ٹرپ ابھی شروع کریں؟')}</Text>
+            <Text style={styles.earlyBody}>
+              {earlyStart
+                ? L(
+                    `${earlyStart.ref_id ?? 'This trip'} is planned for ${plannedDay(earlyStart.planned_start, 'Tomorrow') ?? 'today'} · ${fmtTime(earlyStart.planned_start) ?? ''}${timeLeft(earlyStart.planned_start, now, false) ? ` (in ${timeLeft(earlyStart.planned_start, now, false)})` : ''}. Once you start, the office sees it on the road.`,
+                    `${earlyStart.ref_id ?? 'یہ ٹرپ'} ${plannedDay(earlyStart.planned_start, 'کل') ?? 'آج'} · ${fmtTime(earlyStart.planned_start) ?? ''} کے لیے ہے۔ شروع کرنے پر دفتر اسے سڑک پر دیکھے گا۔`,
+                  )
+                : ''}
+            </Text>
+            <TouchableOpacity style={styles.earlyLater} onPress={() => setEarlyStart(null)} activeOpacity={0.85}>
+              <Text style={styles.earlyLaterText}>{L('Not yet', 'ابھی نہیں')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.earlyGo} onPress={() => earlyStart && void startLog(earlyStart, true)} activeOpacity={0.85}>
+              <Text style={styles.earlyGoText}>{L('Start now anyway', 'پھر بھی ابھی شروع کریں')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
       <DelayReportModal
         visible={delayModalVisible}
         tripId={displayTrip?.id ?? null}
@@ -1636,6 +1724,23 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.8,
     color: '#C2410C',
+  },
+  earlyOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 24 },
+  earlyCard: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, gap: 12 },
+  earlyTitle: { fontSize: 20, fontWeight: '800', color: '#1C1B1F' },
+  earlyBody: { fontSize: 15, lineHeight: 22, color: '#57534E' },
+  earlyLater: { backgroundColor: '#F26A4F', borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 4 },
+  earlyLaterText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+  earlyGo: { borderRadius: 14, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: '#E7E5E4' },
+  earlyGoText: { color: '#B42318', fontSize: 15, fontWeight: '700' },
+  nextStopWhen: {
+    alignItems: 'flex-end',
+  },
+  nextStopLeft: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#C2410C',
+    marginTop: 2,
   },
   nextStopMeta: {
     fontSize: 12,

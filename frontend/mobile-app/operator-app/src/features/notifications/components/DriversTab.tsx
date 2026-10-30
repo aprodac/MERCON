@@ -14,7 +14,7 @@ import { Check, CheckCheck, ImageOff, MessageCircle, Play, TriangleAlert, Camera
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import { needsSending, type DriverUpdate, type LiveMediaItem } from '../../../lib/operator';
-import { STAGE_TITLE, durationText, photoSetWhere } from '../../dashboard/actions/actionModel';
+import { stageTitle, durationText, photoSetWhere } from '../../dashboard/actions/actionModel';
 import { niceName } from '../../trips/create/components/ui';
 import { EmptyState, SectionLabel, SkeletonCard, INK, LINE, MUTED, p, tap } from './parts';
 
@@ -122,7 +122,7 @@ function UpdateCard({ u, when, onSend, onView, onMarkRead }: {
   const unsent = u.items.filter((m) => !u.sent_ids.includes(m.id));
   const shown = unsent.slice(0, THUMBS);
   const extra = unsent.length - shown.length;
-  const title = STAGE_TITLE[u.stage] ?? 'Photos';
+  const title = stageTitle(u);
   const where = photoSetWhere(u, niceName);
   const crew = [u.vehicle_plate, u.driver ? niceName(u.driver.name) : null].filter(Boolean).join(' · ');
   const to = u.customer?.group_name || niceName(u.customer?.name) || 'customer';
@@ -179,10 +179,10 @@ function SentRow({ u, first, when, onView }: { u: DriverUpdate; first: boolean; 
   const readOnly = !last && !!u.marked_read;
   return (
     <TouchableOpacity style={[s.row, !first && p.rowBorder]} onPress={() => { tap(); onView(u, 0); }} activeOpacity={0.6}
-      accessibilityRole="button" accessibilityLabel={`${STAGE_TITLE[u.stage] ?? 'Photos'}, ${u.trip.ref_id ?? ''}, sent`}>
+      accessibilityRole="button" accessibilityLabel={`${stageTitle(u)}, ${u.trip.ref_id ?? ''}, sent`}>
       {cover ? <Thumb m={cover} size={40} /> : null}
       <View style={{ flex: 1, gap: 1 }}>
-        <Text style={s.rowTitle} numberOfLines={1}>{STAGE_TITLE[u.stage] ?? 'Photos'} · {u.trip.ref_id ?? ''}</Text>
+        <Text style={s.rowTitle} numberOfLines={1}>{stageTitle(u)} · {u.trip.ref_id ?? ''}</Text>
         <Text style={s.meta} numberOfLines={1}>
           {countLabel(u.items)}
           {last ? ` · to ${RECIPIENT[last.recipient] ?? 'customer'}${last.shared_by ? ` by ${niceName(last.shared_by)}` : ''}` : ''}

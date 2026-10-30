@@ -38,8 +38,10 @@ export interface TripStatusChange {
   delayReason?: string | null;
 }
 
-export function tripName(refId: string | null | undefined): string {
-  return refId ? `Trip ${refId}` : 'A trip';
+/** "Trip TRP-0042", with the truck's plate when known ("Trip TRP-0042 · DRA-6484") — TestFlight 29 Oct. */
+export function tripName(refId: string | null | undefined, plate?: string | null): string {
+  const name = refId ? `Trip ${refId}` : 'A trip';
+  return plate?.trim() ? `${name} · ${plate.trim()}` : name;
 }
 
 export function driverDisplayName(d: { first_name?: string | null; last_name?: string | null } | null | undefined): string {

@@ -9,6 +9,7 @@ import { DriverAvatar } from '../../../drivers/components/DriverAvatar';
 import { UNASSIGNED, type CreateTripForm } from '../useCreateTrip';
 import type { OperatorDriverOption } from '../../../../lib/operator';
 import { CompanyAvatar, fmtDay, fmtSar, initialsOf, niceName, shortName } from './ui';
+import { transitText } from './TransitSheet';
 
 const fullName = (d?: { first_name?: string; last_name?: string } | null) => (d ? niceName(`${d.first_name || ''} ${d.last_name || ''}`.trim()) : '');
 
@@ -74,6 +75,29 @@ export function ReviewSheet({
   const days = [...form.selectedDates].sort();
   /** "Day 2 · Fri 9 Oct" — a run's day, dated from the first operating day. */
   const runDay = (n: number) => `Day ${n + 1}${days[0] ? ` (${fmtDay(addDaysToDateStr(days[0], n))})` : ''}`;
+  // Transit times (TestFlight 29 Oct: "show transit time in review"): pickup → drop-off, return loading → home.
+  const clock = (t?: string) => {
+    const [h, m] = (t || '').split(':').map(Number);
+    return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
+  };
+  const span = (startDay: number, start?: string, endDay?: number, end?: string) => {
+    const a = clock(start);
+    const b = clock(end);
+    if (a == null || b == null) return null;
+    const mins = (endDay ?? 0) * 1440 + b - (startDay * 1440 + a);
+    return mins > 0 ? mins : null;
+  };
+  const dayNo = (d?: string) => (d ? Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)) / 86400000 : 0);
+  const ret = returnLegDayOffsets(slot);
+  const outTT = form.isMonthly
+    ? span(0, slot.pickupTime, dropoffDayOffset(slot), slot.dropoffTime)
+    : span(dayNo(slot.date), slot.pickupTime, dayNo(slot.dropoffDate || slot.date), slot.dropoffTime);
+  const retLoadDate = slot.returnPickupDate || slot.dropoffDate || slot.date;
+  const backTT = !form.isRoundTrip
+    ? null
+    : form.isMonthly
+      ? span(ret.pickup ?? 0, slot.returnPickupTime, ret.arrival ?? ret.pickup ?? 0, slot.returnDropoffTime)
+      : span(dayNo(retLoadDate), slot.returnPickupTime, dayNo(slot.returnDropoffDate || retLoadDate), slot.returnDropoffTime);
   const marginKnown = money.billing > 0 && money.costKnown;
   const tone = !marginKnown ? 'none' : money.marginPct >= 20 ? 'good' : money.marginPct >= 5 ? 'thin' : 'low';
 
@@ -168,6 +192,14 @@ export function ReviewSheet({
               {`Way back: loads ${fmtDay(slot.returnPickupDate || slot.dropoffDate || slot.date)} ${slot.returnPickupTime}`}
               {slot.returnDropoffTime ? ` → home ${fmtDay(slot.returnDropoffDate || slot.returnPickupDate || slot.date)} ${slot.returnDropoffTime}` : ''}
             </Text>
+          ) : null}
+          {outTT || backTT ? (
+            <View style={styles.ttRow}>
+              <Text style={styles.ttCap}>Transit time</Text>
+              <Text style={styles.ttValue}>
+                {[outTT ? transitText(outTT) : null, backTT ? `back ${transitText(backTT)}` : null].filter(Boolean).join(' · ')}
+              </Text>
+            </View>
           ) : null}
         </Block>
 
@@ -407,6 +439,9 @@ function durationText(d1: string, t1: string, d2: string, t2: string): string {
 }
 
 const styles = StyleSheet.create({
+  ttRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Colors.gray200 },
+  ttCap: { fontSize: 12, fontWeight: '700', color: Colors.gray500 },
+  ttValue: { fontSize: 14, fontWeight: '800', color: Colors.gray900 },
   hero: { borderRadius: 18, padding: Spacing.md, backgroundColor: Colors.gray50, borderWidth: 1, borderColor: Colors.gray100 },
   heroTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   heroName: { fontSize: 16, fontWeight: '800', color: Colors.charcoal },

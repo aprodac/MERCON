@@ -1,6 +1,6 @@
 /**
- * Trip log — customer-app trips (driver_workflow EXTERNAL_APP) where the stops
- * aren't known when the trip is booked. After Start the driver only sends
+ * Trip log — how every trip runs in the driver app (first customer-app trips,
+ * driver_workflow EXTERNAL_APP, where the stops aren't known when booked). After Start the driver only sends
  * screenshots, as many times as needed; each send is one log entry (time, GPS,
  * place) and nothing more. The office turns entries into stops afterwards.
  *
@@ -88,12 +88,14 @@ export function tripLogEntries<D extends TripLogDoc>(docs: readonly D[] | null |
 }
 
 /**
- * Whether the driver app runs this trip as a trip log: customer-app trips that
- * haven't started on the step-by-step screens. A trip already started the old
- * way (an older app build) finishes the old way.
+ * Whether the driver app runs this trip as a trip log. Every trip does since
+ * 30 Oct (owner: "keep the customer-app workflow as the main one, remove the
+ * normal screens"): customer-app trips send screenshots, MERCON trips photos.
+ * A trip already started on the step-by-step screens (an older app build)
+ * finishes that way.
  */
 export function usesTripLog(trip: { driver_workflow?: string | null; driver_workflow_state?: string | null } | null | undefined): boolean {
-  if (trip?.driver_workflow !== 'EXTERNAL_APP') return false;
+  if (!trip) return false;
   const ws = trip.driver_workflow_state;
   return !ws || ws === 'ASSIGNED' || ws === TRIP_LOG_STATE;
 }

@@ -164,8 +164,10 @@ function Legend({ tone, label }: { tone: keyof typeof TONE; label: string }) {
 }
 
 export function RouteCard({ r, onPress }: { r: TransitRow; onPress: () => void }) {
-  const tone = r.tone ? TONE[r.tone] : null;
-  const over = overText(r.actualAvgMin, r.plannedMin);
+  // Only a time someone saved is judged against; with none the card says "No TT set"
+  // (owner 30 Oct: a booked or worked-out time shown there only confuses).
+  const tone = r.plannedSaved && r.tone ? TONE[r.tone] : null;
+  const over = r.plannedSaved ? overText(r.actualAvgMin, r.plannedMin) : '';
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={`${r.from} to ${r.to}, ${r.size}`}>
       <Card style={[{ padding: 14, gap: 10 }, tone ? { borderLeftWidth: 4, borderLeftColor: tone.fg } : null]}>
@@ -181,10 +183,10 @@ export function RouteCard({ r, onPress }: { r: TransitRow; onPress: () => void }
           <ChevronRight size={18} color={MUTED} />
         </View>
         {r.trips === 0 ? (
-          <Text style={s.none}>{`No trips in this period · new trips plan ${hm(r.plannedMin)}`}</Text>
+          <Text style={s.none}>{r.plannedSaved ? `No trips in this period · new trips plan ${hm(r.plannedMin)}` : 'No trips in this period · No TT set'}</Text>
         ) : (
           <View style={s.nums}>
-            <View style={s.num}><Text style={s.numLabel}>Given TT</Text><Text style={s.numValue}>{hm(r.plannedMin)}</Text></View>
+            <View style={s.num}><Text style={s.numLabel}>Given TT</Text><Text style={[s.numValue, !r.plannedSaved && s.noTT]}>{r.plannedSaved ? hm(r.plannedMin) : 'No TT set'}</Text></View>
             <View style={s.num}>
               <Text style={s.numLabel}>Actual avg</Text>
               <View style={[s.actual, tone && { backgroundColor: tone.bg }]}><Text style={[s.numValue, tone && { color: tone.fg }]}>{hm(r.actualAvgMin)}</Text></View>
@@ -199,6 +201,7 @@ export function RouteCard({ r, onPress }: { r: TransitRow; onPress: () => void }
 }
 
 const s = StyleSheet.create({
+  noTT: { color: MUTED, fontSize: 15 },
   page: { flex: 1, backgroundColor: PAGE },
   bar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 8, gap: 8 },
   barBtn: { width: 40, height: 40, borderRadius: 13, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E9E9EC' },
