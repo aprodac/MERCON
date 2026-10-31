@@ -247,7 +247,8 @@ export function statePhrase(t: OperatorTripDetail, phase: TripPhase, f: Formatte
   if (phase === 'active') {
     const i = tripStopProgress(t).next;
     if (i < 0) return 'At the last stop';
-    const due = stops[i].planned_arrival ? ` · due ${f.smart(stops[i].planned_arrival)}` : '';
+    const dueAt = stopDueIso(stops, i);
+    const due = dueAt ? ` · due ${f.smart(dueAt)}` : '';
     const legs = tripLegsOf(t);
     const leg = legs.round ? (legs.ret.includes(stops[i]) ? 2 : 1) : liveLegOf(legs, t.status);
     const legText = leg ? `${legLabel(leg)} · ` : '';
@@ -664,6 +665,16 @@ export function metersText(m: number): string {
   if (m < 1000) return `${Math.max(1, Math.round(m / 10) * 10)} m`;
   const km = m / 1000;
   return `${km < 10 ? km.toFixed(1) : Math.round(km)} km`;
+}
+
+/**
+ * When a stop not reached yet is due, for "due …" text: the departure from the stop
+ * before + the planned time between, never earlier than booked (shared-types stopDue).
+ * A trip booked 04:00 → 20:35 that leaves at 04:31 is due 21:06, not 20:35
+ * (TestFlight 31 Oct, TRP-0084). Null when the stop has no planned time.
+ */
+export function stopDueIso(stops: Stop[], i: number): string | null {
+  return stopDueAt(stops, i)?.toISOString() ?? null;
 }
 
 /** Planned vs real at a stop: how late it arrived (negative = early) and how long the truck stood there. */

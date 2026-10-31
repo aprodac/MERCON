@@ -107,8 +107,18 @@ export async function deleteTrips(ids: string[]): Promise<{ deleted: number; kep
 export const COMPLETED_DELETE_WARNING =
   'This trip was delivered: the driver\u2019s photos and proof of delivery, its times and charges go with it, and the other operators get a notification.';
 
-/** A trip can be deleted from the app: not running (cancel it instead) and not invoiced. */
-export const canDeleteTrip = (status: string) => ['Draft', 'Scheduled', 'Cancelled', 'Completed'].includes(status);
+/**
+ * A trip can be deleted from the app: not running (cancel it instead) and not invoiced.
+ * A Delayed trip that hasn't reached its first stop ("Starting late") isn't running yet,
+ * so it can be deleted too (TestFlight 31 Oct, build 141: "Starting late trips can't be
+ * deleted" → "Make it possible").
+ */
+export const canDeleteTrip = (trip: {
+  status?: string | null;
+  stops?: Array<{ actual_arrival?: unknown; actual_departure?: unknown }> | null;
+}) =>
+  ['Draft', 'Scheduled', 'Cancelled', 'Completed'].includes(trip.status ?? '')
+  || (trip.status === 'Delayed' && !(trip.stops ?? []).some((x) => x.actual_arrival || x.actual_departure));
 
 /**
  * Asks, then deletes a trip — and, when other not-started trips were created

@@ -12,27 +12,30 @@
  *              ones by when they ended, cancelled ones by their planned day.
  * Search looks across every trip on the server. Long-press a trip for quick
  * actions (call, WhatsApp, send status, change driver).
+ * Schedule › Select: tick trips, then delete them or change their status in one
+ * go (TestFlight 31 Oct, build 141: "select trips and delete in bulk, or change status").
  */
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, TextInput, SectionList, FlatList, RefreshControl, ActivityIndicator, Linking, ScrollView,
+  View, Text, TouchableOpacity, StyleSheet, TextInput, SectionList, FlatList, RefreshControl, ActivityIndicator, Linking, ScrollView, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  BookOpen, Building2, CalendarDays, ChevronRight, CircleCheckBig, Copy, History, MessageCircle, Phone, Plus, Radio, Search, Send, Trash2, Truck, UserRound, X, ArrowUpRight, type LucideIcon,
+  BookOpen, Building2, CalendarDays, Check, ChevronRight, CircleDot, CircleCheckBig, Copy, History, MessageCircle, Phone, Plus, Radio, Search, Send, Trash2, Truck, UserRound, X, ArrowUpRight, type LucideIcon,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { ErrorState } from '@mercon/mobile-shared/ui';
-import type { OperatorTrip } from '../../../lib/operator';
+import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
+import { operatorService, type OperatorTrip } from '../../../lib/operator';
 import { TripCard } from './TripCard';
 import { AppTopBar } from '@/components/AppTopBar';
 import { FilterChips } from '@/components/FilterChips';
 import { useNow, useTripList, HISTORY_DAYS, SCHEDULE_AFTER, type View as ListView } from './useTripList';
-import { askDeleteTrip, canDeleteTrip } from '../edit/movePlan';
+import { COMPLETED_DELETE_WARNING, askDeleteTrip, canDeleteTrip, deleteTrips } from '../edit/movePlan';
 import {
   clashesOf, dayLabel, isLateToStart, dayRange, daysBetween, driverNameOf, driverPhoneOf, historyDayIso, needsAttention, phaseOf, tripDayIso, type TimeFmt,
 } from './tripListModel';
@@ -77,6 +80,9 @@ export default function TripsScreen() {
   const [repeatOpen, setRepeatOpen] = useState(false);
   const [companyOpen, setCompanyOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  // Schedule › Select: the ticked trip ids (null = not selecting), and a bulk action running.
+  const [picked, setPicked] = useState<Set<string> | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const now = useNow();
   const data = useTripList(view, debounced, now, scope?.filter);
@@ -203,9 +209,107 @@ export default function TripsScreen() {
     return clashesOf([...seen.values()]);
   }, [view, data.window, data.open, data.results, data.searching, data.deleted]);
 
-  const renderCard = (t: OperatorTrip, showDay = false) => (
-    <TripCard trip={t} f={f} now={now} showDay={showDay} clash={clashes.get(t.id)} onPress={open} onLongPress={setActionsFor} />
-  );
+  // Leaving the day, the tab or starting a search ends selecting.
+  useEffect(() => { setPicked(null); }, [view, selectedDay, debounced]);
+  const selecting = !!picked && view === 'schedule' && !data.searching;
+  const togglePick = (t: OperatorTrip) => {
+    if (!canDeleteTrip(t)) {
+      Alert.alert(t.ref_id ?? 'Trip', 'This trip is on the road — open it to cancel it or change its status.');
+      return;
+    }
+    tap();
+    setPicked((p) => {
+      const next = new Set(p ?? []);
+      if (next.has(t.id)) next.delete(t.id); else next.add(t.id);
+      return next;
+    });
+  };
+  const pickable = useMemo(() => dayTrips.filter((t) => canDeleteTrip(t)), [dayTrips]);
+  const allPicked = !!picked && pickable.length > 0 && pickable.every((t) => picked.has(t.id));
+  const pickedTrips = useMemo(() => (picked ? dayTrips.filter((t) => picked.has(t.id)) : []), [picked, dayTrips]);
+  const refsOf = (ts: OperatorTrip[]) => {
+    const refs = ts.map((t) => t.ref_id ?? 'a trip');
+    return `${refs.slice(0, 8).join(', ')}${refs.length > 8 ? ` +${refs.length - 8} more` : ''}`;
+  };
+  const afterBulk = async () => {
+    setPicked(null);
+    await queryClient.invalidateQueries({ queryKey: ['trips'] });
+  };
+  const deletePicked = () => {
+    const ts = pickedTrips;
+    if (!ts.length) return;
+    const done = ts.filter((t) => t.status === 'Completed').length;
+    Alert.alert(
+      `Delete ${plural(ts.length, 'trip')}?`,
+      `${refsOf(ts)}\n\nThey disappear from the trip lists, the driver app and the customer link. Admins can restore them from the Recycle bin.${done ? `\n\n${done} ${done === 1 ? 'is' : 'are'} delivered: ${COMPLETED_DELETE_WARNING.replace('This trip was delivered: ', '')}` : ''}`,
+      [
+        { text: 'Keep', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive', onPress: async () => {
+            setBulkBusy(true);
+            try {
+              const r = await deleteTrips(ts.map((t) => t.id));
+              if (r.kept.length) Alert.alert(`Deleted ${r.deleted} of ${ts.length}`, `Kept because they are invoiced or paid: ${r.kept.join(', ')}`);
+              await afterBulk();
+            } catch (e) {
+              Alert.alert('Could not delete', getApiErrorMessage(e));
+            } finally {
+              setBulkBusy(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+  // Statuses a trip that hasn't started can move to (the API's allowed transitions).
+  const setStatusPicked = (status: 'Scheduled' | 'Draft' | 'Cancelled') => {
+    const ts = pickedTrips.filter((t) => t.status !== status);
+    if (!ts.length) { setPicked(null); return; }
+    const run = async () => {
+      setBulkBusy(true);
+      const failed: string[] = [];
+      for (const t of ts) {
+        try { await operatorService.updateTripStatus(t.id, status); } catch (e) { failed.push(`${t.ref_id ?? 'Trip'}: ${getApiErrorMessage(e)}`); }
+      }
+      setBulkBusy(false);
+      if (failed.length) Alert.alert(`Changed ${ts.length - failed.length} of ${ts.length}`, failed.slice(0, 6).join('\n'));
+      await afterBulk();
+    };
+    if (status === 'Cancelled') {
+      Alert.alert(`Cancel ${plural(ts.length, 'trip')}?`, `${refsOf(ts)}\n\nTheir drivers and trucks are freed.`, [
+        { text: 'Keep', style: 'cancel' },
+        { text: 'Cancel trips', style: 'destructive', onPress: run },
+      ]);
+    } else run();
+  };
+  const changeStatusPicked = () => {
+    if (!pickedTrips.length) return;
+    Alert.alert(`Change status of ${plural(pickedTrips.length, 'trip')}`, refsOf(pickedTrips), [
+      { text: 'Scheduled', onPress: () => setStatusPicked('Scheduled') },
+      { text: 'Draft', onPress: () => setStatusPicked('Draft') },
+      { text: 'Cancelled', style: 'destructive', onPress: () => setStatusPicked('Cancelled') },
+      { text: 'Back', style: 'cancel' },
+    ]);
+  };
+
+  const renderCard = (t: OperatorTrip, showDay = false) => {
+    const card = (
+      <TripCard
+        trip={t} f={f} now={now} showDay={showDay} clash={clashes.get(t.id)}
+        onPress={selecting ? togglePick : open}
+        onLongPress={selecting ? togglePick : setActionsFor}
+      />
+    );
+    if (!selecting) return card;
+    return (
+      <View style={s.pickRow}>
+        <TouchableOpacity onPress={() => togglePick(t)} hitSlop={8} accessibilityRole="checkbox" accessibilityState={{ checked: !!picked?.has(t.id), disabled: !canDeleteTrip(t) }}>
+          <Box on={!!picked?.has(t.id)} off={!canDeleteTrip(t)} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>{card}</View>
+      </View>
+    );
+  };
 
   const views: { id: ListView; label: string; icon: LucideIcon; badge?: number }[] = [
     { id: 'now', label: 'Now', icon: Radio, badge: delayedTrips.length || undefined },
@@ -329,7 +433,8 @@ export default function TripsScreen() {
             <FlatList
               data={dayTrips}
               keyExtractor={(t) => t.id}
-              contentContainerStyle={s.list}
+              contentContainerStyle={[s.list, selecting && { paddingBottom: 200 }]}
+              extraData={picked}
               refreshControl={refreshControl}
               renderItem={({ item }) => renderCard(item)}
               ItemSeparatorComponent={Gap}
@@ -349,7 +454,20 @@ export default function TripsScreen() {
                       {selectedCount?.attention ? <Text style={{ color: '#B42318' }}> · {selectedCount.attention} need attention</Text> : null}
                     </Text>
                   </View>
-                  {dayTrips.length ? <RepeatLink onPress={() => { tap(); setRepeatOpen(true); }} /> : null}
+                  {dayTrips.length ? (
+                    <View style={s.toolRow}>
+                      {selecting ? (
+                        <TouchableOpacity style={s.repeat} onPress={() => { tap(); setPicked(allPicked ? new Set() : new Set(pickable.map((t) => t.id))); }} activeOpacity={0.7} accessibilityRole="button">
+                          <Box on={allPicked} />
+                          <Text style={s.repeatText}>{allPicked ? 'Clear' : `Select all (${pickable.length})`}</Text>
+                        </TouchableOpacity>
+                      ) : <RepeatLink onPress={() => { tap(); setRepeatOpen(true); }} />}
+                      <TouchableOpacity style={[s.repeat, selecting && s.selectOn]} onPress={() => { tap(); setPicked((p) => (p ? null : new Set())); }} activeOpacity={0.7} accessibilityRole="button">
+                        {selecting ? null : <Check size={15} color={INK} strokeWidth={2.4} />}
+                        <Text style={[s.repeatText, selecting && { color: '#fff' }]}>{selecting ? 'Done' : 'Select'}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
                   {ranEarly.map((t) => (
                     <TouchableOpacity key={t.id} style={s.earlyRow} onPress={() => { tap(); open(t); }} activeOpacity={0.7} accessibilityRole="button">
                       <CircleCheckBig size={16} color="#146C3C" />
@@ -452,6 +570,27 @@ export default function TripsScreen() {
         onOpen={(t, extra) => { setActionsFor(null); setTimeout(() => open(t, extra), 250); }}
         onDelete={(t) => askDeleteTrip(t, { deleted: () => queryClient.invalidateQueries({ queryKey: ['trips'] }) })}
       />
+
+      {selecting ? (
+        <View style={s.bar}>
+          <TouchableOpacity style={s.barCancel} onPress={() => setPicked(null)} accessibilityLabel="Stop selecting" hitSlop={6}>
+            <X size={18} color={INK} />
+          </TouchableOpacity>
+          <Text style={s.barText}>{picked?.size ?? 0} selected</Text>
+          {bulkBusy ? <ActivityIndicator color={Colors.primary} /> : (
+            <>
+              <TouchableOpacity style={[s.barStatus, !picked?.size && { opacity: 0.4 }]} disabled={!picked?.size} onPress={changeStatusPicked} accessibilityRole="button">
+                <CircleDot size={16} color={INK} />
+                <Text style={s.barStatusText}>Status</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.barDelete, !picked?.size && { opacity: 0.4 }]} disabled={!picked?.size} onPress={deletePicked} accessibilityRole="button">
+                <Trash2 size={16} color="#fff" />
+                <Text style={s.barDeleteText}>Delete</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -465,6 +604,13 @@ const RepeatLink = ({ onPress }: { onPress: () => void }) => (
     <Text style={s.repeatText}>Repeat trips…</Text>
   </TouchableOpacity>
 );
+function Box({ on, off }: { on: boolean; off?: boolean }) {
+  return (
+    <View style={[s.box, on && s.boxOn, off && s.boxOff]}>
+      {on ? <Check size={13} color="#fff" strokeWidth={3} /> : null}
+    </View>
+  );
+}
 const Loading = () => <ActivityIndicator color={Colors.primary} style={{ marginVertical: 30 }} />;
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -596,7 +742,7 @@ function QuickActions({ trip, onClose, onOpen, onDelete }: { trip: OperatorTrip 
     { icon: Send, label: 'Send status to customer', sub: 'Vehicle status update on WhatsApp', bg: '#FDECE8', fg: '#B43A27', hidden: finished, onPress: () => onOpen(trip, { tab: 'updates', share: 'status' }) },
     { icon: UserRound, label: trip.driver ? 'Change driver' : 'Assign driver', bg: '#E7EEFC', fg: '#2449A8', hidden: finished || !!trip.is_third_party, onPress: () => onOpen(trip, { assign: 'driver' }) },
     { icon: ArrowUpRight, label: 'Open trip', bg: '#F1F3F7', fg: INK, onPress: () => onOpen(trip) },
-    { icon: Trash2, label: 'Delete trip', sub: 'Made by mistake? Remove it from every list', bg: '#FEF3F2', fg: '#B42318', danger: true, hidden: !canDeleteTrip(trip.status), onPress: () => { onClose(); setTimeout(() => onDelete(trip), 250); } },
+    { icon: Trash2, label: 'Delete trip', sub: 'Made by mistake? Remove it from every list', bg: '#FEF3F2', fg: '#B42318', danger: true, hidden: !canDeleteTrip(trip), onPress: () => { onClose(); setTimeout(() => onDelete(trip), 250); } },
   ];
   return (
     <AppModal visible onClose={onClose} type="bottom-sheet" title={`${trip.ref_id ?? 'Trip'} · ${trip.customer?.name ?? ''}`}>
@@ -661,6 +807,19 @@ const s = StyleSheet.create({
   dayCount: { fontSize: 13, fontWeight: '700', color: MUTED, flexShrink: 1, textAlign: 'right' },
   repeat: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E4E4E8' },
   repeatText: { fontSize: 13, fontWeight: '800', color: INK },
+  toolRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  selectOn: { backgroundColor: INK, borderColor: INK },
+  pickRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  box: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: '#B8BCC8', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  boxOn: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  boxOff: { backgroundColor: '#F1F1F3', borderColor: '#E4E4E7' },
+  bar: { position: 'absolute', left: 16, right: 16, bottom: 110, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#fff', borderRadius: 18, padding: 10, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
+  barCancel: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#F1F3F7', alignItems: 'center', justifyContent: 'center' },
+  barText: { flex: 1, fontSize: 15, fontWeight: '800', color: INK },
+  barStatus: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F1F3F7', borderRadius: 12, paddingHorizontal: 12, height: 40 },
+  barStatusText: { color: INK, fontSize: 14, fontWeight: '800' },
+  barDelete: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#D92D20', borderRadius: 12, paddingHorizontal: 14, height: 40 },
+  barDeleteText: { color: '#fff', fontSize: 14, fontWeight: '800' },
   day: { width: 52, height: 80, borderRadius: 16, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', gap: 1, borderWidth: 1, borderColor: '#EEF0F4' },
   dayOn: { backgroundColor: INK, borderColor: INK },
   dayToday: { borderColor: '#C4432F', borderWidth: 1.5 },
