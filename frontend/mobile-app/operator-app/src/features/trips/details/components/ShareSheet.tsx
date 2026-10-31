@@ -13,7 +13,7 @@ import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { API_URL, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import { operatorService, type DriverUpdate, type OperatorTripDetail, type ShareRecipient, type TripPhase } from '../../../../lib/operator';
-import { customerContacts, digits, quickMessage, sortedStops, stopName, updateTitle, waLink, withTag, type Formatters, type QuickKind, type Remaining, type TagPerson } from '../tripDetailsModel';
+import { customerContacts, digits, quickMessage, sortedStops, stopDueIso, stopName, updateTitle, waLink, withTag, type Formatters, type QuickKind, type Remaining, type TagPerson } from '../tripDetailsModel';
 import { INK, MUTED, WA, tap } from './parts';
 import { photoSetWhere } from '../../../dashboard/actions/actionModel';
 import { niceName } from '../../create/components/ui';
@@ -114,7 +114,7 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
   const stops = sortedStops(trip);
   const nextIdx = stops.findIndex((s) => !s.actual_arrival);
   const nextLine = phase === 'active' && nextIdx >= 0
-    ? `Next: ${stopName(stops[nextIdx], nextIdx)}${stops[nextIdx].planned_arrival ? ` · due ${f.smart(stops[nextIdx].planned_arrival)}` : ''}`
+    ? `Next: ${stopName(stops[nextIdx], nextIdx)}${stopDueIso(stops, nextIdx) ? ` · due ${f.smart(stopDueIso(stops, nextIdx)!)}` : ''}`
     : null;
 
   // The last message written for the operator — declared before the reset

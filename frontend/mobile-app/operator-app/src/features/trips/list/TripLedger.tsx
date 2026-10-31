@@ -208,12 +208,12 @@ export function TripLedger({ f, todayKey, scope, customer, onPickCustomer, onCle
   // Short month ("Oct 2026") so it stays on one line next to All time / Select.
   const title = first ? first.toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : 'All time';
 
-  const deletable = (r: Row) => !!r.trip && canDeleteTrip(r.trip.status);
+  const deletable = (r: Row) => !!r.trip && canDeleteTrip(r.trip);
   const selectable = shown.filter(deletable);
   const toggle = (r: Row) => {
     if (!picked) return;
     if (!deletable(r)) {
-      Alert.alert(r.ref, r.deleted ? 'Already deleted — restore it from the Recycle bin.' : `${r.status} trips can't be deleted. Cancel a running trip first; invoiced trips stay.`);
+      Alert.alert(r.ref, r.deleted ? 'Already deleted — restore it from the Recycle bin.' : `${r.status} trips can't be deleted. Cancel a trip that is on the road first; invoiced trips stay.`);
       return;
     }
     const next = new Set(picked);

@@ -29,3 +29,12 @@ test('no planned time, or no arrival, is not judged', () => {
   assert.equal(stopDueAt([{ planned_arrival: null }], 0), null);
   assert.equal(stopMinutesLate(stops, 1, null), null);
 });
+
+// TRP-0084 (TestFlight 31 Oct): Riyadh booked 04:00, left 04:31; Al Bahah booked 20:35 (16 h 35 m) — due 21:06, not 20:35.
+test('a stop not reached yet is due departure + transit time', () => {
+  const trp84 = [
+    { planned_arrival: '2026-10-31T04:00:00+03:00', actual_departure: '2026-10-31T04:31:00+03:00' },
+    { planned_arrival: '2026-10-31T20:35:00+03:00', actual_departure: null },
+  ];
+  assert.equal(stopDueAt(trp84, 1)?.toISOString(), new Date('2026-10-31T21:06:00+03:00').toISOString());
+});
