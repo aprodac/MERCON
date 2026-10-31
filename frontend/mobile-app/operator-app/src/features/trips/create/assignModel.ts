@@ -2,14 +2,16 @@
  * Who to offer on step 3, and why — the web wizard's rules
  * (useCreateTripForm driverOptions / vehicleOptions):
  *  - drivers keep the server ranking's order and groups (rankDrivers), with its
- *    "why" chips; only a clash ("can't take this trip") blocks a driver.
- *    Too little rest asks "are you sure?" and can be booked anyway (TestFlight
- *    feedback 2026-10-16); still running another trip only warns (owner
- *    decision 2026-10-03).
+ *    "why" chips; only a booking clash blocks a driver (the API refuses it too).
+ *    Every other "can't take this trip" reason — too little rest, licence
+ *    expired, off duty, truck in the workshop — asks "are you sure?" and can be
+ *    booked anyway (TestFlight 2026-10-16 for rest; 2026-10-31 build 141:
+ *    "should be able to assign driver anyway .. just give warning"); still
+ *    running another trip only warns (owner decision 2026-10-03).
  *  - trucks follow the class compatibility rules (preferred / allowed); a truck
  *    on another trip warns, one in the workshop or out of service is blocked.
  */
-import { DISPATCH_RULES, DRIVER_GROUP_LABELS, normalizeTruckClass, truckClassOfVehicle, type DriverGroup } from '@mercon/shared-types';
+import { DRIVER_GROUP_LABELS, normalizeTruckClass, truckClassOfVehicle, type DriverGroup } from '@mercon/shared-types';
 import type { OperatorDriverOption, OperatorVehicleOption, RecommendedDriver, VehicleCompatibilityRule } from '../../../lib/operator';
 
 export type ChipTone = 'neutral' | 'success' | 'warning' | 'accent';
@@ -23,8 +25,10 @@ export interface DriverChoice {
   group: DriverGroup;
   groupLabel: string;
   blocked: boolean;
-  /** Unavailable only for too little rest — pickable after a confirm. */
+  /** Unavailable only for too little rest. */
   resting: boolean;
+  /** Unavailable for a reason other than a booking clash — pickable after a confirm naming it. */
+  warnOnly: boolean;
   /** "Free", "On a trip", "Booked", "Resting", "Unavailable". */
   statusLabel: string;
   chips: FactChip[];
@@ -50,7 +54,8 @@ export function driverChoices(
   const rank = new Map(recommended.map((r, i) => [r.driverId, i]));
   const recOf = new Map(recommended.map((r) => [r.driverId, r]));
   const bestLabel = opts.origin && opts.destination ? `Best for ${opts.origin} → ${opts.destination}` : DRIVER_GROUP_LABELS.best;
-  const unavailableLabel = `${DRIVER_GROUP_LABELS.unavailable} · needs ${DISPATCH_RULES.minRestHours} h rest and ${DISPATCH_RULES.bufferHours} h between trips`;
+  // Each row's chip says why (rest, licence, booked…); the header no longer claims it is always rest.
+  const unavailableLabel = `${DRIVER_GROUP_LABELS.unavailable} · tap to assign anyway (not if booked)`;
 
   return drivers
     .filter((d) => d.id && !`${d.first_name || ''} ${d.last_name || ''}`.toLowerCase().includes('audit'))
@@ -76,12 +81,15 @@ export function driverChoices(
       (rec?.reasons ?? []).forEach((r) => chips.push({ label: r.text, tone: toneOf(r.tone) }));
       const reason = rec?.unavailabilityReason || '';
       const resting = unavailable && reason.startsWith('Only');
+      const clash = unavailable && (reason.startsWith('Already') || !!rec?.clashStart);
+      const warnOnly = unavailable && !clash;
       return {
         driver: d,
         group,
         groupLabel: group === 'best' ? bestLabel : group === 'unavailable' ? unavailableLabel : DRIVER_GROUP_LABELS[group],
-        blocked: unavailable && !resting && d.id !== opts.keepId,
+        blocked: clash && d.id !== opts.keepId,
         resting,
+        warnOnly,
         statusLabel: unavailable ? (resting ? 'Resting' : reason.startsWith('Already') ? 'Booked' : 'Unavailable') : openTrips.length ? 'On a trip' : 'Free',
         chips,
         rec,
@@ -92,7 +100,7 @@ export function driverChoices(
 
 /** Up to three drivers to offer straight away: the best matches, else the first free ranked ones. */
 export function topPicks(choices: DriverChoice[]): { picks: DriverChoice[]; best: boolean } {
-  const ranked = choices.filter((c) => c.rec && !c.blocked && !c.resting);
+  const ranked = choices.filter((c) => c.rec && !c.blocked && !c.warnOnly);
   const best = ranked.filter((c) => c.group === 'best');
   return best.length ? { picks: best.slice(0, 3), best: true } : { picks: ranked.slice(0, 3), best: false };
 }
