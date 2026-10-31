@@ -670,7 +670,7 @@ export default function TripDetailsScreen() {
         assignment={phase === 'planned' || phase === 'active'}
         tracking={tracking?.enabled && tracking.url ? { sub: trackingSub(tracking.open_count, tracking.last_opened_at), onPress: trackingActions } : null}
         onStepBack={canStepBack ? () => setSheet('stepback') : undefined}
-        onDelete={canDeleteTrip(trip.status) ? deleteTrip : undefined}
+        onDelete={canDeleteTrip(trip) ? deleteTrip : undefined}
       />
       <StepBackSheet visible={sheet === 'stepback'} tripId={trip.id} f={f} onClose={() => setSheet(null)} onDone={reload} />
       <UploadSheet visible={sheet === 'upload'} onClose={() => setSheet(null)} onPick={upload} />
