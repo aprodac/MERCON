@@ -147,12 +147,13 @@ if (!items.length) {
   process.exit(0);
 }
 const cell = (text) => String(text ?? '').replace(/\|/g, '\\|').replace(/\r?\n/g, '<br>');
-summary('| When (UTC) | Type | Build | Tester | Device / iOS | Comment |');
-summary('|---|---|---|---|---|---|');
+// ID = the screenshot file prefix (screenshots/<id>-<n>.png), so a comment can be matched to its images.
+summary('| When (UTC) | Type | Build | Tester | Device / iOS | Comment | ID |');
+summary('|---|---|---|---|---|---|---|');
 for (const i of items) {
   summary(
     `| ${i.createdDate.slice(0, 16).replace('T', ' ')} | ${i.kind === 'crash' ? '💥 crash' : '📷 feedback'} | ${cell(i.build ?? '?')} ` +
-      `| ${cell(i.tester)} | ${cell(i.device)} / ${cell(i.os)} | ${cell(i.comment) || '—'} |`,
+      `| ${cell(i.tester)} | ${cell(i.device)} / ${cell(i.os)} | ${cell(i.comment) || '—'} | ${cell(i.id)} |`,
   );
 }
 summary();

@@ -107,12 +107,15 @@ export function StepAssign({ form, showErrors }: { form: CreateTripForm; showErr
   const onPickDriver = (id: string) => {
     const t = driverTarget;
     if (!t) return;
-    // Too little rest: the operator may still book them, once they've confirmed.
+    // Too little rest, licence expired, off duty…: the operator may still book them once they've
+    // seen why (TestFlight 31 Oct: "assign driver anyway .. just give warning").
     const choice = choices.find((c) => c.driver.id === id);
-    if (choice?.resting && id !== form.driverId) {
+    if (choice?.warnOnly && id !== form.driverId) {
+      const name = fullName(choice.driver) || 'This driver';
+      const why = choice.rec?.unavailabilityReason ?? '';
       Alert.alert(
-        'Not enough rest',
-        `${fullName(choice.driver) || 'This driver'} hasn't had enough rest before this trip. ${choice.rec?.unavailabilityReason ?? ''}\n\nAssign anyway?`.trim(),
+        choice.resting ? 'Not enough rest' : 'Check before assigning',
+        `${choice.resting ? `${name} hasn't had enough rest before this trip.` : `${name}: ${why}.`} ${choice.resting ? why : ''}\n\nAssign anyway?`.replace(/ +\n/, '\n').trim(),
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Assign anyway', style: 'destructive', onPress: () => applyDriver(t, id) },
