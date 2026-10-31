@@ -250,6 +250,41 @@ function tripStatusesOf(raw: unknown): TripStatus[] {
   const parts = (Array.isArray(raw) ? raw : [raw]).flatMap((v) => String(v ?? '').split(','));
   return parts.map((v) => v.trim()).filter((v): v is TripStatus => TRIP_STATUSES.has(v));
 }
+
+/**
+ * A Delayed trip that hasn't started ("Starting late"): no stop reached, and either the
+ * driver never started it or it has stops. Prisma twin of `isLateToStart` in
+ * @mercon/shared-types — keep the two in sync.
+ */
+const lateToStartWhere: Prisma.TripWhereInput = {
+  status: TripStatus.Delayed,
+  stops: { none: { OR: [{ actual_arrival: { not: null } }, { actual_departure: { not: null } }] } },
+  OR: [
+    { actual_start: null, OR: [{ driver_workflow_state: null }, { driver_workflow_state: 'ASSIGNED' }] },
+    { stops: { some: {} } },
+  ],
+};
+
+/**
+ * The ?status= filter as a where clause. Besides TripStatus values it takes the two
+ * halves of Delayed the apps show apart: `StartingLate` (not started yet) and
+ * `LateOnRoad` (on the road, late) — so "Not started" / "On the road" filters on the
+ * web match the operator app (owner, 31 Oct: web showed late-to-start trips as on the road).
+ * Nothing valid asked for gives an empty `in` (no trips), as before.
+ */
+function tripStatusWhere(raw: unknown): Prisma.TripWhereInput {
+  const parts = (Array.isArray(raw) ? raw : [raw]).flatMap((v) => String(v ?? '').split(',')).map((v) => v.trim());
+  const statuses = tripStatusesOf(parts.join(','));
+  const startingLate = parts.includes('StartingLate') && !statuses.includes(TripStatus.Delayed);
+  const lateOnRoad = parts.includes('LateOnRoad') && !statuses.includes(TripStatus.Delayed);
+  if (!startingLate && !lateOnRoad) return { status: statuses.length === 1 ? statuses[0] : { in: statuses } };
+  const or: Prisma.TripWhereInput[] = [];
+  if (statuses.length) or.push({ status: { in: statuses } });
+  if (startingLate && lateOnRoad) or.push({ status: TripStatus.Delayed });
+  else if (startingLate) or.push(lateToStartWhere);
+  else or.push({ status: TripStatus.Delayed, NOT: lateToStartWhere });
+  return or.length === 1 ? or[0] : { OR: or };
+}
 export const getTrips = async (req: Request, res: Response) => {
   try {
     const { status, driver_id, vehicle_id, customer_id, rate_card_id, search, date_filter, start_date, end_date, page = '1', per_page = '20' } = req.query;
@@ -260,12 +295,11 @@ export const getTrips = async (req: Request, res: Response) => {
     const isLite = req.query.lite === 'true';
 
     const whereClause: Prisma.TripWhereInput = { deletedAt: null };
-    if (status) {
-      // Unknown statuses are dropped rather than failing the whole list: an
-      // app build asked for "Emergency" (not a TripStatus) and got no trips at all.
-      const wanted = tripStatusesOf(status);
-      whereClause.status = wanted.length === 1 ? wanted[0] : { in: wanted };
-    }
+    // Unknown statuses are dropped rather than failing the whole list: an
+    // app build asked for "Emergency" (not a TripStatus) and got no trips at all.
+    // StartingLate / LateOnRoad split Delayed (tripStatusWhere); added to AND below,
+    // after the date window and search have set theirs.
+    const statusWhere = status ? tripStatusWhere(status) : null;
     if (driver_id) whereClause.driverId = driver_id as string;
     if (vehicle_id) whereClause.vehicleId = vehicle_id as string;
     const customerFilter = (customer_id || req.query.customerId) as string | undefined;
@@ -349,6 +383,13 @@ export const getTrips = async (req: Request, res: Response) => {
       whereClause.AND = [
         ...(Array.isArray(whereClause.AND) ? whereClause.AND : whereClause.AND ? [whereClause.AND] : []),
         ...searchAnd,
+      ];
+    }
+
+    if (statusWhere) {
+      whereClause.AND = [
+        ...(Array.isArray(whereClause.AND) ? whereClause.AND : whereClause.AND ? [whereClause.AND] : []),
+        statusWhere,
       ];
     }
 

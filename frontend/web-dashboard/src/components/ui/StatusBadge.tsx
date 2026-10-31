@@ -4,10 +4,12 @@ import { cn } from '@/lib/utils';
 
 interface StatusBadgeProps {
   status: string;
+  /** Text instead of the status's own — e.g. "Starting late" for a Delayed trip. */
+  label?: string;
   className?: string;
 }
 
-export default function StatusBadge({ status, className }: StatusBadgeProps) {
+export default function StatusBadge({ status, label: labelOverride, className }: StatusBadgeProps) {
   const normalized = (status || '').toLowerCase().replace(/[\s_-]+/g, '');
   
   let label = status;
@@ -15,7 +17,13 @@ export default function StatusBadge({ status, className }: StatusBadgeProps) {
   let styleClass = "bg-slate-100 text-slate-700 border-slate-200/90 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700";
 
   switch (normalized) {
+    // Draft reads Draft, as in the operator app (it used to say Scheduled).
     case 'draft':
+      label = 'Draft';
+      Icon = FileText;
+      styleClass = "bg-slate-100 text-slate-700 border-slate-200/90 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700";
+      break;
+
     case 'scheduled':
     case 'dispatched':
     case 'offduty':
@@ -114,7 +122,7 @@ export default function StatusBadge({ status, className }: StatusBadgeProps) {
       )} 
     >
       <Icon size={10} className="stroke-[2.2] shrink-0" />
-      <span>{label}</span>
+      <span>{labelOverride || label}</span>
     </Badge>
   );
 }

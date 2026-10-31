@@ -123,6 +123,31 @@ export function isDelayedNotStarted(trip?: {
   return !(trip.stops ?? []).some((s) => isStopReached(s));
 }
 
+/**
+ * Delayed, but no stop reached yet: waiting to start, not on the road. Also when
+ * the driver tapped Start but hasn't reached the first pickup. The one rule for
+ * "Starting late" vs "Late arriving" in every app (the operator app's Trips and
+ * Ledger, the web Trip ledger's badge, filters and leg chip). The API's
+ * `?status=StartingLate` / `LateOnRoad` filter mirrors it in Prisma
+ * (`lateToStartWhere` in tripController).
+ */
+export function isLateToStart(trip?: {
+  status?: string | null;
+  actual_start?: unknown;
+  driver_workflow_state?: string | null;
+  stops?: Array<{ actual_arrival?: unknown; actual_departure?: unknown }> | null;
+} | null): boolean {
+  if (!trip || trip.status !== 'Delayed') return false;
+  const stops = trip.stops ?? [];
+  return isDelayedNotStarted(trip) || (stops.length > 0 && !stops.some((s) => isStopReached(s)));
+}
+
+/** "Starting late" / "Late arriving" for a Delayed trip, else null. */
+export function delayedStatusLabel(trip?: Parameters<typeof isLateToStart>[0]): 'Starting late' | 'Late arriving' | null {
+  if (!trip || trip.status !== 'Delayed') return null;
+  return isLateToStart(trip) ? 'Starting late' : 'Late arriving';
+}
+
 /** Times and every stop can change: Draft / Scheduled, or late but not started. */
 export function isTripRouteEditable(trip?: Parameters<typeof isDelayedNotStarted>[0]): boolean {
   return isRouteEditable(trip?.status) || isDelayedNotStarted(trip);
