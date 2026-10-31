@@ -5,7 +5,7 @@ import { Camera, Check, CheckCheck, Clock3, Image as ImageIcon, ImageOff, MapPin
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import type { DriverUpdate, LiveMediaItem, OperatorTripDetail, TripPhase } from '../../../../lib/operator';
-import { ON_TIME_GRACE_MIN, TONE, delayText, mapsLink, minutesText, photoPinsForStop, sendStatus, sortedStops, stopName, stopTiming, tripStopProgress, tripLegsOf, updateTitle, type Formatters, type Stop } from '../tripDetailsModel';
+import { ON_TIME_GRACE_MIN, TONE, delayText, mapsLink, minutesText, photoPinsForStop, sendStatus, sortedStops, stopDueIso, stopName, stopTiming, tripStopProgress, tripLegsOf, updateTitle, type Formatters, type Stop } from '../tripDetailsModel';
 import { extraStopNote } from '@mercon/shared-types';
 import { liveLegOf } from '../../tripLegs';
 import { Card, Chip, INK, MUTED, WA, WA_INK, WA_LIGHT, tap } from './parts';
@@ -174,7 +174,7 @@ export function StopsTab({ trip, phase, updates, f, onOpenPhotos, onSendUpdate, 
           ? `arrived ${f.smart(st.actual_arrival)}${st.actual_departure ? ` · left ${f.time(st.actual_departure)}` : ''}`
           : logged ? `screenshot sent here ${f.smart(logged.at)}`
           : done ? 'passed · no time yet'
-          : st.planned_arrival ? `due ${f.smart(st.planned_arrival)}` : 'no time planned';
+          : st.planned_arrival ? `due ${f.smart(stopDueIso(stops, i) ?? st.planned_arrival)}` : 'no time planned';
 
         return (
           <React.Fragment key={st.id}>
