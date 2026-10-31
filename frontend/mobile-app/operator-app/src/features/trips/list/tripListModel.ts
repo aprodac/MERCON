@@ -3,7 +3,7 @@
  * it (the warning pills), a one-line route, stop progress, and day buckets in
  * the deployment's timezone.
  */
-import { isDelayedNotStarted } from '@mercon/shared-types';
+import { isLateToStart as sharedIsLateToStart } from '@mercon/shared-types';
 import type { OperatorTrip } from '../../../lib/operator';
 import { liveLegOf, splitLegs } from '../tripLegs';
 
@@ -38,8 +38,7 @@ export const PHASE_STYLE: Record<Phase, { label: string; bg: string; fg: string;
  * the driver tapped Start but hasn't got to the first pickup (TestFlight 25 Oct:
  * TRP-0066 "not started yet and it's showing arriving late instead of starting late").
  */
-export const isLateToStart = (t: OperatorTrip) =>
-  isDelayedNotStarted(t) || (t.status === 'Delayed' && stopsOf(t).length > 0 && !stopsOf(t).some((x) => x.actual_arrival || x.actual_departure));
+export const isLateToStart = (t: OperatorTrip) => sharedIsLateToStart(t as any);
 
 export const statusText = (t: OperatorTrip) =>
   t.status === 'Loading' ? 'Loading'

@@ -460,7 +460,7 @@ export default function TripDetailsPage() {
       return ms > 0 ? `Starts in ${formatDuration(ms / 1000)}` : 'Start time has passed';
     }
     if (phase === 'active') {
-      const live = liveLegOf(tripLegs, trip.status);
+      const live = liveLegOf(tripLegs, trip.status, trip as any);
       const leg = live ? `${legLabel(live)} · ` : '';
       return headingTo ? `${leg}Heading to ${resolveStopName(headingTo, 'the next stop')}` : 'At the last stop';
     }

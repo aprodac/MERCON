@@ -124,7 +124,7 @@ function tripRoute(trip: any): { origin: string | null; destination: string | nu
   const name = (s: any) => (s?.location_name || s?.location_address || '').replace(/\[RETURN:.*?\]/gi, '').replace(/🔁\s*/g, '').trim() || null;
   const ends = tripEnds(stops, trip?.rate_category);
   if (ends.round) {
-    return { origin: name(ends.from), destination: name(ends.to), round: true, leg: liveLegOf(splitLegs(stops, trip?.rate_category), trip?.status) };
+    return { origin: name(ends.from), destination: name(ends.to), round: true, leg: liveLegOf(splitLegs(stops, trip?.rate_category), trip?.status, trip as any) };
   }
   const pickup = stops.find((s) => s.stop_type === 'Pickup') ?? stops[0] ?? null;
   const dropoff = [...stops].reverse().find((s) => s.stop_type === 'Dropoff') ?? null;

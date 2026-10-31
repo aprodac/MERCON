@@ -36,7 +36,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { TruckMotion, CheckBadge, RouteLine, ClockIcon, RiskAlert } from '@/components/ui/kpi-icons';
-import { parseTripRouteNodes, getLegEndpoints, legLabel, liveLegOf, splitLegs } from '@mercon/shared-types';
+import { parseTripRouteNodes, getLegEndpoints, legLabel, liveLegOf, splitLegs, isLateToStart, delayedStatusLabel } from '@mercon/shared-types';
 
 import { format, subDays, addDays } from 'date-fns';
 import { DateRange } from 'react-day-picker';
@@ -523,6 +523,8 @@ const STATUS_DOT: Record<string, string> = {
   Loading: 'bg-sky-500',
   InTransit: 'bg-amber-500',
   Delayed: 'bg-rose-400',
+  StartingLate: 'bg-orange-400',
+  LateOnRoad: 'bg-rose-500',
   Completed: 'bg-emerald-500',
   Invoiced: 'bg-emerald-600',
   Cancelled: 'bg-rose-500',
@@ -538,6 +540,9 @@ const STATUS_LABELS: Record<string, string> = {
   AtPickup: 'Loading',
   InTransit: 'In Transit',
   Delayed: 'Delayed',
+  // Delayed in two halves, as the operator app shows them (owner, 31 Oct).
+  StartingLate: 'Starting late',
+  LateOnRoad: 'Late on the road',
   AtDelivery: 'At Delivery',
   Completed: 'Completed',
   Invoiced: 'Invoiced',
@@ -556,25 +561,33 @@ const EXACT_SERVER_STATUSES = new Set<TripStatusFilter>([
   'Dispatched',
   'AtPickup',
   'AtDelivery',
+  'StartingLate',
+  'LateOnRoad',
 ]);
 
-/** Statuses the Filters menu offers to tick (several at once). */
-const STATUS_CHOICES = ['Draft', 'Scheduled', 'Loading', 'InTransit', 'Delayed', 'Completed', 'Invoiced', 'Cancelled'] as const;
+/**
+ * Statuses the Filters menu offers to tick (several at once). Delayed is ticked as its two
+ * halves — not started yet / late on the road — so "Not started" and "On the road" match the
+ * operator app; the API's ?status= takes StartingLate and LateOnRoad.
+ */
+const STATUS_CHOICES = ['Draft', 'Scheduled', 'StartingLate', 'Loading', 'InTransit', 'LateOnRoad', 'Completed', 'Invoiced', 'Cancelled'] as const;
+const DELAYED_HALVES = ['StartingLate', 'LateOnRoad'];
 
 /** Ready-made picks above the ticks. */
 const STATUS_PRESETS: { label: string; statuses: string[] }[] = [
-  { label: 'Not started', statuses: ['Draft', 'Scheduled'] },
-  { label: 'On the road', statuses: ['Loading', 'InTransit', 'Delayed'] },
-  { label: 'Open', statuses: ['Draft', 'Scheduled', 'Loading', 'InTransit', 'Delayed'] },
+  { label: 'Not started', statuses: ['Draft', 'Scheduled', 'StartingLate'] },
+  { label: 'On the road', statuses: ['Loading', 'InTransit', 'LateOnRoad'] },
+  { label: 'Open', statuses: ['Draft', 'Scheduled', 'StartingLate', 'Loading', 'InTransit', 'LateOnRoad'] },
   { label: 'Finished', statuses: ['Completed', 'Invoiced'] },
 ];
 
 /** The ticked statuses a filter stands for ('All' → none ticked; KPI groups → their members). */
 const statusesOf = (filter: TripStatusFilter): string[] => {
   if (filter === 'All') return [];
-  if (filter === 'Active') return ['Scheduled', 'Loading', 'InTransit', 'Delayed'];
-  if (filter === 'Issues') return ['Delayed', 'Cancelled'];
-  return String(filter).split(',').filter(Boolean);
+  if (filter === 'Active') return ['Scheduled', 'Loading', 'InTransit', ...DELAYED_HALVES];
+  if (filter === 'Issues') return [...DELAYED_HALVES, 'Cancelled'];
+  // A link's ?status=Delayed ticks both halves.
+  return String(filter).split(',').filter(Boolean).flatMap((st) => (st === 'Delayed' ? DELAYED_HALVES : [st]));
 };
 
 /** Back from ticks to a filter value: nothing ticked is 'All'. */
@@ -609,6 +622,8 @@ const matchesTripStatusFilter = (trip: Trip, filter: TripStatusFilter): boolean 
     return trip.status === 'Completed' || trip.status === 'AtDelivery' || trip.status === 'Invoiced';
   }
   if (filter === 'Issues') return trip.status === 'Cancelled' || trip.status === 'Delayed';
+  if (filter === 'StartingLate') return isLateToStart(trip as any);
+  if (filter === 'LateOnRoad') return trip.status === 'Delayed' && !isLateToStart(trip as any);
   return trip.status === filter;
 };
 
@@ -1459,7 +1474,8 @@ export default function TripListPage() {
         const placeOf = (s?: any) =>
           (s?.location_name || s?.location?.name || s?.location_address || s?.location?.address || '').replace(/🔁\s*/g, '').replace(/\[RETURN:.*?\]/gi, '').trim();
         const backTo = legs.round ? placeOf(legs.ret[legs.ret.length - 1]) || placeOf(stops[0]) : '';
-        const liveLeg = liveLegOf(legs, row.status);
+        // A late trip that never started is on no leg yet (owner, 31 Oct: web said "Leg 1").
+        const liveLeg = liveLegOf(legs, row.status, row as any);
 
         const stopNames = stops.map(placeOf).filter(Boolean);
 
@@ -1717,7 +1733,8 @@ export default function TripListPage() {
       className: 'w-[105px] shrink-0',
       mobilePriority: 'primary' as const,
       accessor: (row: Trip) => (
-        <StatusBadge status={row.status} />
+        // Delayed reads "Starting late" / "Late arriving", as in the operator app.
+        <StatusBadge status={row.status} label={delayedStatusLabel(row as any) ?? undefined} />
       ),
     },
     {

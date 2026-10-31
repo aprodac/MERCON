@@ -8,6 +8,7 @@
  * not-started ones (Draft / Scheduled) are offered.
  */
 import { Alert } from 'react-native';
+import { isLateToStart } from '@mercon/shared-types';
 import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { operatorService, type OperatorTrip, type OperatorTripDetail, type UpdateTripRouteInput } from '../../../lib/operator';
 import { sortedStops } from '../details/tripDetailsModel';
@@ -113,12 +114,8 @@ export const COMPLETED_DELETE_WARNING =
  * so it can be deleted too (TestFlight 31 Oct, build 141: "Starting late trips can't be
  * deleted" → "Make it possible").
  */
-export const canDeleteTrip = (trip: {
-  status?: string | null;
-  stops?: Array<{ actual_arrival?: unknown; actual_departure?: unknown }> | null;
-}) =>
-  ['Draft', 'Scheduled', 'Cancelled', 'Completed'].includes(trip.status ?? '')
-  || (trip.status === 'Delayed' && !(trip.stops ?? []).some((x) => x.actual_arrival || x.actual_departure));
+export const canDeleteTrip = (trip: Parameters<typeof isLateToStart>[0] & { status?: string | null }) =>
+  ['Draft', 'Scheduled', 'Cancelled', 'Completed'].includes(trip?.status ?? '') || isLateToStart(trip);
 
 /**
  * Asks, then deletes a trip — and, when other not-started trips were created

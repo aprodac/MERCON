@@ -58,7 +58,7 @@ const OpsTripCard = forwardRef<HTMLDivElement, Props>(function OpsTripCard(
   const last = routeStops.length > 1 ? routeStops[routeStops.length - 1] : null;
   const progress = stopProgress(trip);
   const active = isActiveTrip(trip);
-  const liveLeg = active ? liveLegOf(legs, trip.status) : null;
+  const liveLeg = active ? liveLegOf(legs, trip.status, trip as any) : null;
   const nextIdx = active ? nextStopIndex(stops) : null;
   const next = nextIdx == null ? null : stops[nextIdx];
   const nextLate = next ? minutesPast(next.planned_arrival) : null;

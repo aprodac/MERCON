@@ -6,6 +6,7 @@
  * server that doesn't send it) the way out ends at the first drop-off.
  * Used by the web dashboard and the operator app so both read trips the same.
  */
+import { isLateToStart } from './tripRoute';
 export interface LegStop {
   stop_sequence?: number | null;
   sequence?: number | null;
@@ -76,7 +77,13 @@ const ON_THE_ROAD = new Set(['Loading', 'InTransit', 'Delayed', 'Emergency']);
  * trip that is actually under way (a scheduled trip is on no leg yet, a
  * delivered one is on none any more).
  */
-export function liveLegOf(legs: Pick<TripLegs<LegStop>, 'round' | 'currentLeg'>, status?: string | null): 1 | 2 | null {
+export function liveLegOf(
+  legs: Pick<TripLegs<LegStop>, 'round' | 'currentLeg'>,
+  status?: string | null,
+  /** The trip itself: a Delayed trip that hasn't started ("Starting late") is on no leg yet. */
+  trip?: Parameters<typeof isLateToStart>[0],
+): 1 | 2 | null {
+  if (trip && isLateToStart(trip)) return null;
   return legs.round && ON_THE_ROAD.has(String(status ?? '')) ? legs.currentLeg : null;
 }
 
